@@ -41,7 +41,7 @@ export def serve(state: State) -> Int
 end
 
 def handle(state: State, message: Json) -> Next
-  if !JSON.encode(message).starts_with?("{")
+  if !object?(message)
     Rpc.fail(JSON.null(), INVALID_REQUEST, "a message must be a JSON object")
     return Next.Continue(state)
   end
@@ -145,6 +145,10 @@ end
 def document_uri(params: Json) -> String
   document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
   return JSON.string(JSON.get(document, "uri").unwrap_or(JSON.null())).unwrap_or("")
+end
+
+def object?(message: Json) -> Bool
+  return JSON.encode(message).starts_with?("{")
 end
 
 def params(message: Json) -> Json

@@ -3,6 +3,8 @@ import BDD from "std/bdd"
 SERVER = "src/main.agc"
 TIMEOUT_MS = 20000
 LOCALHOST = "localhost"
+HEX_DIGITS = "0123456789ABCDEF"
+ASCII_LIMIT = 128
 PUBLISH = "textDocument/publishDiagnostics"
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
 ERROR_CODES = {
@@ -24,8 +26,10 @@ def main() -> Void
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
     BDD.step("the file {string} contains:", &file_contains),
+    BDD.step("the folder has the link {string} to itself", &links_to_itself),
     BDD.step("the editor opens {string}", &opens),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
+    BDD.step("the editor opens an untitled buffer", &opens_untitled),
     BDD.step("the editor saves {string} as:", &saves_as),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor sends {string} before initializing", &sends_request),
@@ -43,6 +47,8 @@ def main() -> Void
     BDD.step("{string} gets these diagnostics:", &gets_diagnostics),
     BDD.step("{string} through a localhost URI gets these diagnostics:", &gets_diagnostics_through_localhost),
     BDD.step("{string} gets no diagnostics", &gets_none),
+    BDD.step("no diagnostics are published", &publishes_nothing),
+    BDD.step("the server warns {string}", &warns),
     BDD.step("the diagnostic of {string} has a help line", &has_help),
     BDD.step("the diagnostic of {string} points to {string}", &points_to),
     BDD.step("the server exits with code {int}", &exits_with),
@@ -71,12 +77,28 @@ def file_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return BDD.assert(ready, written.ok?, "cannot write #{path}: #{written.message}")
 end
 
+def links_to_itself(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  linked = link(folder(ready), file_path(ready, args[0]))
+  return BDD.assert(ready, linked.ok?, "cannot link #{args[0]}: #{linked.message}")
+end
+
 def opens(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return open_through(ctx, args[0], "")
 end
 
 def opens_through_localhost(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return open_through(ctx, args[0], LOCALHOST)
+end
+
+def opens_untitled(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  document = JSON.object({
+    "uri": JSON.from("untitled:Untitled-1"),
+    "languageId": JSON.from("agentica"),
+    "version": JSON.from(1),
+    "text": JSON.from("def main() -> Void\n  puts(oops)\nend\n"),
+  })
+  return notify(ctx, "textDocument/didOpen", JSON.object({"textDocument": document}))
 end
 
 def open_through(ctx: BDD.Context, name: String, authority: String) -> BDD.Context
@@ -179,6 +201,16 @@ end
 def gets_none(ctx: BDD.Context, args: List[String]) -> BDD.Context
   none: List[Json] = []
   return next_publish(ctx, uri(ctx, args[0]), JSON.array(none))
+end
+
+def publishes_nothing(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| nothing_published(done) end
+end
+
+def warns(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    BDD.assert(done, stderr(done).contains?(args[0]), "no warning #{args[0].inspect} in #{stderr(done).inspect}")
+  end
 end
 
 def has_help(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -317,6 +349,15 @@ def last_message(ctx: BDD.Context, name: String, check: Fn[BDD.Context, String, 
   return finished(ctx) do |done| message_of(done, name, check) end
 end
 
+def nothing_published(ctx: BDD.Context) -> BDD.Context
+  for message in messages(ctx)
+    if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
+      return BDD.assert(ctx, false, "unexpected publish #{message}")
+    end
+  end
+  return BDD.assert(ctx, true, "")
+end
+
 def message_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, String, BDD.Context]) -> BDD.Context
   lists = published(ctx, uri(ctx, name))
   if lists.size == 0 or lists[lists.size - 1].size == 0
@@ -451,6 +492,15 @@ def read_body(server: Process, header: String) -> Result[Json]
   return JSON.parse(try String.from_bytes(body))
 end
 
+def link(target: String, path: String) -> Result[Void]
+  linker = try Process.spawn_captured("ln", ["-s", target, path], ".", TIMEOUT_MS)
+  status = try Process.wait(linker, TIMEOUT_MS)
+  if status != 0
+    return error("ln exited with status #{status}")
+  end
+  return ok()
+end
+
 def frame(body: String) -> String
   return "Content-Length: #{body.to_bytes.size}\r\n\r\n#{body}"
 end
@@ -498,8 +548,21 @@ def file_path(ctx: BDD.Context, name: String) -> String
 end
 
 def uri(ctx: BDD.Context, name: String, authority: String = "") -> String
-  path = "#{folder(ctx)}/#{name}".replace("%", "%25").replace(" ", "%20")
-  return "file://#{authority}#{path}"
+  return "file://#{authority}#{encoded("#{folder(ctx)}/#{name}")}"
+end
+
+def encoded(path: String) -> String
+  parts: List[String] = []
+  for char in path.split("")
+    if char == " " or char == "%" or String.code(char) >= ASCII_LIMIT
+      for byte in char.to_bytes
+        parts = parts.push("%#{HEX_DIGITS.at(byte / 16)}#{HEX_DIGITS.at(byte % 16)}")
+      end
+    else
+      parts = parts.push(char)
+    end
+  end
+  return parts.join("")
 end
 
 def messages(ctx: BDD.Context) -> List[Json]

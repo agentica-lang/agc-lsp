@@ -179,6 +179,100 @@ Feature: Diagnostics in the editor
     When the editor opens "unknown.agc"
     Then "unknown.agc" gets no diagnostics
 
+  Scenario: a file reached through a link and a double slash keeps its position
+    Given the language server has started
+    And the folder has the link "link" to itself
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "link//unknown.agc"
+    Then "link//unknown.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: a file name with accents is decoded from its URI
+    Given the language server has started
+    And the file "café.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "café.agc"
+    Then "café.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: an error at a key of agentica.toml names the key
+    Given the language server has started
+    And the file "agentica.toml" contains:
+      """
+      [package]
+      name = 3
+
+      """
+    And the file "app.agc" contains:
+      """
+      def main() -> Void
+        puts("hi")
+      end
+
+      """
+    When the editor opens "app.agc"
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                 |
+      | 1:1-1:1 | error    | PKG-MANIFEST-INVALID |
+    And the diagnostic of "app.agc" points to "agentica.toml (package)"
+
+  Scenario: a checker that hangs is stopped
+    Given the language server has started with the arguments "--agentica specs/fixtures/hanging-agentica"
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc"
+    Then "unknown.agc" gets no diagnostics
+    And the server exits with code 0
+
+  Scenario: a checker that fails without a diagnostic is reported
+    Given the language server has started with the arguments "--agentica specs/fixtures/silent-agentica"
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc"
+    Then "unknown.agc" gets no diagnostics
+    And the server warns "agentica exited with status 1 and no diagnostic"
+
+  Scenario: a checker that cannot run the check is reported
+    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc"
+    Then "unknown.agc" gets no diagnostics
+    And the server warns "agentica exited with status 2"
+
+  Scenario: a buffer that is not a file is not checked
+    Given the language server has started
+    When the editor opens an untitled buffer
+    Then no diagnostics are published
+
   Scenario: a file that is gone publishes no diagnostics
     Given the language server has started
     When the editor opens "missing.agc"

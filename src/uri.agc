@@ -6,13 +6,20 @@ export def path_of(uri: String) -> Result[String]
   if !uri.starts_with?(FILE_SCHEME)
     return error("not a file URI: #{uri}")
   end
-  rest = uri.slice(FILE_SCHEME.length, uri.length - FILE_SCHEME.length)
+  rest = before(before(uri.slice(FILE_SCHEME.length, uri.length - FILE_SCHEME.length), "#"), "?")
   slash = rest.index_of("/").unwrap_or(rest.length)
   authority = rest.slice(0, slash)
   if authority != "" and authority.downcase != LOCALHOST
     return error("not a local file URI: #{uri}")
   end
   return decode(rest.slice(slash, rest.length - slash))
+end
+
+def before(text: String, mark: String) -> String
+  case text.index_of(mark)
+    ok(at) -> return text.slice(0, at)
+    error(_) -> return text
+  end
 end
 
 def decode(text: String) -> Result[String]

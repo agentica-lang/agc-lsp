@@ -38,6 +38,18 @@ Feature: Server lifecycle
     Then the server answers "shutdown" with the error "server not initialized"
     And the server exits with code 1
 
+  Scenario: a notification before initialize is ignored
+    Given the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc"
+    Then no diagnostics are published
+    And the server exits with code 1
+
   Scenario: an unknown request is not found
     Given the language server has started
     When the editor sends the request "textDocument/hover"

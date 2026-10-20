@@ -1,4 +1,5 @@
-CHECK_TIMEOUT_MS = 60000
+CHECK_TIMEOUT_MS = 10000
+SHORTEST_WAIT_MS = 1
 READ_TIMEOUT_MS = 10000
 SEVERITY_ERROR = 1
 SURROGATE_START = 65536
@@ -34,13 +35,27 @@ def run(agentica: String, path: String) -> Result[String]
 end
 
 def collect(checker: Process) -> Result[String]
+  deadline = Time.now_ms() + CHECK_TIMEOUT_MS
   output = try Process.output(checker, CHECK_TIMEOUT_MS)
-  status = try Process.wait(checker, CHECK_TIMEOUT_MS)
+  status = try Process.wait(checker, remaining(deadline))
   case status
     0 -> return ok("")
-    1 -> return ok(last_line(output.stderr))
+    1 ->
+      problem = last_line(output.stderr)
+      if problem == ""
+        return error("agentica exited with status 1 and no diagnostic")
+      end
+      return ok(problem)
     _ -> return error("agentica exited with status #{status}: #{output.stderr.strip}")
   end
+end
+
+def remaining(deadline: Int) -> Int
+  left = deadline - Time.now_ms()
+  if left < SHORTEST_WAIT_MS
+    return SHORTEST_WAIT_MS
+  end
+  return left
 end
 
 def last_line(text: String) -> String
@@ -58,11 +73,11 @@ def diagnostic(found: Json, path: String, encoding: String) -> Json
   start = place(found, "start")
   stop = place(found, "end")
   range = JSON.object({"start": origin(), "end": origin()})
-  if file == path
+  if same_file?(file, path)
     lines = source_lines(path)
     range = JSON.object({"start": position(start, lines, encoding), "end": position(stop, lines, encoding)})
   else
-    message = "#{file}:#{start.line}:#{start.column}: #{message}"
+    message = "#{where(file, text(found, "key_path"), start)}: #{message}"
   end
   return JSON.object({
     "range": range,
@@ -71,6 +86,23 @@ def diagnostic(found: Json, path: String, encoding: String) -> Json
     "source": JSON.from("agentica"),
     "message": JSON.from(message),
   })
+end
+
+def same_file?(reported: String, opened: String) -> Bool
+  if reported == opened
+    return true
+  end
+  real = Path.real(reported)
+  return real.ok? and real.unwrap! == Path.real(opened).unwrap_or(opened)
+end
+
+def where(file: String, key_path: String, start: Place) -> String
+  if key_path != ""
+    return "#{file} (#{key_path})"
+  elsif start.line == 0
+    return file
+  end
+  return "#{file}:#{start.line}:#{start.column}"
 end
 
 def position(at: Place, lines: List[String], encoding: String) -> Json
