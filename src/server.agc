@@ -6,7 +6,7 @@ PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 SERVER_NOT_INITIALIZED = -32002
-FULL_SYNC = 1
+NO_SYNC = 0
 
 export struct State
   agentica: String
@@ -41,6 +41,10 @@ export def serve(state: State) -> Int
 end
 
 def handle(state: State, message: Json) -> Next
+  if !JSON.encode(message).starts_with?("{")
+    Rpc.fail(JSON.null(), INVALID_REQUEST, "a message must be a JSON object")
+    return Next.Continue(state)
+  end
   method = JSON.string(JSON.get(message, "method").unwrap_or(JSON.null())).unwrap_or("")
   if method == "exit"
     return Next.Exit(exit_status(state))
@@ -48,6 +52,7 @@ def handle(state: State, message: Json) -> Next
   case JSON.get(message, "id")
     ok(id) ->
       if method == ""
+        Rpc.fail(id, INVALID_REQUEST, "a request needs a method")
         return Next.Continue(state)
       end
       return Next.Continue(request(state, id, method, params(message)))
@@ -85,7 +90,7 @@ def initialize(state: State, id: Json, params: Json) -> State
   end
   sync = JSON.object({
     "openClose": JSON.from(true),
-    "change": JSON.from(FULL_SYNC),
+    "change": JSON.from(NO_SYNC),
     "save": JSON.object({"includeText": JSON.from(false)}),
   })
   capabilities = JSON.object({"positionEncoding": JSON.from(encoding), "textDocumentSync": sync})

@@ -7,8 +7,19 @@ def main() -> Void
 end
 
 def agentica(args: List[String]) -> String
-  if args.size == 2 and args[0] == "--agentica"
-    return args[1]
+  chosen = DEFAULT_AGENTICA
+  index = 0
+  while index < args.size
+    word = args[index]
+    if word == "--agentica" and index + 1 < args.size
+      chosen = args[index + 1]
+      index += 2
+    else
+      if word != "--stdio"
+        IO.warn("agc-lsp: ignoring the argument #{word}")
+      end
+      index += 1
+    end
   end
-  return DEFAULT_AGENTICA
+  return chosen
 end

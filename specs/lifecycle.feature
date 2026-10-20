@@ -14,7 +14,7 @@ Feature: Server lifecycle
       {
         "capabilities": {
           "positionEncoding": "utf-16",
-          "textDocumentSync": {"openClose": true, "change": 1, "save": {"includeText": false}}
+          "textDocumentSync": {"openClose": true, "change": 0, "save": {"includeText": false}}
         },
         "serverInfo": {"name": "agc-lsp"}
       }
@@ -42,6 +42,37 @@ Feature: Server lifecycle
     Given the language server has started
     When the editor sends the request "textDocument/hover"
     Then the server answers "textDocument/hover" with the error "method not found"
+    And the server exits with code 0
+
+  Scenario: a second initialize is refused
+    Given the language server has started
+    When the editor sends the request "initialize"
+    Then the server answers "initialize" with the error "invalid request"
+    And the server exits with code 0
+
+  Scenario: a request after shutdown is refused
+    Given the language server has started
+    When the editor sends the request "shutdown"
+    And the editor sends the request "textDocument/hover"
+    Then the server answers "textDocument/hover" with the error "invalid request"
+    And the server exits with code 0
+
+  Scenario: a request without a method is invalid
+    Given the language server has started
+    When the editor sends the raw message:
+      """
+      {"jsonrpc":"2.0","id":99}
+      """
+    Then the server answers request 99 with the error "invalid request"
+    And the server exits with code 0
+
+  Scenario: a batch is invalid
+    Given the language server has started
+    When the editor sends the raw message:
+      """
+      [{"jsonrpc":"2.0","id":99,"method":"shutdown"}]
+      """
+    Then the server reports the error "invalid request"
     And the server exits with code 0
 
   Scenario: a message that is not JSON is a parse error

@@ -125,6 +125,60 @@ Feature: Diagnostics in the editor
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And the diagnostic of "app.agc" points to "lib.agc:2:10"
 
+  Scenario: a file name with a space is decoded from its URI
+    Given the language server has started
+    And the file "my file.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "my file.agc"
+    Then "my file.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: a URI with the localhost authority names a local file
+    Given the language server has started
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc" through a localhost URI
+    Then "unknown.agc" through a localhost URI gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: other output of the checker before the diagnostic is skipped
+    Given the language server has started with the arguments "--agentica specs/fixtures/noisy-agentica"
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc"
+    Then "unknown.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: the checker named after --stdio is the one used
+    Given the language server has started with the arguments "--stdio --agentica specs/fixtures/missing-agentica"
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc"
+    Then "unknown.agc" gets no diagnostics
+
   Scenario: a file that is gone publishes no diagnostics
     Given the language server has started
     When the editor opens "missing.agc"

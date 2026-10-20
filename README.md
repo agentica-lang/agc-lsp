@@ -10,7 +10,9 @@ written in Agentica.
 - Speaks JSON-RPC over stdio with `Content-Length` framing: `initialize`, `shutdown`, `exit`.
 - On `textDocument/didOpen` and `textDocument/didSave` it runs `agentica --json check` on the file on disk and
   publishes its first diagnostic, or an empty list. `textDocument/didClose` clears it. Unsaved changes are not
-  checked yet.
+  checked yet, so the server asks for no `didChange` notifications.
+- An error in an imported file is shown at the start of the opened file, with the imported file and position in the
+  message.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
 ## Usage
@@ -18,10 +20,11 @@ written in Agentica.
 It needs `agentica` (0.5.0 or later) on `PATH`, and `--allow-run` to start it:
 
 ```sh
-agentica --allow-run src/main.agc [--agentica PATH]
+agentica --allow-run src/main.agc [--stdio] [--agentica PATH]
 ```
 
-`--agentica PATH` names the binary that checks the files (default: `agentica` from `PATH`).
+`--agentica PATH` names the binary that checks the files (default: `agentica` from `PATH`). `--stdio` is accepted
+for clients that pass it; stdio is the only transport.
 
 ## Development
 

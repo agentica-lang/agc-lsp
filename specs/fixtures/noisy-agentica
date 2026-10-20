@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "agentica: a warning before the diagnostic" >&2
+exec agentica "$@"

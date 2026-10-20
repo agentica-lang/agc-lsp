@@ -28,13 +28,24 @@ end
 
 def run(agentica: String, path: String) -> Result[String]
   checker = try Process.spawn_captured(agentica, ["--json", "check", path], ".", CHECK_TIMEOUT_MS)
+  result = collect(checker)
+  Process.close(checker)
+  return result
+end
+
+def collect(checker: Process) -> Result[String]
   output = try Process.output(checker, CHECK_TIMEOUT_MS)
   status = try Process.wait(checker, CHECK_TIMEOUT_MS)
   case status
     0 -> return ok("")
-    1 -> return ok(output.stderr.strip)
+    1 -> return ok(last_line(output.stderr))
     _ -> return error("agentica exited with status #{status}: #{output.stderr.strip}")
   end
+end
+
+def last_line(text: String) -> String
+  lines = text.strip.split("\n")
+  return lines[lines.size - 1].strip
 end
 
 def diagnostic(found: Json, path: String, encoding: String) -> Json

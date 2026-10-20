@@ -23,5 +23,6 @@ ones the task needs (`bdd.md` for specs, `processes.md` for `Process`).
 If a checkout of the Agentica repository sits at `../agentica`, read
 `../agentica/.agents/skills/agentica-programming/` instead of fetching.
 
-`agentica` must be built from the same `master`; `agentica help NAME` is the
-authority on signatures.
+`master` may document builtins newer than the release CI pins
+(`AGENTICA_VERSION` in `.github/workflows/ci.yml`). Use only what that release
+has: `agentica help NAME` on the pinned binary is the authority on signatures.
