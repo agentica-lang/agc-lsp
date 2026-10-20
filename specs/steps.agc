@@ -16,8 +16,15 @@ ERROR_CODES = {
 
 struct Session
   messages: List[Json]
+  arrivals: List[Int]
+  sent: Map[String, Json]
   exit_code: Int
   stderr: String
+end
+
+struct Heard
+  messages: List[Json]
+  arrivals: List[Int]
 end
 
 def main() -> Void
@@ -26,12 +33,20 @@ def main() -> Void
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
     BDD.step("the file {string} contains:", &file_contains),
+    BDD.step("the files {string} contain:", &files_contain),
     BDD.step("the folder has the link {string} to itself", &links_to_itself),
     BDD.step("the editor opens {string}", &opens),
+    BDD.step("the editor opens {string} without waiting", &opens_without_waiting),
+    BDD.step("the editor opens the files {string} without waiting", &opens_files_without_waiting),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
     BDD.step("the editor opens an untitled buffer", &opens_untitled),
     BDD.step("the editor saves {string} as:", &saves_as),
+    BDD.step("the editor saves {string} without waiting as:", &saves_without_waiting),
     BDD.step("the editor closes {string}", &closes),
+    BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
+    BDD.step("the editor waits {int} milliseconds", &waits),
+    BDD.step("the editor waits for diagnostics", &waits_for_diagnostics),
+    BDD.step("the editor waits for the diagnostics of {int} files", &waits_for_files),
     BDD.step("the editor sends {string} before initializing", &sends_request),
     BDD.step("the editor sends the request {string}", &sends_request),
     BDD.step("the editor sends a message that is not JSON", &sends_garbage),
@@ -41,6 +56,7 @@ def main() -> Void
     BDD.step("the editor closes the connection", &hangs_up),
     BDD.step("the client runs the session:", &run_session),
     BDD.step("the server answers request {int} with:", &answers_with),
+    BDD.step("the server answers {string} within {int} milliseconds", &answers_within),
     BDD.step("the server announces the position encoding {string}", &announces_encoding),
     BDD.step("the server answers {string} with the error {string}", &answers_error),
     BDD.step("the server answers request {int} with the error {string}", &answers_id_error),
@@ -49,6 +65,7 @@ def main() -> Void
     BDD.step("{string} gets these diagnostics:", &gets_diagnostics),
     BDD.step("{string} through a localhost URI gets these diagnostics:", &gets_diagnostics_through_localhost),
     BDD.step("{string} gets no diagnostics", &gets_none),
+    BDD.step("{string} gets nothing more", &gets_nothing_more),
     BDD.step("no diagnostics are published", &publishes_nothing),
     BDD.step("the server warns {string}", &warns),
     BDD.step("the diagnostic of {string} has a help line", &has_help),
@@ -73,10 +90,25 @@ def started_with_arguments(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def file_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  ready = with_folder(ctx)
-  path = file_path(ready, args[0])
-  written = File.write_text(path, BDD.doc_string(ready), TIMEOUT_MS)
-  return BDD.assert(ready, written.ok?, "cannot write #{path}: #{written.message}")
+  return write_file(with_folder(ctx), args[0])
+end
+
+def files_contain(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  written = with_folder(ctx)
+  for name in names(args[0])
+    written = write_file(written, name)
+  end
+  return written
+end
+
+def write_file(ctx: BDD.Context, name: String) -> BDD.Context
+  path = file_path(ctx, name)
+  written = File.write_text(path, BDD.doc_string(ctx), TIMEOUT_MS)
+  return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
+end
+
+def names(list: String) -> List[String]
+  return list.split(",").map do |name| name.strip end
 end
 
 def links_to_itself(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -86,11 +118,23 @@ def links_to_itself(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def opens(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(open_through(ctx, args[0], ""), args[0])
+end
+
+def opens_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return open_through(ctx, args[0], "")
 end
 
+def opens_files_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  opened = ctx
+  for name in names(args[0])
+    opened = open_through(opened, name, "")
+  end
+  return opened
+end
+
 def opens_through_localhost(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  return open_through(ctx, args[0], LOCALHOST)
+  return awaiting(open_through(ctx, args[0], LOCALHOST), args[0])
 end
 
 def opens_untitled(ctx: BDD.Context, _args: List[String]) -> BDD.Context
@@ -116,26 +160,64 @@ def open_through(ctx: BDD.Context, name: String, authority: String) -> BDD.Conte
 end
 
 def saves_as(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(save(ctx, args[0]), args[0])
+end
+
+def saves_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return save(ctx, args[0])
+end
+
+def save(ctx: BDD.Context, name: String) -> BDD.Context
   ready = with_folder(ctx)
   text = BDD.doc_string(ready)
-  document = JSON.object({"uri": JSON.from(uri(ready, args[0])), "version": JSON.from(2)})
-  waited = add(ready, JSON.object({"kind": JSON.from("await")}))
-  written = add(waited, JSON.object({
+  document = JSON.object({"uri": JSON.from(uri(ready, name)), "version": JSON.from(2)})
+  written = add(ready, JSON.object({
     "kind": JSON.from("write"),
-    "name": JSON.from(args[0]),
+    "name": JSON.from(name),
     "text": JSON.from(text),
   }))
   changed = notify(written, "textDocument/didChange", JSON.object({
     "textDocument": document,
     "contentChanges": JSON.array([JSON.object({"text": JSON.from(text)})]),
   }))
-  saved = JSON.object({"uri": JSON.from(uri(ready, args[0]))})
+  saved = JSON.object({"uri": JSON.from(uri(ready, name))})
   return notify(changed, "textDocument/didSave", JSON.object({"textDocument": saved}))
 end
 
 def closes(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  document = JSON.object({"uri": JSON.from(uri(ctx, args[0]))})
+  return awaiting(close_document(ctx, args[0]), args[0])
+end
+
+def closes_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return close_document(ctx, args[0])
+end
+
+def close_document(ctx: BDD.Context, name: String) -> BDD.Context
+  document = JSON.object({"uri": JSON.from(uri(ctx, name))})
   return notify(ctx, "textDocument/didClose", JSON.object({"textDocument": document}))
+end
+
+def waits(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return add(ctx, JSON.object({"kind": JSON.from("pause"), "ms": JSON.from(args[0].to_i!)}))
+end
+
+def waits_for_diagnostics(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return add(ctx, JSON.object({"kind": JSON.from("await")}))
+end
+
+def waits_for_files(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  waited = ctx
+  for _ in 0...args[0].to_i!
+    waited = add(waited, JSON.object({"kind": JSON.from("await")}))
+  end
+  return waited
+end
+
+def awaiting(ctx: BDD.Context, name: String) -> BDD.Context
+  if name.ends_with?(".agc")
+    return add(ctx, JSON.object({"kind": JSON.from("await")}))
+  end
+  return ctx
 end
 
 def sends_request(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -212,6 +294,14 @@ def gets_diagnostics_through_localhost(ctx: BDD.Context, args: List[String]) -> 
   return next_publish(ctx, uri(ctx, args[0], LOCALHOST), JSON.array(expected))
 end
 
+def gets_nothing_more(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| nothing_more(done, uri(done, args[0])) end
+end
+
+def answers_within(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| answered_within(done, args[0], args[1].to_i!) end
+end
+
 def gets_none(ctx: BDD.Context, args: List[String]) -> BDD.Context
   none: List[Json] = []
   return next_publish(ctx, uri(ctx, args[0]), JSON.array(none))
@@ -244,6 +334,27 @@ def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
     code = JSON.int(BDD.get(done, "exit").unwrap!).unwrap!
     BDD.assert(done, code == args[0].to_i!, "expected exit code #{args[0]}; actual #{code}; stderr #{stderr(done)}")
   end
+end
+
+def answered_within(ctx: BDD.Context, method: String, limit: Int) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "request #{method}").unwrap!).unwrap!
+  arrivals = JSON.list(BDD.get(ctx, "arrivals").unwrap!).unwrap!
+  sent = JSON.int(at(BDD.get(ctx, "sent").unwrap!, [id.to_s]).unwrap!).unwrap!
+  index = 0
+  for message in messages(ctx)
+    if at(message, ["id"]).unwrap_or(JSON.null()).to_s == id.to_s
+      waited = JSON.int(arrivals[index]).unwrap! - sent
+      return BDD.assert(ctx, waited <= limit, "the answer to #{method} took #{waited} ms; limit #{limit} ms")
+    end
+    index += 1
+  end
+  return BDD.assert(ctx, false, "no answer to #{method} among #{JSON.array(messages(ctx))}")
+end
+
+def nothing_more(ctx: BDD.Context, target: String) -> BDD.Context
+  seen = JSON.int(BDD.get(ctx, "seen #{target}").unwrap_or(JSON.from(0))).unwrap!
+  lists = published(ctx, target)
+  return BDD.assert(ctx, seen == lists.size, "#{target} got #{lists.size - seen} more publishes: #{lists}")
 end
 
 def answer_is(ctx: BDD.Context, id: Int, expected: String) -> BDD.Context
@@ -320,12 +431,12 @@ def finished(ctx: BDD.Context, check: Fn[BDD.Context, BDD.Context]) -> BDD.Conte
     return check.call(ctx)
   end
   none: List[Json] = []
-  actions = JSON.list(BDD.get(ctx, "script").unwrap_or(JSON.array(none))).unwrap!
+  base = ctx
   if !BDD.get(ctx, "ended").ok?
-    shut = request(BDD.set(ctx, "script", JSON.array(actions)), "shutdown", JSON.null())
-    actions = JSON.list(BDD.get(notify(shut, "exit", JSON.null()), "script").unwrap!).unwrap!
+    base = notify(request(ctx, "shutdown", JSON.null()), "exit", JSON.null())
   end
-  recorded = record(ctx, run(ctx, actions))
+  actions = JSON.list(BDD.get(base, "script").unwrap_or(JSON.array(none))).unwrap!
+  recorded = record(base, run(base, actions))
   if !BDD.get(recorded, "messages").ok?
     return recorded
   end
@@ -336,7 +447,9 @@ def record(ctx: BDD.Context, ran: Result[Session]) -> BDD.Context
   case ran
     ok(done) ->
       with_messages = BDD.set(ctx, "messages", JSON.array(done.messages))
-      with_exit = BDD.set(with_messages, "exit", JSON.from(done.exit_code))
+      with_arrivals = BDD.set(with_messages, "arrivals", JSON.array(done.arrivals.map do |ms| JSON.from(ms) end))
+      with_sent = BDD.set(with_arrivals, "sent", JSON.object(done.sent))
+      with_exit = BDD.set(with_sent, "exit", JSON.from(done.exit_code))
       return BDD.set(with_exit, "stderr", JSON.from(done.stderr))
     error(message) -> return BDD.assert(ctx, false, message)
   end
@@ -442,57 +555,91 @@ end
 def session(dir: String, arguments: List[String], actions: List[Json]) -> Result[Session]
   server = try Process.spawn_captured("agentica", arguments, ".", TIMEOUT_MS)
   received: List[Json] = []
+  arrivals: List[Int] = []
+  sent: Map[String, Json] = {}
   for action in actions
-    received = received.concat(try perform(server, dir, action))
+    sent = noted(sent, action)
+    heard = try perform(server, dir, action)
+    received = received.concat(heard.messages)
+    arrivals = arrivals.concat(heard.arrivals)
   end
   try Process.close_stdin(server, TIMEOUT_MS)
-  received = received.concat(try read_rest(server))
+  rest = try read_rest(server)
   exit_code = try Process.wait(server, TIMEOUT_MS)
   output = try Process.output(server, TIMEOUT_MS)
-  return ok(Session(messages: received, exit_code: exit_code, stderr: output.stderr))
+  return ok(Session(
+    messages: received.concat(rest.messages),
+    arrivals: arrivals.concat(rest.arrivals),
+    sent: sent,
+    exit_code: exit_code,
+    stderr: output.stderr,
+  ))
 end
 
-def perform(server: Process, dir: String, action: Json) -> Result[List[Json]]
+def noted(sent: Map[String, Json], action: Json) -> Map[String, Json]
+  kind = JSON.string(JSON.get(action, "kind").unwrap_or(JSON.null())).unwrap_or("")
+  if kind != "send"
+    return sent
+  end
+  body = JSON.parse(JSON.string(JSON.get(action, "body").unwrap_or(JSON.null())).unwrap_or("")).unwrap_or(JSON.null())
+  case JSON.get(body, "id")
+    ok(id) -> return sent.put(id.to_s, JSON.from(Time.now_ms()))
+    error(_) -> return sent
+  end
+end
+
+def perform(server: Process, dir: String, action: Json) -> Result[Heard]
   kind = try JSON.string(try JSON.get(action, "kind"))
   case kind
     "send" ->
       body = try JSON.string(try JSON.get(action, "body"))
       try Process.send(server, frame(body), TIMEOUT_MS)
-      return ok([])
+      return ok(nothing_heard())
     "raw" ->
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), TIMEOUT_MS)
-      return ok([])
+      return ok(nothing_heard())
     "await" -> return read_until_diagnostics(server)
+    "pause" ->
+      Task.sleep(try JSON.int(try JSON.get(action, "ms")))
+      return ok(nothing_heard())
     "write" ->
       path = try Path.join([dir, try JSON.string(try JSON.get(action, "name"))])
       try File.write_text(path, try JSON.string(try JSON.get(action, "text")), TIMEOUT_MS)
-      return ok([])
+      return ok(nothing_heard())
     _ -> return error("unknown action #{kind}")
   end
 end
 
-def read_until_diagnostics(server: Process) -> Result[List[Json]]
+def nothing_heard() -> Heard
+  return Heard(messages: [], arrivals: [])
+end
+
+def read_until_diagnostics(server: Process) -> Result[Heard]
   received: List[Json] = []
+  arrivals: List[Int] = []
   while true
     message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
     received = received.push(message)
+    arrivals = arrivals.push(Time.now_ms())
     if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
-      return ok(received)
+      return ok(Heard(messages: received, arrivals: arrivals))
     end
   end
-  return ok(received)
+  return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_rest(server: Process) -> Result[List[Json]]
+def read_rest(server: Process) -> Result[Heard]
   received: List[Json] = []
+  arrivals: List[Int] = []
   while true
     header = Process.read_line(server, TIMEOUT_MS)
     if !header.ok?
-      return ok(received)
+      return ok(Heard(messages: received, arrivals: arrivals))
     end
     received = received.push(try read_body(server, header.unwrap!))
+    arrivals = arrivals.push(Time.now_ms())
   end
-  return ok(received)
+  return ok(Heard(messages: received, arrivals: arrivals))
 end
 
 def read_body(server: Process, header: String) -> Result[Json]

@@ -46,7 +46,7 @@ Feature: Server lifecycle
       end
 
       """
-    When the editor opens "unknown.agc"
+    When the editor opens "unknown.agc" without waiting
     Then no diagnostics are published
     And the server exits with code 1
 

@@ -7,6 +7,8 @@ An LSP server for Agentica, written in Agentica. Plan: sonic182/agentica#346.
 ```text
 src/main.agc      entry point: options, then the server loop
 src/server.agc    lifecycle and dispatch of requests and notifications
+src/events.agc    the reader and check tasks, and the events they send to the server loop
+src/schedule.agc  which checks run (at most 4), wait or are stale, per file
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
 src/check.agc     runs `agentica --json check` and maps its diagnostic to LSP
 src/uri.agc       file:// URIs to paths

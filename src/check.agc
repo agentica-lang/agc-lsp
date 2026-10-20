@@ -9,22 +9,23 @@ struct Place
   column: Int
 end
 
-export def diagnostics(agentica: String, path: String, encoding: String) -> List[Json]
+export def diagnostics(agentica: String, path: String, encoding: String) -> Result[List[Json]]
   case run(agentica, path)
     ok(problem) ->
       if problem == ""
-        return []
+        return ok([])
       end
       case JSON.parse(problem)
-        ok(found) -> return [diagnostic(found, path, encoding)]
-        error(message) ->
-          IO.warn("agc-lsp: the diagnostic of #{path} is not JSON: #{message}")
-          return []
+        ok(found) -> return ok([diagnostic(found, path, encoding)])
+        error(message) -> return failed("the diagnostic of #{path} is not JSON: #{message}")
       end
-    error(message) ->
-      IO.warn("agc-lsp: cannot check #{path}: #{message}")
-      return []
+    error(message) -> return failed("cannot check #{path}: #{message}")
   end
+end
+
+def failed(message: String) -> Result[List[Json]]
+  IO.warn("agc-lsp: #{message}")
+  return error(message)
 end
 
 def run(agentica: String, path: String) -> Result[String]

@@ -1,5 +1,6 @@
-import Check from "check"
+import Events from "events"
 import Rpc from "rpc"
+import Schedule from "schedule"
 import Uri from "uri"
 
 PARSE_ERROR = -32700
@@ -8,12 +9,17 @@ METHOD_NOT_FOUND = -32601
 SERVER_NOT_INITIALIZED = -32002
 NO_SYNC = 0
 AGENTICA_EXTENSION = ".agc"
+EVENT_CAPACITY = 256
+WAIT_MS = 1000
+READER_CHECK_MS = 1
 
 export struct State
   agentica: String
   encoding: String
   initialized: Bool
   shut_down: Bool
+  events: Channel[Events.Event]
+  plan: Schedule.Plan
 end
 
 enum Next
@@ -22,26 +28,79 @@ enum Next
 end
 
 export def start(agentica: String) -> State
-  return State(agentica: agentica, encoding: "utf-16", initialized: false, shut_down: false)
+  events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
+  return State(
+    agentica: agentica,
+    encoding: "utf-16",
+    initialized: false,
+    shut_down: false,
+    events: events,
+    plan: Schedule.start(agentica, events),
+  )
 end
 
 export def serve(state: State) -> Int
+  reader = Task.spawn(&Events.read_input, state.events)
   current = state
   while true
-    case Rpc.read()
-      Rpc.Incoming.End -> return exit_status(current)
-      Rpc.Incoming.Malformed(message) -> Rpc.fail(JSON.null(), PARSE_ERROR, message)
-      Rpc.Incoming.Unframed(message) ->
-        IO.warn("agc-lsp: #{message}; the stream cannot be read further")
-        return 1
-      Rpc.Incoming.Message(message) ->
-        case handle(current, message)
+    case current.events.recv(WAIT_MS)
+      ok(event) ->
+        case dispatch(current, event)
           Next.Continue(next) -> current = next
-          Next.Exit(status) -> return status
+          Next.Exit(status) -> return finish(current, reader, status)
         end
+      error(_) ->
+        if reader_crashed?(reader)
+          IO.warn("agc-lsp: the reader of the input crashed")
+          return finish(current, reader, 1)
+        end
+        current = current.with(plan: Schedule.tick(current.plan, current.encoding))
     end
   end
-  return exit_status(current)
+  return finish(current, reader, exit_status(current))
+end
+
+def reader_crashed?(reader: Task[Result[Void]]) -> Bool
+  case Task.await(reader, READER_CHECK_MS)
+    Await.Done(outcome) -> return !outcome.ok?
+    Await.TimedOut -> return false
+  end
+end
+
+def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
+  Task.cancel(reader)
+  Schedule.stop(state.plan)
+  return status
+end
+
+def dispatch(state: State, event: Events.Event) -> Next
+  case event
+    Events.Event.Checked(report) -> return Next.Continue(checked(state, report))
+    Events.Event.Input(incoming) -> return input(state, incoming)
+  end
+end
+
+def input(state: State, incoming: Rpc.Incoming) -> Next
+  case incoming
+    Rpc.Incoming.End -> return Next.Exit(exit_status(state))
+    Rpc.Incoming.Malformed(message) ->
+      Rpc.fail(JSON.null(), PARSE_ERROR, message)
+      return Next.Continue(state)
+    Rpc.Incoming.Unframed(message) ->
+      IO.warn("agc-lsp: #{message}; the stream cannot be read further")
+      return Next.Exit(1)
+    Rpc.Incoming.Message(message) -> return handle(state, message)
+  end
+end
+
+def checked(state: State, report: Events.Report) -> State
+  if state.shut_down or !Schedule.current?(state.plan, report)
+    return state
+  end
+  if report.outcome.ok?
+    publish(report.uri, report.outcome.unwrap!)
+  end
+  return state.with(plan: Schedule.settle(state.plan, report.uri, state.encoding))
 end
 
 def handle(state: State, message: Json) -> Next
@@ -78,7 +137,7 @@ def request(state: State, id: Json, method: String, params: Json) -> State
     "initialize" -> return initialize(state, id, params)
     "shutdown" ->
       Rpc.respond(id, JSON.null())
-      return state.with(shut_down: true)
+      return state.with(plan: Schedule.stop(state.plan), shut_down: true)
     _ ->
       Rpc.fail(id, METHOD_NOT_FOUND, "unknown method #{method}")
       return state
@@ -112,29 +171,33 @@ def notification(state: State, method: String, params: Json) -> State
     return state
   end
   case method
-    "textDocument/didOpen" -> publish(state, document_uri(params), true)
-    "textDocument/didSave" -> publish(state, document_uri(params), true)
-    "textDocument/didClose" -> publish(state, document_uri(params), false)
+    "textDocument/didOpen" -> return refresh(state, document_uri(params), true)
+    "textDocument/didSave" -> return refresh(state, document_uri(params), true)
+    "textDocument/didClose" -> return refresh(state, document_uri(params), false)
     _ -> return state
   end
-  return state
 end
 
-def publish(state: State, uri: String, checked: Bool) -> Void
+def refresh(state: State, uri: String, checking: Bool) -> State
   path = ""
   case Uri.path_of(uri)
     ok(found) -> path = found
     error(message) ->
       IO.warn("agc-lsp: #{message}")
-      return
+      return state
   end
   if !path.ends_with?(AGENTICA_EXTENSION)
-    return
+    return state
   end
-  found: List[Json] = []
-  if checked
-    found = Check.diagnostics(state.agentica, path, state.encoding)
+  if checking
+    return state.with(plan: Schedule.request(state.plan, uri, path, state.encoding))
   end
+  none: List[Json] = []
+  publish(uri, none)
+  return state.with(plan: Schedule.forget(state.plan, uri, state.encoding))
+end
+
+def publish(uri: String, found: List[Json]) -> Void
   Rpc.notify("textDocument/publishDiagnostics", JSON.object({
     "uri": JSON.from(uri),
     "diagnostics": JSON.array(found),

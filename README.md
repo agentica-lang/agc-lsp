@@ -18,7 +18,13 @@ written in Agentica.
 ## Limitations
 
 - Only `.agc` files are checked, and only as they are on disk.
-- One check runs at a time, inside the message loop, with a 10 s deadline; a slow check delays the next message.
+- Each check runs in its own task with a 10 s deadline, so a slow check never delays the next message. At most 4
+  checks run at once (the cap counts check tasks, and a cancelled checker process may still be ending for a
+  moment); the other files wait in order. A newer `didOpen`, `didSave` or `didClose` of the same file
+  cancels its older check, whose result is never published.
+- A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
+  logs a warning on stderr, so the editor keeps the diagnostics it already shows. A crash of a check task is only
+  logged on stderr and also leaves the previous diagnostics.
 - An error in an imported file is published on the file that was opened. Saving the imported file does not refresh
   it: save or reopen the file that imports it.
 

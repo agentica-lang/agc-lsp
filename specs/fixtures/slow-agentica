@@ -1,0 +1,8 @@
+#!/bin/sh
+report=$(agentica "$@" 2>&1)
+status=$?
+if [ "$status" -ne 0 ]; then
+  sleep 1
+fi
+echo "$report" >&2
+exit "$status"
