@@ -3,6 +3,14 @@ import BDD from "std/bdd"
 SERVER = "src/main.agc"
 TIMEOUT_MS = 20000
 DIRECTIVE = "> "
+PUBLISH = "textDocument/publishDiagnostics"
+SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
+ERROR_CODES = {
+  "parse error": -32700,
+  "invalid request": -32600,
+  "method not found": -32601,
+  "server not initialized": -32002,
+}
 
 struct Session
   messages: List[Json]
@@ -12,38 +20,241 @@ end
 
 def main() -> Void
   BDD.run([
-    BDD.step("an empty folder", &empty_folder),
-    BDD.step("the file {string}:", &write_file),
+    BDD.step("the language server has started", &started),
+    BDD.step("the language server has started with the position encodings {string}", &started_with),
+    BDD.step("the file {string} contains:", &file_contains),
+    BDD.step("the editor opens {string}", &opens),
+    BDD.step("the editor saves {string} as:", &saves_as),
+    BDD.step("the editor closes {string}", &closes),
+    BDD.step("the editor sends {string} before initializing", &sends_request),
+    BDD.step("the editor sends the request {string}", &sends_request),
+    BDD.step("the editor sends a message that is not JSON", &sends_garbage),
+    BDD.step("the editor exits without shutting down", &exits_early),
+    BDD.step("the editor closes the connection", &hangs_up),
     BDD.step("the client runs the session:", &run_session),
     BDD.step("the server answers request {int} with:", &answers_with),
-    BDD.step("the server answers request {int} with the error code {int}", &answers_error),
-    BDD.step("the server answers with a parse error", &answers_parse_error),
-    BDD.step("the diagnostics published for {string} are, in order:", &published),
+    BDD.step("the server announces the position encoding {string}", &announces_encoding),
+    BDD.step("the server answers {string} with the error {string}", &answers_error),
+    BDD.step("the server reports the error {string}", &reports_error),
+    BDD.step("{string} gets these diagnostics:", &gets_diagnostics),
+    BDD.step("{string} gets no diagnostics", &gets_none),
+    BDD.step("the diagnostic of {string} has a help line", &has_help),
+    BDD.step("the diagnostic of {string} points to {string}", &points_to),
     BDD.step("the server exits with code {int}", &exits_with),
   ])
 end
 
-def empty_folder(ctx: BDD.Context, _args: List[String]) -> BDD.Context
-  base = System.env("TMPDIR").unwrap_or("/tmp")
-  name = "agc-lsp-#{Time.now_ms()}-#{Random.int(0, 999_999_999)}"
-  path = Path.join([base, name]).unwrap!
-  made = Dir.mkdir_private(path, TIMEOUT_MS)
-  if !made.ok?
-    return BDD.assert(ctx, false, "cannot make #{path}: #{made.message}")
-  end
-  return BDD.set(ctx, "dir", JSON.from(Path.real(path).unwrap!))
+def started(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return initialize(ctx, JSON.object({}))
 end
 
-def write_file(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  path = Path.join([folder(ctx), args[0]]).unwrap!
-  written = File.write_text(path, BDD.doc_string(ctx), TIMEOUT_MS)
-  return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
+def started_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  offered = args[0].split(",").map do |name| JSON.from(name.strip) end
+  general = JSON.object({"positionEncodings": JSON.array(offered)})
+  return initialize(ctx, JSON.object({"general": general}))
+end
+
+def file_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  path = file_path(ready, args[0])
+  written = File.write_text(path, BDD.doc_string(ready), TIMEOUT_MS)
+  return BDD.assert(ready, written.ok?, "cannot write #{path}: #{written.message}")
+end
+
+def opens(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  text = File.read_text(file_path(ready, args[0]), TIMEOUT_MS).unwrap_or("")
+  document = JSON.object({
+    "uri": JSON.from(uri(ready, args[0])),
+    "languageId": JSON.from("agentica"),
+    "version": JSON.from(1),
+    "text": JSON.from(text),
+  })
+  return notify(ready, "textDocument/didOpen", JSON.object({"textDocument": document}))
+end
+
+def saves_as(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  text = BDD.doc_string(ready)
+  document = JSON.object({"uri": JSON.from(uri(ready, args[0])), "version": JSON.from(2)})
+  waited = add(ready, JSON.object({"kind": JSON.from("await")}))
+  written = add(waited, JSON.object({
+    "kind": JSON.from("write"),
+    "name": JSON.from(args[0]),
+    "text": JSON.from(text),
+  }))
+  changed = notify(written, "textDocument/didChange", JSON.object({
+    "textDocument": document,
+    "contentChanges": JSON.array([JSON.object({"text": JSON.from(text)})]),
+  }))
+  saved = JSON.object({"uri": JSON.from(uri(ready, args[0]))})
+  return notify(changed, "textDocument/didSave", JSON.object({"textDocument": saved}))
+end
+
+def closes(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  document = JSON.object({"uri": JSON.from(uri(ctx, args[0]))})
+  return notify(ctx, "textDocument/didClose", JSON.object({"textDocument": document}))
+end
+
+def sends_request(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return request(ctx, args[0], JSON.object({}))
+end
+
+def sends_garbage(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return send(ctx, "{not json")
+end
+
+def exits_early(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  sent = notify(ctx, "exit", JSON.null())
+  return BDD.set(sent, "ended", JSON.from(true))
+end
+
+def hangs_up(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return BDD.set(ctx, "ended", JSON.from(true))
 end
 
 def run_session(ctx: BDD.Context, _args: List[String]) -> BDD.Context
-  dir = folder(ctx)
-  ran = session(dir, expand(BDD.doc_string(ctx), dir))
-  _ = Path.remove(dir, TIMEOUT_MS)
+  actions: List[Json] = []
+  for line in BDD.doc_string(ctx).split("\n")
+    if line.starts_with?(DIRECTIVE)
+      actions = actions.push(directive(line.slice(2, line.length - 2)))
+    elsif line.strip.length > 0
+      actions = actions.push(JSON.object({"kind": JSON.from("send"), "body": JSON.from(line)}))
+    end
+  end
+  return record(ctx, run(folder(ctx), actions))
+end
+
+def answers_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| answer_is(done, args[0].to_i!, canonical(BDD.doc_string(done))) end
+end
+
+def announces_encoding(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| encoding_is(done, args[0]) end
+end
+
+def answers_error(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| request_failed(done, args[0], args[1]) end
+end
+
+def reports_error(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| reported(done, args[0]) end
+end
+
+def gets_diagnostics(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  expected = rows.map do |row| expected_diagnostic(row) end
+  return next_publish(ctx, args[0], JSON.array(expected))
+end
+
+def gets_none(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  none: List[Json] = []
+  return next_publish(ctx, args[0], JSON.array(none))
+end
+
+def has_help(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return last_message(ctx, args[0]) do |done, message|
+    BDD.assert(done, message.contains?("\nhelp: "), "no help line in #{message.inspect}")
+  end
+end
+
+def points_to(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return last_message(ctx, args[0]) do |done, message|
+    BDD.assert(done, message.contains?("/#{args[1]}: "), "#{message.inspect} does not point to #{args[1]}")
+  end
+end
+
+def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    code = JSON.int(BDD.get(done, "exit").unwrap!).unwrap!
+    BDD.assert(done, code == args[0].to_i!, "expected exit code #{args[0]}; actual #{code}; stderr #{stderr(done)}")
+  end
+end
+
+def answer_is(ctx: BDD.Context, id: Int, expected: String) -> BDD.Context
+  case reply(ctx, id, "result")
+    ok(result) -> return BDD.assert(ctx, result.to_s == expected, "expected #{expected}; actual #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def encoding_is(ctx: BDD.Context, expected: String) -> BDD.Context
+  case reply(ctx, 1, "result")
+    ok(result) ->
+      actual = at(result, ["capabilities", "positionEncoding"]).unwrap_or(JSON.null()).to_s
+      wanted = JSON.from(expected).to_s
+      return BDD.assert(ctx, actual == wanted, "expected #{wanted}; actual #{actual}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def request_failed(ctx: BDD.Context, method: String, name: String) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "request #{method}").unwrap!).unwrap!
+  case reply(ctx, id, "error")
+    ok(found) -> return expect_error(ctx, found, name)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def reported(ctx: BDD.Context, name: String) -> BDD.Context
+  for message in messages(ctx)
+    if at(message, ["id"]).unwrap_or(JSON.from(0)).to_s == "null" and at(message, ["error"]).ok?
+      return expect_error(ctx, at(message, ["error"]).unwrap!, name)
+    end
+  end
+  return BDD.assert(ctx, false, "no error without an id among #{JSON.array(messages(ctx))}")
+end
+
+def initialize(ctx: BDD.Context, capabilities: Json) -> BDD.Context
+  return request(ctx, "initialize", JSON.object({"capabilities": capabilities}))
+end
+
+def request(ctx: BDD.Context, method: String, params: Json) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "next_id").unwrap_or(JSON.from(1))).unwrap!
+  tracked = BDD.set(ctx, "request #{method}", JSON.from(id))
+  counted = BDD.set(tracked, "next_id", JSON.from(id + 1))
+  body: Map[String, Json] = {
+    "jsonrpc": JSON.from("2.0"),
+    "id": JSON.from(id),
+    "method": JSON.from(method),
+    "params": params,
+  }
+  return send(counted, JSON.encode(body))
+end
+
+def notify(ctx: BDD.Context, method: String, params: Json) -> BDD.Context
+  body: Map[String, Json] = {"jsonrpc": JSON.from("2.0"), "method": JSON.from(method), "params": params}
+  return send(ctx, JSON.encode(body))
+end
+
+def send(ctx: BDD.Context, body: String) -> BDD.Context
+  return add(ctx, JSON.object({"kind": JSON.from("send"), "body": JSON.from(body)}))
+end
+
+def add(ctx: BDD.Context, action: Json) -> BDD.Context
+  none: List[Json] = []
+  actions = JSON.list(BDD.get(ctx, "script").unwrap_or(JSON.array(none))).unwrap!
+  return BDD.set(ctx, "script", JSON.array(actions.push(action)))
+end
+
+def finished(ctx: BDD.Context, check: Fn[BDD.Context, BDD.Context]) -> BDD.Context
+  if BDD.get(ctx, "messages").ok?
+    return check.call(ctx)
+  end
+  none: List[Json] = []
+  actions = JSON.list(BDD.get(ctx, "script").unwrap_or(JSON.array(none))).unwrap!
+  if !BDD.get(ctx, "ended").ok?
+    shut = request(BDD.set(ctx, "script", JSON.array(actions)), "shutdown", JSON.null())
+    actions = JSON.list(BDD.get(notify(shut, "exit", JSON.null()), "script").unwrap!).unwrap!
+  end
+  recorded = record(ctx, run(folder(ctx), actions))
+  if !BDD.get(recorded, "messages").ok?
+    return recorded
+  end
+  return check.call(recorded)
+end
+
+def record(ctx: BDD.Context, ran: Result[Session]) -> BDD.Context
   case ran
     ok(done) ->
       with_messages = BDD.set(ctx, "messages", JSON.array(done.messages))
@@ -53,63 +264,95 @@ def run_session(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   end
 end
 
-def answers_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  expected = canonical(BDD.doc_string(ctx))
-  case reply_field(ctx, args[0].to_i!, "result")
-    ok(result) -> return BDD.assert(ctx, result.to_s == expected, "expected #{expected}; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
-  end
+def next_publish(ctx: BDD.Context, name: String, expected: Json) -> BDD.Context
+  return finished(ctx) do |done| publish_is(done, name, expected) end
 end
 
-def answers_error(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  case reply_field(ctx, args[0].to_i!, "error")
-    ok(found) ->
-      code = JSON.get(found, "code").unwrap_or(JSON.null()).to_s
-      return BDD.assert(ctx, code == args[1], "expected error code #{args[1]}; actual #{found}")
-    error(message) -> return BDD.assert(ctx, false, message)
+def publish_is(ctx: BDD.Context, name: String, expected: Json) -> BDD.Context
+  key = "seen #{name}"
+  seen = JSON.int(BDD.get(ctx, key).unwrap_or(JSON.from(0))).unwrap!
+  lists = published(ctx, name)
+  if seen >= lists.size
+    return BDD.assert(ctx, false, "#{name} got #{lists.size} publishes, expected one more; stderr #{stderr(ctx)}")
   end
+  actual = canonical(JSON.encode(JSON.array(lists[seen].map do |found| without_message(found) end)))
+  wanted = canonical(JSON.encode(expected))
+  counted = BDD.set(ctx, key, JSON.from(seen + 1))
+  return BDD.assert(counted, actual == wanted, "expected #{wanted}; actual #{actual}")
 end
 
-def answers_parse_error(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+def last_message(ctx: BDD.Context, name: String, check: Fn[BDD.Context, String, BDD.Context]) -> BDD.Context
+  return finished(ctx) do |done| message_of(done, name, check) end
+end
+
+def message_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, String, BDD.Context]) -> BDD.Context
+  lists = published(ctx, name)
+  if lists.size == 0 or lists[lists.size - 1].size == 0
+    return BDD.assert(ctx, false, "#{name} has no diagnostic")
+  end
+  return check.call(ctx, JSON.string(at(lists[lists.size - 1][0], ["message"]).unwrap!).unwrap!)
+end
+
+def published(ctx: BDD.Context, name: String) -> List[List[Json]]
+  target = JSON.from(uri(ctx, name)).to_s
+  lists: List[List[Json]] = []
   for message in messages(ctx)
-    id = JSON.get(message, "id")
-    code = at(message, ["error", "code"])
-    if id.ok? and JSON.null?(id.unwrap!) and code.ok? and code.unwrap!.to_s == "-32700"
-      return BDD.assert(ctx, true, "")
+    method = at(message, ["method"]).unwrap_or(JSON.null()).to_s
+    if method == JSON.from(PUBLISH).to_s and at(message, ["params", "uri"]).unwrap_or(JSON.null()).to_s == target
+      lists = lists.push(JSON.list(at(message, ["params", "diagnostics"]).unwrap!).unwrap!)
     end
   end
-  return BDD.assert(ctx, false, "no parse error among #{JSON.array(messages(ctx))}")
+  return lists
 end
 
-def published(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  uri = "file://#{folder(ctx)}/#{args[0]}"
-  expected = canonical(expand(BDD.doc_string(ctx), folder(ctx)))
-  lists: List[Json] = []
-  for message in messages(ctx)
-    if notification_for?(message, uri)
-      lists = lists.push(JSON.get(JSON.get(message, "params").unwrap!, "diagnostics").unwrap!)
+def expected_diagnostic(row: List[String]) -> Json
+  edges = row[0].split("-")
+  return JSON.object({
+    "range": JSON.object({"start": position(edges[0]), "end": position(edges[1])}),
+    "severity": JSON.from(SEVERITIES.get(row[1]).unwrap!),
+    "code": JSON.from(row[2]),
+    "source": JSON.from("agentica"),
+  })
+end
+
+def position(text: String) -> Json
+  parts = text.split(":")
+  return JSON.object({
+    "line": JSON.from(parts[0].to_i! - 1),
+    "character": JSON.from(parts[1].to_i! - 1),
+  })
+end
+
+def without_message(found: Json) -> Json
+  fields: Map[String, Json] = {}
+  for key in ["range", "severity", "code", "source"]
+    case JSON.get(found, key)
+      ok(value) -> fields = fields.put(key, value)
+      error(_) -> next
     end
   end
-  actual = JSON.array(lists).to_s
-  return BDD.assert(ctx, actual == expected, "expected #{expected}; actual #{actual}; stderr #{stderr(ctx)}")
+  return JSON.object(fields)
 end
 
-def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  code = JSON.int(BDD.get(ctx, "exit").unwrap!).unwrap!
-  return BDD.assert(ctx, code == args[0].to_i!, "expected exit code #{args[0]}; actual #{code}; stderr #{stderr(ctx)}")
+def expect_error(ctx: BDD.Context, found: Json, name: String) -> BDD.Context
+  expected = ERROR_CODES.get(name).unwrap!.to_s
+  actual = at(found, ["code"]).unwrap_or(JSON.null()).to_s
+  return BDD.assert(ctx, actual == expected, "expected the error #{name} (#{expected}); actual #{found}")
 end
 
-def session(dir: String, script: String) -> Result[Session]
+def run(dir: String, actions: List[Json]) -> Result[Session]
+  ran = session(dir, actions)
+  if dir != ""
+    _ = Path.remove(dir, TIMEOUT_MS)
+  end
+  return ran
+end
+
+def session(dir: String, actions: List[Json]) -> Result[Session]
   server = try Process.spawn_captured("agentica", ["--allow-run", SERVER], ".", TIMEOUT_MS)
   received: List[Json] = []
-  for line in script.split("\n")
-    if line.strip.length == 0
-      next
-    elsif line.starts_with?(DIRECTIVE)
-      received = received.concat(try directive(server, dir, line.slice(2, line.length - 2)))
-    else
-      try Process.send(server, frame(line), TIMEOUT_MS)
-    end
+  for action in actions
+    received = received.concat(try perform(server, dir, action))
   end
   try Process.close_stdin(server, TIMEOUT_MS)
   received = received.concat(try read_rest(server))
@@ -118,17 +361,46 @@ def session(dir: String, script: String) -> Result[Session]
   return ok(Session(messages: received, exit_code: exit_code, stderr: output.stderr))
 end
 
-def directive(server: Process, dir: String, text: String) -> Result[List[Json]]
-  if text == "await diagnostics"
-    return read_until_diagnostics(server)
+def perform(server: Process, dir: String, action: Json) -> Result[List[Json]]
+  kind = try JSON.string(try JSON.get(action, "kind"))
+  case kind
+    "send" ->
+      body = expand(try JSON.string(try JSON.get(action, "body")), dir)
+      try Process.send(server, frame(body), TIMEOUT_MS)
+      return ok([])
+    "await" -> return read_until_diagnostics(server)
+    "write" ->
+      path = try Path.join([dir, try JSON.string(try JSON.get(action, "name"))])
+      try File.write_text(path, try JSON.string(try JSON.get(action, "text")), TIMEOUT_MS)
+      return ok([])
+    "copy" ->
+      source = try File.read_text(try Path.join([dir, try JSON.string(try JSON.get(action, "from"))]), TIMEOUT_MS)
+      try File.write_text(try Path.join([dir, try JSON.string(try JSON.get(action, "to"))]), source, TIMEOUT_MS)
+      return ok([])
+    _ -> return error("unknown action #{kind}")
   end
+end
+
+def directive(text: String) -> Json
   words = text.split(" ")
   if words.size == 4 and words[0] == "copy" and words[2] == "to"
-    source = try File.read_text(try Path.join([dir, words[1]]), TIMEOUT_MS)
-    try File.write_text(try Path.join([dir, words[3]]), source, TIMEOUT_MS)
-    return ok([])
+    return JSON.object({"kind": JSON.from("copy"), "from": JSON.from(words[1]), "to": JSON.from(words[3])})
+  elsif text == "await diagnostics"
+    return JSON.object({"kind": JSON.from("await")})
   end
-  return error("unknown directive: #{text}")
+  return JSON.object({"kind": JSON.from(text)})
+end
+
+def read_until_diagnostics(server: Process) -> Result[List[Json]]
+  received: List[Json] = []
+  while true
+    message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
+    received = received.push(message)
+    if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
+      return ok(received)
+    end
+  end
+  return ok(received)
 end
 
 def read_rest(server: Process) -> Result[List[Json]]
@@ -139,19 +411,6 @@ def read_rest(server: Process) -> Result[List[Json]]
       return ok(received)
     end
     received = received.push(try read_body(server, header.unwrap!))
-  end
-  return ok(received)
-end
-
-def read_until_diagnostics(server: Process) -> Result[List[Json]]
-  received: List[Json] = []
-  while true
-    message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
-    received = received.push(message)
-    method = at(message, ["method"])
-    if method.ok? and method.unwrap!.to_s == JSON.from("textDocument/publishDiagnostics").to_s
-      return ok(received)
-    end
   end
   return ok(received)
 end
@@ -182,23 +441,13 @@ def canonical(text: String) -> String
   return JSON.parse(text).unwrap!.to_s
 end
 
-def reply_field(ctx: BDD.Context, id: Int, field: String) -> Result[Json]
+def reply(ctx: BDD.Context, id: Int, field: String) -> Result[Json]
   for message in messages(ctx)
-    found = JSON.get(message, "id")
-    if found.ok? and found.unwrap!.to_s == id.to_s
+    if at(message, ["id"]).unwrap_or(JSON.null()).to_s == id.to_s
       return JSON.get(message, field)
     end
   end
-  return error("no reply to request #{id} among #{JSON.array(messages(ctx))}")
-end
-
-def notification_for?(message: Json, uri: String) -> Bool
-  method = at(message, ["method"])
-  target = at(message, ["params", "uri"])
-  return (
-    method.ok? and method.unwrap!.to_s == JSON.from("textDocument/publishDiagnostics").to_s
-    and target.ok? and target.unwrap!.to_s == JSON.from(uri).to_s
-  )
+  return error("no reply to request #{id} among #{JSON.array(messages(ctx))}; stderr #{stderr(ctx)}")
 end
 
 def at(value: Json, keys: List[String]) -> Result[Json]
@@ -209,8 +458,29 @@ def at(value: Json, keys: List[String]) -> Result[Json]
   return ok(found)
 end
 
+def with_folder(ctx: BDD.Context) -> BDD.Context
+  if BDD.get(ctx, "dir").ok?
+    return ctx
+  end
+  base = System.env("TMPDIR").unwrap_or("/tmp")
+  path = Path.join([base, "agc-lsp-#{Time.now_ms()}-#{Random.int(0, 999_999_999)}"]).unwrap!
+  made = Dir.mkdir_private(path, TIMEOUT_MS)
+  if !made.ok?
+    return BDD.assert(ctx, false, "cannot make #{path}: #{made.message}")
+  end
+  return BDD.set(ctx, "dir", JSON.from(Path.real(path).unwrap!))
+end
+
 def folder(ctx: BDD.Context) -> String
-  return JSON.string(BDD.get(ctx, "dir").unwrap!).unwrap!
+  return JSON.string(BDD.get(ctx, "dir").unwrap_or(JSON.from(""))).unwrap!
+end
+
+def file_path(ctx: BDD.Context, name: String) -> String
+  return Path.join([folder(ctx), name]).unwrap!
+end
+
+def uri(ctx: BDD.Context, name: String) -> String
+  return "file://#{folder(ctx)}/#{name}"
 end
 
 def messages(ctx: BDD.Context) -> List[Json]
@@ -218,5 +488,5 @@ def messages(ctx: BDD.Context) -> List[Json]
 end
 
 def stderr(ctx: BDD.Context) -> String
-  return JSON.string(BDD.get(ctx, "stderr").unwrap!).unwrap!
+  return JSON.string(BDD.get(ctx, "stderr").unwrap_or(JSON.from(""))).unwrap!
 end

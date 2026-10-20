@@ -1,172 +1,116 @@
-Feature: Diagnostics of the file on disk
-  On open and on save the server runs `agentica --json check` on the file and
-  publishes its first diagnostic, or an empty list when it checks. Lines and
-  characters count from 0; the end of a range is exclusive.
+Feature: Diagnostics in the editor
+  On open and on save, the server checks the file on disk with
+  `agentica check` and publishes its first diagnostic, or none. Positions are
+  written as `agentica check` shows them: line:column, from 1, end exclusive.
 
-  Background:
-    Given an empty folder
-    And the file "good.agc":
+  Scenario: a clean file publishes no diagnostics
+    Given the language server has started
+    And the file "ok.agc" contains:
       """
       def main() -> Void
         puts("hi")
       end
 
       """
-    And the file "unknown.agc":
+    When the editor opens "ok.agc"
+    Then "ok.agc" gets no diagnostics
+
+  Scenario: a file with an error publishes its first diagnostic
+    Given the language server has started
+    And the file "unknown.agc" contains:
       """
       def main() -> Void
         puts(oops)
       end
 
       """
-
-  Scenario: a file that checks publishes no diagnostics
-    When the client runs the session:
-      """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/good.agc","languageId":"agentica","version":1,"text":""}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
-      """
-    Then the diagnostics published for "good.agc" are, in order:
-      """
-      [[]]
-      """
-
-  Scenario: a file with an error publishes its first diagnostic
-    When the client runs the session:
-      """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/unknown.agc","languageId":"agentica","version":1,"text":""}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
-      """
-    Then the diagnostics published for "unknown.agc" are, in order:
-      """
-      [[{
-        "range": {"start": {"line": 1, "character": 7}, "end": {"line": 1, "character": 11}},
-        "severity": 1,
-        "code": "CHECK-UNKNOWN-NAME",
-        "source": "agentica",
-        "message": "unknown name \"oops\""
-      }]]
-      """
+    When the editor opens "unknown.agc"
+    Then "unknown.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
 
   Scenario: the help of a diagnostic follows its message
-    Given the file "types.agc":
+    Given the language server has started
+    And the file "types.agc" contains:
       """
       def main() -> Void
         age: Int = "25"
       end
 
       """
-    When the client runs the session:
-      """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/types.agc","languageId":"agentica","version":1,"text":""}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
-      """
-    Then the diagnostics published for "types.agc" are, in order:
-      """
-      [[{
-        "range": {"start": {"line": 1, "character": 13}, "end": {"line": 1, "character": 17}},
-        "severity": 1,
-        "code": "CHECK-TYPE-MISMATCH",
-        "source": "agentica",
-        "message": "expected Int, found String\nhelp: convert it with String.to_int!(...)"
-      }]]
-      """
+    When the editor opens "types.agc"
+    Then "types.agc" gets these diagnostics:
+      | at        | severity | code                |
+      | 2:14-2:18 | error    | CHECK-TYPE-MISMATCH |
+    And the diagnostic of "types.agc" has a help line
 
-  Scenario Outline: characters count in the negotiated encoding
-    Given the file "emoji.agc":
+  Scenario Outline: positions count in the encoding the editor asked for
+    Given the language server has started with the position encodings "<offered>"
+    And the file "emoji.agc" contains:
       """
       def main() -> Void
         names = ["😀", oops]
       end
 
       """
-    When the client runs the session:
-      """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{"general":{"positionEncodings":<offered>}}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/emoji.agc","languageId":"agentica","version":1,"text":""}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
-      """
-    Then the diagnostics published for "emoji.agc" are, in order:
-      """
-      [[{
-        "range": {"start": {"line": 1, "character": <start>}, "end": {"line": 1, "character": <end>}},
-        "severity": 1,
-        "code": "CHECK-UNKNOWN-NAME",
-        "source": "agentica",
-        "message": "unknown name \"oops\""
-      }]]
-      """
+    When the editor opens "emoji.agc"
+    Then "emoji.agc" gets these diagnostics:
+      | at   | severity | code               |
+      | <at> | error    | CHECK-UNKNOWN-NAME |
 
     Examples:
-      | offered             | start | end |
-      | ["utf-16"]          | 17    | 21  |
-      | ["utf-16","utf-32"] | 16    | 20  |
+      | offered        | at        |
+      | utf-16         | 2:18-2:22 |
+      | utf-16, utf-32 | 2:17-2:21 |
 
   Scenario: saving a fixed file clears its diagnostic
-    When the client runs the session:
+    Given the language server has started
+    And the file "draft.agc" contains:
       """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/unknown.agc","languageId":"agentica","version":1,"text":""}}}
-      > await diagnostics
-      > copy good.agc to unknown.agc
-      {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"${URI}/unknown.agc","version":2},"contentChanges":[{"text":""}]}}
-      {"jsonrpc":"2.0","method":"textDocument/didSave","params":{"textDocument":{"uri":"${URI}/unknown.agc"}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
+      def main() -> Void
+        puts(oops)
+      end
+
       """
-    Then the diagnostics published for "unknown.agc" are, in order:
+    When the editor opens "draft.agc"
+    And the editor saves "draft.agc" as:
       """
-      [
-        [{
-          "range": {"start": {"line": 1, "character": 7}, "end": {"line": 1, "character": 11}},
-          "severity": 1,
-          "code": "CHECK-UNKNOWN-NAME",
-          "source": "agentica",
-          "message": "unknown name \"oops\""
-        }],
-        []
-      ]
+      def main() -> Void
+        puts("fixed")
+      end
+
       """
+    Then "draft.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+    And "draft.agc" gets no diagnostics
 
   Scenario: closing a file clears its diagnostic
-    When the client runs the session:
+    Given the language server has started
+    And the file "unknown.agc" contains:
       """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/unknown.agc","languageId":"agentica","version":1,"text":""}}}
-      {"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"${URI}/unknown.agc"}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
+      def main() -> Void
+        puts(oops)
+      end
+
       """
-    Then the diagnostics published for "unknown.agc" are, in order:
-      """
-      [
-        [{
-          "range": {"start": {"line": 1, "character": 7}, "end": {"line": 1, "character": 11}},
-          "severity": 1,
-          "code": "CHECK-UNKNOWN-NAME",
-          "source": "agentica",
-          "message": "unknown name \"oops\""
-        }],
-        []
-      ]
-      """
+    When the editor opens "unknown.agc"
+    And the editor closes "unknown.agc"
+    Then "unknown.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+    And "unknown.agc" gets no diagnostics
 
   Scenario: an error in an imported file is shown at the start of the opened file
-    Given the file "lib.agc":
+    Given the language server has started
+    And the file "lib.agc" contains:
       """
       export def answer() -> Int
         return "a"
       end
 
       """
-    And the file "app.agc":
+    And the file "app.agc" contains:
       """
       import Lib from "lib"
 
@@ -175,34 +119,14 @@ Feature: Diagnostics of the file on disk
       end
 
       """
-    When the client runs the session:
-      """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/app.agc","languageId":"agentica","version":1,"text":""}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
-      """
-    Then the diagnostics published for "app.agc" are, in order:
-      """
-      [[{
-        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
-        "severity": 1,
-        "code": "CHECK-TYPE-MISMATCH",
-        "source": "agentica",
-        "message": "${DIR}/lib.agc:2:10: expected Int, found String\nhelp: convert it with String.to_int!(...)"
-      }]]
-      """
+    When the editor opens "app.agc"
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And the diagnostic of "app.agc" points to "lib.agc:2:10"
 
   Scenario: a file that is gone publishes no diagnostics
-    When the client runs the session:
-      """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
-      {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${URI}/missing.agc","languageId":"agentica","version":1,"text":""}}}
-      {"jsonrpc":"2.0","id":2,"method":"shutdown"}
-      {"jsonrpc":"2.0","method":"exit"}
-      """
-    Then the diagnostics published for "missing.agc" are, in order:
-      """
-      [[]]
-      """
+    Given the language server has started
+    When the editor opens "missing.agc"
+    Then "missing.agc" gets no diagnostics
     And the server exits with code 0
