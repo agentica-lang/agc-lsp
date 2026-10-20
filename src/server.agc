@@ -11,6 +11,7 @@ NO_SYNC = 0
 AGENTICA_EXTENSION = ".agc"
 EVENT_CAPACITY = 256
 WAIT_MS = 1000
+READER_CHECK_MS = 1
 
 export struct State
   agentica: String
@@ -48,13 +49,25 @@ export def serve(state: State) -> Int
           Next.Continue(next) -> current = next
           Next.Exit(status) -> return finish(current, reader, status)
         end
-      error(_) -> current = current.with(plan: Schedule.tick(current.plan, current.encoding))
+      error(_) ->
+        if reader_crashed?(reader)
+          IO.warn("agc-lsp: the reader of the input crashed")
+          return finish(current, reader, 1)
+        end
+        current = current.with(plan: Schedule.tick(current.plan, current.encoding))
     end
   end
   return finish(current, reader, exit_status(current))
 end
 
-def finish(state: State, reader: Task[Void], status: Int) -> Int
+def reader_crashed?(reader: Task[Result[Void]]) -> Bool
+  case Task.await(reader, READER_CHECK_MS)
+    Await.Done(outcome) -> return !outcome.ok?
+    Await.TimedOut -> return false
+  end
+end
+
+def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
   Task.cancel(reader)
   Schedule.stop(state.plan)
   return status

@@ -23,14 +23,15 @@ export struct Job
   generation: Int
 end
 
-export def read_input(events: Channel[Event]) -> Void
+export def read_input(events: Channel[Event]) -> Result[Void]
   while true
     incoming = Rpc.read()
     deliver(events, Event.Input(incoming))
     if last?(incoming)
-      return
+      return ok()
     end
   end
+  return ok()
 end
 
 export def check(job: Job) -> Result[Void]

@@ -19,7 +19,8 @@ written in Agentica.
 
 - Only `.agc` files are checked, and only as they are on disk.
 - Each check runs in its own task with a 10 s deadline, so a slow check never delays the next message. At most 4
-  checks run at once; the other files wait in order. A newer `didOpen`, `didSave` or `didClose` of the same file
+  checks run at once (the cap counts check tasks, and a cancelled checker process may still be ending for a
+  moment); the other files wait in order. A newer `didOpen`, `didSave` or `didClose` of the same file
   cancels its older check, whose result is never published.
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
   logs a warning on stderr, so the editor keeps the diagnostics it already shows. A crash of a check task is only

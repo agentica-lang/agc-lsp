@@ -17,6 +17,7 @@ ERROR_CODES = {
 struct Session
   messages: List[Json]
   arrivals: List[Int]
+  sent: Map[String, Json]
   exit_code: Int
   stderr: String
 end
@@ -338,10 +339,11 @@ end
 def answered_within(ctx: BDD.Context, method: String, limit: Int) -> BDD.Context
   id = JSON.int(BDD.get(ctx, "request #{method}").unwrap!).unwrap!
   arrivals = JSON.list(BDD.get(ctx, "arrivals").unwrap!).unwrap!
+  sent = JSON.int(at(BDD.get(ctx, "sent").unwrap!, [id.to_s]).unwrap!).unwrap!
   index = 0
   for message in messages(ctx)
     if at(message, ["id"]).unwrap_or(JSON.null()).to_s == id.to_s
-      waited = JSON.int(arrivals[index]).unwrap!
+      waited = JSON.int(arrivals[index]).unwrap! - sent
       return BDD.assert(ctx, waited <= limit, "the answer to #{method} took #{waited} ms; limit #{limit} ms")
     end
     index += 1
@@ -446,7 +448,8 @@ def record(ctx: BDD.Context, ran: Result[Session]) -> BDD.Context
     ok(done) ->
       with_messages = BDD.set(ctx, "messages", JSON.array(done.messages))
       with_arrivals = BDD.set(with_messages, "arrivals", JSON.array(done.arrivals.map do |ms| JSON.from(ms) end))
-      with_exit = BDD.set(with_arrivals, "exit", JSON.from(done.exit_code))
+      with_sent = BDD.set(with_arrivals, "sent", JSON.object(done.sent))
+      with_exit = BDD.set(with_sent, "exit", JSON.from(done.exit_code))
       return BDD.set(with_exit, "stderr", JSON.from(done.stderr))
     error(message) -> return BDD.assert(ctx, false, message)
   end
@@ -553,61 +556,79 @@ def session(dir: String, arguments: List[String], actions: List[Json]) -> Result
   server = try Process.spawn_captured("agentica", arguments, ".", TIMEOUT_MS)
   received: List[Json] = []
   arrivals: List[Int] = []
+  sent: Map[String, Json] = {}
   for action in actions
-    got = try perform(server, dir, action)
-    received = received.concat(got)
-    for _ in got
-      arrivals = arrivals.push(0)
-    end
+    sent = noted(sent, action)
+    heard = try perform(server, dir, action)
+    received = received.concat(heard.messages)
+    arrivals = arrivals.concat(heard.arrivals)
   end
-  sent_at = Time.now_ms()
   try Process.close_stdin(server, TIMEOUT_MS)
-  heard = try read_rest(server, sent_at)
+  rest = try read_rest(server)
   exit_code = try Process.wait(server, TIMEOUT_MS)
   output = try Process.output(server, TIMEOUT_MS)
   return ok(Session(
-    messages: received.concat(heard.messages),
-    arrivals: arrivals.concat(heard.arrivals),
+    messages: received.concat(rest.messages),
+    arrivals: arrivals.concat(rest.arrivals),
+    sent: sent,
     exit_code: exit_code,
     stderr: output.stderr,
   ))
 end
 
-def perform(server: Process, dir: String, action: Json) -> Result[List[Json]]
+def noted(sent: Map[String, Json], action: Json) -> Map[String, Json]
+  kind = JSON.string(JSON.get(action, "kind").unwrap_or(JSON.null())).unwrap_or("")
+  if kind != "send"
+    return sent
+  end
+  body = JSON.parse(JSON.string(JSON.get(action, "body").unwrap_or(JSON.null())).unwrap_or("")).unwrap_or(JSON.null())
+  case JSON.get(body, "id")
+    ok(id) -> return sent.put(id.to_s, JSON.from(Time.now_ms()))
+    error(_) -> return sent
+  end
+end
+
+def perform(server: Process, dir: String, action: Json) -> Result[Heard]
   kind = try JSON.string(try JSON.get(action, "kind"))
   case kind
     "send" ->
       body = try JSON.string(try JSON.get(action, "body"))
       try Process.send(server, frame(body), TIMEOUT_MS)
-      return ok([])
+      return ok(nothing_heard())
     "raw" ->
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), TIMEOUT_MS)
-      return ok([])
+      return ok(nothing_heard())
     "await" -> return read_until_diagnostics(server)
     "pause" ->
       Task.sleep(try JSON.int(try JSON.get(action, "ms")))
-      return ok([])
+      return ok(nothing_heard())
     "write" ->
       path = try Path.join([dir, try JSON.string(try JSON.get(action, "name"))])
       try File.write_text(path, try JSON.string(try JSON.get(action, "text")), TIMEOUT_MS)
-      return ok([])
+      return ok(nothing_heard())
     _ -> return error("unknown action #{kind}")
   end
 end
 
-def read_until_diagnostics(server: Process) -> Result[List[Json]]
+def nothing_heard() -> Heard
+  return Heard(messages: [], arrivals: [])
+end
+
+def read_until_diagnostics(server: Process) -> Result[Heard]
   received: List[Json] = []
+  arrivals: List[Int] = []
   while true
     message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
     received = received.push(message)
+    arrivals = arrivals.push(Time.now_ms())
     if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
-      return ok(received)
+      return ok(Heard(messages: received, arrivals: arrivals))
     end
   end
-  return ok(received)
+  return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_rest(server: Process, sent_at: Int) -> Result[Heard]
+def read_rest(server: Process) -> Result[Heard]
   received: List[Json] = []
   arrivals: List[Int] = []
   while true
@@ -616,7 +637,7 @@ def read_rest(server: Process, sent_at: Int) -> Result[Heard]
       return ok(Heard(messages: received, arrivals: arrivals))
     end
     received = received.push(try read_body(server, header.unwrap!))
-    arrivals = arrivals.push(Time.now_ms() - sent_at)
+    arrivals = arrivals.push(Time.now_ms())
   end
   return ok(Heard(messages: received, arrivals: arrivals))
 end

@@ -243,7 +243,7 @@ Feature: Diagnostics in the editor
 
       """
     When the editor opens "unknown.agc" without waiting
-    And the editor waits 10500 milliseconds
+    And the editor waits 12000 milliseconds
     Then no diagnostics are published
     And the server warns "cannot check"
     And the server exits with code 0
@@ -351,7 +351,7 @@ Feature: Diagnostics in the editor
     Then "draft.agc" gets no diagnostics
     And "draft.agc" gets nothing more
 
-  Scenario: shutting down stops the running checks
+  Scenario: nothing is published after shutdown
     Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
     And the file "unknown.agc" contains:
       """

@@ -98,7 +98,10 @@ def reap(plan: Plan) -> Plan
   for uri in plan.running.keys
     task = plan.running.get(uri).unwrap!
     case Task.await(task, REAP_MS)
-      Await.Done(_) -> next
+      Await.Done(outcome) ->
+        if !outcome.ok?
+          IO.warn("agc-lsp: the check of #{uri} crashed: #{outcome.message}")
+        end
       Await.TimedOut -> alive = alive.put(uri, task)
     end
   end
