@@ -290,3 +290,56 @@ Feature: Diagnostics in the editor
     When the editor opens "missing.agc"
     Then "missing.agc" gets no diagnostics
     And the server exits with code 0
+
+  Scenario: a check that hangs does not delay the answer to shutdown
+    Given the language server has started with the arguments "--agentica specs/fixtures/hanging-agentica"
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc" without waiting
+    Then the server answers "shutdown" within 2000 milliseconds
+    And the server exits with code 0
+
+  Scenario: an older check that is still running is not published
+    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    And the file "draft.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "draft.agc" without waiting
+    And the editor waits 300 milliseconds
+    And the editor saves "draft.agc" without waiting as:
+      """
+      def main() -> Void
+        puts("fixed")
+      end
+
+      """
+    And the editor waits for diagnostics
+    And the editor waits 1500 milliseconds
+    Then "draft.agc" gets no diagnostics
+    And "draft.agc" gets nothing more
+
+  Scenario: closing a file while it is checked leaves its diagnostics empty
+    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    And the file "draft.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "draft.agc" without waiting
+    And the editor waits 300 milliseconds
+    And the editor closes "draft.agc" without waiting
+    And the editor waits for diagnostics
+    And the editor waits 1500 milliseconds
+    Then "draft.agc" gets no diagnostics
+    And "draft.agc" gets nothing more

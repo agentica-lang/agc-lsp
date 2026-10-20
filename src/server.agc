@@ -1,4 +1,4 @@
-import Check from "check"
+import Events from "events"
 import Rpc from "rpc"
 import Uri from "uri"
 
@@ -8,12 +8,17 @@ METHOD_NOT_FOUND = -32601
 SERVER_NOT_INITIALIZED = -32002
 NO_SYNC = 0
 AGENTICA_EXTENSION = ".agc"
+EVENT_CAPACITY = 256
+WAIT_MS = 1000
 
 export struct State
   agentica: String
   encoding: String
   initialized: Bool
   shut_down: Bool
+  events: Channel[Events.Event]
+  generations: Map[String, Int]
+  checks: Map[String, Task[Void]]
 end
 
 enum Next
@@ -22,26 +27,70 @@ enum Next
 end
 
 export def start(agentica: String) -> State
-  return State(agentica: agentica, encoding: "utf-16", initialized: false, shut_down: false)
+  events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
+  generations: Map[String, Int] = {}
+  checks: Map[String, Task[Void]] = {}
+  return State(
+    agentica: agentica,
+    encoding: "utf-16",
+    initialized: false,
+    shut_down: false,
+    events: events,
+    generations: generations,
+    checks: checks,
+  )
 end
 
 export def serve(state: State) -> Int
+  reader = Task.spawn(&Events.read_input, state.events)
   current = state
   while true
-    case Rpc.read()
-      Rpc.Incoming.End -> return exit_status(current)
-      Rpc.Incoming.Malformed(message) -> Rpc.fail(JSON.null(), PARSE_ERROR, message)
-      Rpc.Incoming.Unframed(message) ->
-        IO.warn("agc-lsp: #{message}; the stream cannot be read further")
-        return 1
-      Rpc.Incoming.Message(message) ->
-        case handle(current, message)
+    case current.events.recv(WAIT_MS)
+      ok(event) ->
+        case dispatch(current, event)
           Next.Continue(next) -> current = next
-          Next.Exit(status) -> return status
+          Next.Exit(status) -> return finish(current, reader, status)
         end
+      error(_) -> next
     end
   end
-  return exit_status(current)
+  return finish(current, reader, exit_status(current))
+end
+
+def finish(state: State, reader: Task[Void], status: Int) -> Int
+  Task.cancel(reader)
+  for check in state.checks.values
+    Task.cancel(check)
+  end
+  return status
+end
+
+def dispatch(state: State, event: Events.Event) -> Next
+  case event
+    Events.Event.Checked(report) -> return Next.Continue(checked(state, report))
+    Events.Event.Input(incoming) -> return input(state, incoming)
+  end
+end
+
+def input(state: State, incoming: Rpc.Incoming) -> Next
+  case incoming
+    Rpc.Incoming.End -> return Next.Exit(exit_status(state))
+    Rpc.Incoming.Malformed(message) ->
+      Rpc.fail(JSON.null(), PARSE_ERROR, message)
+      return Next.Continue(state)
+    Rpc.Incoming.Unframed(message) ->
+      IO.warn("agc-lsp: #{message}; the stream cannot be read further")
+      return Next.Exit(1)
+    Rpc.Incoming.Message(message) -> return handle(state, message)
+  end
+end
+
+def checked(state: State, report: Events.Report) -> State
+  if state.generations.get(report.uri).unwrap_or(0) == report.generation
+    publish(report.uri, report.diagnostics)
+    return state.with(checks: state.checks.delete(report.uri))
+  end
+  return state
 end
 
 def handle(state: State, message: Json) -> Next
@@ -112,29 +161,47 @@ def notification(state: State, method: String, params: Json) -> State
     return state
   end
   case method
-    "textDocument/didOpen" -> publish(state, document_uri(params), true)
-    "textDocument/didSave" -> publish(state, document_uri(params), true)
-    "textDocument/didClose" -> publish(state, document_uri(params), false)
+    "textDocument/didOpen" -> return refresh(state, document_uri(params), true)
+    "textDocument/didSave" -> return refresh(state, document_uri(params), true)
+    "textDocument/didClose" -> return refresh(state, document_uri(params), false)
     _ -> return state
   end
-  return state
 end
 
-def publish(state: State, uri: String, checked: Bool) -> Void
+def refresh(state: State, uri: String, checking: Bool) -> State
   path = ""
   case Uri.path_of(uri)
     ok(found) -> path = found
     error(message) ->
       IO.warn("agc-lsp: #{message}")
-      return
+      return state
   end
   if !path.ends_with?(AGENTICA_EXTENSION)
-    return
+    return state
   end
-  found: List[Json] = []
-  if checked
-    found = Check.diagnostics(state.agentica, path, state.encoding)
+  generation = state.generations.get(uri).unwrap_or(0) + 1
+  running = state.checks.get(uri)
+  if running.ok?
+    Task.cancel(running.unwrap!)
   end
+  current = state.with(generations: state.generations.put(uri, generation), checks: state.checks.delete(uri))
+  if !checking
+    none: List[Json] = []
+    publish(uri, none)
+    return current
+  end
+  job = Events.Job(
+    events: state.events,
+    agentica: state.agentica,
+    encoding: state.encoding,
+    path: path,
+    uri: uri,
+    generation: generation,
+  )
+  return current.with(checks: current.checks.put(uri, Task.spawn(&Events.check, job)))
+end
+
+def publish(uri: String, found: List[Json]) -> Void
   Rpc.notify("textDocument/publishDiagnostics", JSON.object({
     "uri": JSON.from(uri),
     "diagnostics": JSON.array(found),
