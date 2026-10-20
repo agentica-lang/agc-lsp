@@ -126,6 +126,7 @@ Feature: Diagnostics in the editor
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And the diagnostic of "app.agc" points to "lib.agc:2:10"
+    And the diagnostic of "app.agc" points into "lib.agc" at 2:10-2:13
 
   Scenario: a file name with a space is decoded from its URI
     Given the language server has started
@@ -232,6 +233,7 @@ Feature: Diagnostics in the editor
       | at      | severity | code                 |
       | 1:1-1:1 | error    | PKG-MANIFEST-INVALID |
     And the diagnostic of "app.agc" points to "agentica.toml (package)"
+    And the diagnostic of "app.agc" points into "agentica.toml" at 1:1-1:1
 
   Scenario: a checker that hangs is stopped and publishes nothing
     Given the language server has started with the arguments "--agentica specs/fixtures/hanging-agentica"

@@ -1,6 +1,8 @@
 FILE_SCHEME = "file://"
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789abcdef"
+HEX_UPPER = "0123456789ABCDEF"
+ASCII_LIMIT = 128
 
 export def path_of(uri: String) -> Result[String]
   if !uri.starts_with?(FILE_SCHEME)
@@ -13,6 +15,29 @@ export def path_of(uri: String) -> Result[String]
     return error("not a local file URI: #{uri}")
   end
   return decode(rest.slice(slash, rest.length - slash))
+end
+
+export def of_path(path: String) -> String
+  parts: List[String] = []
+  for char in path.split("")
+    if char == " " or char == "%" or char == "#" or char == "?" or String.code(char) >= ASCII_LIMIT
+      for byte in char.to_bytes
+        parts = parts.push("%#{HEX_UPPER.at(byte / 16)}#{HEX_UPPER.at(byte % 16)}")
+      end
+    else
+      parts = parts.push(char)
+    end
+  end
+  return "#{FILE_SCHEME}#{parts.join("")}"
+end
+
+export def same_path?(a: String, b: String) -> Bool
+  if a == b
+    return true
+  end
+  first = Path.real(a)
+  second = Path.real(b)
+  return first.ok? and second.ok? and first.unwrap! == second.unwrap!
 end
 
 def before(text: String, mark: String) -> String

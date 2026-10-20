@@ -1,3 +1,4 @@
+import Check from "check"
 import Events from "events"
 import Rpc from "rpc"
 import Schedule from "schedule"
@@ -20,6 +21,7 @@ export struct State
   shut_down: Bool
   events: Channel[Events.Event]
   plan: Schedule.Plan
+  pointing: Map[String, String]
 end
 
 enum Next
@@ -29,6 +31,7 @@ end
 
 export def start(agentica: String) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
+  pointing: Map[String, String] = {}
   return State(
     agentica: agentica,
     encoding: "utf-16",
@@ -36,6 +39,7 @@ export def start(agentica: String) -> State
     shut_down: false,
     events: events,
     plan: Schedule.start(agentica, events),
+    pointing: pointing,
   )
 end
 
@@ -97,10 +101,19 @@ def checked(state: State, report: Events.Report) -> State
   if state.shut_down or !Schedule.current?(state.plan, report)
     return state
   end
+  pointing = state.pointing
   if report.outcome.ok?
     publish(report.uri, report.outcome.unwrap!)
+    pointing = point(pointing, report.uri, Check.points_into(report.outcome.unwrap!))
   end
-  return state.with(plan: Schedule.settle(state.plan, report.uri, state.encoding))
+  return state.with(plan: Schedule.settle(state.plan, report.uri, state.encoding), pointing: pointing)
+end
+
+def point(pointing: Map[String, String], uri: String, target: String) -> Map[String, String]
+  case Uri.path_of(target)
+    ok(path) -> return pointing.put(uri, path)
+    error(_) -> return pointing.delete(uri)
+  end
 end
 
 def handle(state: State, message: Json) -> Next
@@ -172,10 +185,25 @@ def notification(state: State, method: String, params: Json) -> State
   end
   case method
     "textDocument/didOpen" -> return refresh(state, document_uri(params), true)
-    "textDocument/didSave" -> return refresh(state, document_uri(params), true)
+    "textDocument/didSave" -> return saved(state, document_uri(params))
     "textDocument/didClose" -> return refresh(state, document_uri(params), false)
     _ -> return state
   end
+end
+
+def saved(state: State, uri: String) -> State
+  refreshed = refresh(state, uri, true)
+  path = Uri.path_of(uri).unwrap_or("")
+  if path == ""
+    return refreshed
+  end
+  plan = refreshed.plan
+  for document in refreshed.pointing.keys
+    if document != uri and Uri.same_path?(refreshed.pointing.get(document).unwrap!, path)
+      plan = Schedule.request(plan, document, Uri.path_of(document).unwrap_or(""), refreshed.encoding)
+    end
+  end
+  return refreshed.with(plan: plan)
 end
 
 def refresh(state: State, uri: String, checking: Bool) -> State
@@ -194,7 +222,7 @@ def refresh(state: State, uri: String, checking: Bool) -> State
   end
   none: List[Json] = []
   publish(uri, none)
-  return state.with(plan: Schedule.forget(state.plan, uri, state.encoding))
+  return state.with(plan: Schedule.forget(state.plan, uri, state.encoding), pointing: state.pointing.delete(uri))
 end
 
 def publish(uri: String, found: List[Json]) -> Void

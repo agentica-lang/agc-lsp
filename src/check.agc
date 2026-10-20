@@ -1,8 +1,11 @@
+import Uri from "uri"
+
 CHECK_TIMEOUT_MS = 10000
 SHORTEST_WAIT_MS = 1
 READ_TIMEOUT_MS = 10000
 SEVERITY_ERROR = 1
 SURROGATE_START = 65536
+RELATED_MESSAGE = "the error is here"
 
 struct Place
   line: Int
@@ -21,6 +24,19 @@ export def diagnostics(agentica: String, path: String, encoding: String) -> Resu
       end
     error(message) -> return failed("cannot check #{path}: #{message}")
   end
+end
+
+export def points_into(found: List[Json]) -> String
+  if found.size == 0
+    return ""
+  end
+  none: List[Json] = []
+  entries = JSON.list(JSON.get(found[0], "relatedInformation").unwrap_or(JSON.null())).unwrap_or(none)
+  if entries.size == 0
+    return ""
+  end
+  location = JSON.get(entries[0], "location").unwrap_or(JSON.null())
+  return text(location, "uri")
 end
 
 def failed(message: String) -> Result[List[Json]]
@@ -73,28 +89,36 @@ def diagnostic(found: Json, path: String, encoding: String) -> Json
   end
   start = place(found, "start")
   stop = place(found, "end")
-  range = JSON.object({"start": origin(), "end": origin()})
-  if same_file?(file, path)
-    lines = source_lines(path)
-    range = JSON.object({"start": position(start, lines, encoding), "end": position(stop, lines, encoding)})
-  else
-    message = "#{where(file, text(found, "key_path"), start)}: #{message}"
-  end
-  return JSON.object({
-    "range": range,
+  key_path = text(found, "key_path")
+  fields: Map[String, Json] = {
     "severity": JSON.from(SEVERITY_ERROR),
     "code": JSON.from(text(found, "code")),
     "source": JSON.from("agentica"),
-    "message": JSON.from(message),
-  })
+  }
+  if Uri.same_path?(file, path)
+    fields = fields.put("range", span(path, start, stop, encoding))
+  else
+    message = "#{where(file, key_path, start)}: #{message}"
+    fields = fields.put("range", JSON.object({"start": origin(), "end": origin()}))
+    if file.starts_with?("/")
+      fields = fields.put("relatedInformation", JSON.array([related(file, key_path, start, stop, encoding)]))
+    end
+  end
+  return JSON.object(fields.put("message", JSON.from(message)))
 end
 
-def same_file?(reported: String, opened: String) -> Bool
-  if reported == opened
-    return true
+def related(file: String, key_path: String, start: Place, stop: Place, encoding: String) -> Json
+  range = JSON.object({"start": origin(), "end": origin()})
+  if key_path == "" and start.line > 0
+    range = span(file, start, stop, encoding)
   end
-  real = Path.real(reported)
-  return real.ok? and real.unwrap! == Path.real(opened).unwrap_or(opened)
+  location = JSON.object({"uri": JSON.from(Uri.of_path(file)), "range": range})
+  return JSON.object({"location": location, "message": JSON.from(RELATED_MESSAGE)})
+end
+
+def span(path: String, start: Place, stop: Place, encoding: String) -> Json
+  lines = source_lines(path)
+  return JSON.object({"start": position(start, lines, encoding), "end": position(stop, lines, encoding)})
 end
 
 def where(file: String, key_path: String, start: Place) -> String
