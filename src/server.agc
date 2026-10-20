@@ -7,6 +7,7 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 SERVER_NOT_INITIALIZED = -32002
 NO_SYNC = 0
+AGENTICA_EXTENSION = ".agc"
 
 export struct State
   agentica: String
@@ -30,6 +31,9 @@ export def serve(state: State) -> Int
     case Rpc.read()
       Rpc.Incoming.End -> return exit_status(current)
       Rpc.Incoming.Malformed(message) -> Rpc.fail(JSON.null(), PARSE_ERROR, message)
+      Rpc.Incoming.Unframed(message) ->
+        IO.warn("agc-lsp: #{message}; the stream cannot be read further")
+        return 1
       Rpc.Incoming.Message(message) ->
         case handle(current, message)
           Next.Continue(next) -> current = next
@@ -51,7 +55,9 @@ def handle(state: State, message: Json) -> Next
   end
   case JSON.get(message, "id")
     ok(id) ->
-      if method == ""
+      if method == "" and response?(message)
+        return Next.Continue(state)
+      elsif method == ""
         Rpc.fail(id, INVALID_REQUEST, "a request needs a method")
         return Next.Continue(state)
       end
@@ -115,14 +121,19 @@ def notification(state: State, method: String, params: Json) -> State
 end
 
 def publish(state: State, uri: String, checked: Bool) -> Void
+  path = ""
+  case Uri.path_of(uri)
+    ok(found) -> path = found
+    error(message) ->
+      IO.warn("agc-lsp: #{message}")
+      return
+  end
+  if !path.ends_with?(AGENTICA_EXTENSION)
+    return
+  end
   found: List[Json] = []
   if checked
-    case Uri.path_of(uri)
-      ok(path) -> found = Check.diagnostics(state.agentica, path, state.encoding)
-      error(message) ->
-        IO.warn("agc-lsp: #{message}")
-        return
-    end
+    found = Check.diagnostics(state.agentica, path, state.encoding)
   end
   Rpc.notify("textDocument/publishDiagnostics", JSON.object({
     "uri": JSON.from(uri),
@@ -145,6 +156,10 @@ end
 def document_uri(params: Json) -> String
   document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
   return JSON.string(JSON.get(document, "uri").unwrap_or(JSON.null())).unwrap_or("")
+end
+
+def response?(message: Json) -> Bool
+  return JSON.get(message, "result").ok? or JSON.get(message, "error").ok?
 end
 
 def object?(message: Json) -> Bool

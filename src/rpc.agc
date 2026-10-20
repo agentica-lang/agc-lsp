@@ -4,6 +4,7 @@ LENGTH_HEADER = "content-length:"
 export enum Incoming
   Message(Json)
   Malformed(String)
+  Unframed(String)
   End
 end
 
@@ -35,7 +36,7 @@ export def read() -> Incoming
     end
   end
   if length < 0
-    return Incoming.Malformed("missing or invalid Content-Length")
+    return Incoming.Unframed("missing or invalid Content-Length")
   end
   case body(length)
     ok(text) ->

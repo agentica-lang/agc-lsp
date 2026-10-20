@@ -87,6 +87,21 @@ Feature: Server lifecycle
     Then the server reports the error "invalid request"
     And the server exits with code 0
 
+  Scenario: a response from the editor gets no answer
+    Given the language server has started
+    When the editor sends the raw message:
+      """
+      {"jsonrpc":"2.0","id":99,"result":null}
+      """
+    Then the server does not answer request 99
+    And the server exits with code 0
+
+  Scenario: a message without a Content-Length header ends the session
+    Given the language server has started
+    When the editor sends a message without a Content-Length header
+    Then the server warns "missing or invalid Content-Length"
+    And the server exits with code 1
+
   Scenario: a message that is not JSON is a parse error
     Given the language server has started
     When the editor sends a message that is not JSON

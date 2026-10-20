@@ -15,6 +15,13 @@ written in Agentica.
   message.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
+## Limitations
+
+- Only `.agc` files are checked, and only as they are on disk.
+- One check runs at a time, inside the message loop, with a 10 s deadline; a slow check delays the next message.
+- An error in an imported file is published on the file that was opened. Saving the imported file does not refresh
+  it: save or reopen the file that imports it.
+
 ## Usage
 
 It needs `agentica` (0.5.0 or later) on `PATH`, and `--allow-run` to start it:

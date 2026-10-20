@@ -36,6 +36,7 @@ def main() -> Void
     BDD.step("the editor sends the request {string}", &sends_request),
     BDD.step("the editor sends a message that is not JSON", &sends_garbage),
     BDD.step("the editor sends the raw message:", &sends_raw),
+    BDD.step("the editor sends a message without a Content-Length header", &sends_unframed),
     BDD.step("the editor exits without shutting down", &exits_early),
     BDD.step("the editor closes the connection", &hangs_up),
     BDD.step("the client runs the session:", &run_session),
@@ -43,6 +44,7 @@ def main() -> Void
     BDD.step("the server announces the position encoding {string}", &announces_encoding),
     BDD.step("the server answers {string} with the error {string}", &answers_error),
     BDD.step("the server answers request {int} with the error {string}", &answers_id_error),
+    BDD.step("the server does not answer request {int}", &does_not_answer),
     BDD.step("the server reports the error {string}", &reports_error),
     BDD.step("{string} gets these diagnostics:", &gets_diagnostics),
     BDD.step("{string} through a localhost URI gets these diagnostics:", &gets_diagnostics_through_localhost),
@@ -148,6 +150,12 @@ def sends_raw(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return send(ctx, BDD.doc_string(ctx).strip)
 end
 
+def sends_unframed(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  bytes = "Content-Type: application/json\r\n\r\n{}"
+  sent = add(ctx, JSON.object({"kind": JSON.from("raw"), "body": JSON.from(bytes)}))
+  return BDD.set(sent, "ended", JSON.from(true))
+end
+
 def exits_early(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   sent = notify(ctx, "exit", JSON.null())
   return BDD.set(sent, "ended", JSON.from(true))
@@ -181,6 +189,12 @@ end
 
 def answers_id_error(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| id_failed(done, args[0].to_i!, args[1]) end
+end
+
+def does_not_answer(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    BDD.assert(done, !reply(done, args[0].to_i!, "id").ok?, "the server answered request #{args[0]}")
+  end
 end
 
 def reports_error(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -444,6 +458,9 @@ def perform(server: Process, dir: String, action: Json) -> Result[List[Json]]
     "send" ->
       body = try JSON.string(try JSON.get(action, "body"))
       try Process.send(server, frame(body), TIMEOUT_MS)
+      return ok([])
+    "raw" ->
+      try Process.send(server, try JSON.string(try JSON.get(action, "body")), TIMEOUT_MS)
       return ok([])
     "await" -> return read_until_diagnostics(server)
     "write" ->

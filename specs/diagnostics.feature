@@ -49,7 +49,7 @@ Feature: Diagnostics in the editor
     And the file "emoji.agc" contains:
       """
       def main() -> Void
-        names = ["😀", oops]
+        names = ["<text>", oops]
       end
 
       """
@@ -59,9 +59,11 @@ Feature: Diagnostics in the editor
       | <at> | error    | CHECK-UNKNOWN-NAME |
 
     Examples:
-      | offered        | at        |
-      | utf-16         | 2:18-2:22 |
-      | utf-16, utf-32 | 2:17-2:21 |
+      | text | offered        | at        |
+      | 😀   | utf-16         | 2:18-2:22 |
+      | 😀   | utf-16, utf-32 | 2:17-2:21 |
+      | é👩‍💻 | utf-16         | 2:23-2:27 |
+      | é👩‍💻 | utf-16, utf-32 | 2:21-2:25 |
 
   Scenario: saving a fixed file clears its diagnostic
     Given the language server has started
@@ -271,6 +273,16 @@ Feature: Diagnostics in the editor
   Scenario: a buffer that is not a file is not checked
     Given the language server has started
     When the editor opens an untitled buffer
+    Then no diagnostics are published
+
+  Scenario: a file that is not Agentica is not checked
+    Given the language server has started
+    And the file "notes.txt" contains:
+      """
+      not a program
+
+      """
+    When the editor opens "notes.txt"
     Then no diagnostics are published
 
   Scenario: a file that is gone publishes no diagnostics
