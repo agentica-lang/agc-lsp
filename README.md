@@ -11,8 +11,11 @@ written in Agentica.
 - On `textDocument/didOpen` and `textDocument/didSave` it runs `agentica --json check` on the file on disk and
   publishes its first diagnostic, or an empty list. `textDocument/didClose` clears it. Unsaved changes are not
   checked yet, so the server asks for no `didChange` notifications.
-- An error in an imported file is shown at the start of the opened file, with the imported file and position in the
-  message.
+- An error in an imported file, or in the `agentica.toml` that `agentica check` finds above the file, is shown at the
+  start of the opened file, with the imported file and position in the message and in `relatedInformation`, whose
+  location points into that file (the start of the file for an error at a key of `agentica.toml`).
+- Saving a file checks again the other open files whose diagnostic came from it, so fixing an imported file clears the
+  error shown on the files that import it.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
 ## Limitations
@@ -25,8 +28,8 @@ written in Agentica.
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
   logs a warning on stderr, so the editor keeps the diagnostics it already shows. A crash of a check task is only
   logged on stderr and also leaves the previous diagnostics.
-- An error in an imported file is published on the file that was opened. Saving the imported file does not refresh
-  it: save or reopen the file that imports it.
+- An error in an imported file is published on the file that was opened, never on the imported file itself, and the
+  files that import it are checked again when it is saved, not while it has unsaved changes.
 
 ## Usage
 

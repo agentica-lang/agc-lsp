@@ -5,6 +5,7 @@ TIMEOUT_MS = 20000
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789ABCDEF"
 ASCII_LIMIT = 128
+MANIFEST = "agentica.toml"
 PUBLISH = "textDocument/publishDiagnostics"
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
 ERROR_CODES = {
@@ -70,6 +71,7 @@ def main() -> Void
     BDD.step("the server warns {string}", &warns),
     BDD.step("the diagnostic of {string} has a help line", &has_help),
     BDD.step("the diagnostic of {string} points to {string}", &points_to),
+    BDD.step("the diagnostic of {string} points into {string} at {int}:{int}-{int}:{int}", &points_into),
     BDD.step("the server exits with code {int}", &exits_with),
   ])
 end
@@ -103,6 +105,10 @@ end
 
 def write_file(ctx: BDD.Context, name: String) -> BDD.Context
   path = file_path(ctx, name)
+  parents = Dir.mkdir(parent_of(path), TIMEOUT_MS)
+  if !parents.ok?
+    return BDD.assert(ctx, false, "cannot make the folder of #{path}: #{parents.message}")
+  end
   written = File.write_text(path, BDD.doc_string(ctx), TIMEOUT_MS)
   return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
 end
@@ -329,11 +335,40 @@ def points_to(ctx: BDD.Context, args: List[String]) -> BDD.Context
   end
 end
 
+def points_into(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return last_diagnostic(ctx, args[0]) do |done, found|
+    expected = JSON.object({
+      "uri": JSON.from(uri(done, args[1])),
+      "range": JSON.object({
+        "start": position("#{args[2]}:#{args[3]}"),
+        "end": position("#{args[4]}:#{args[5]}"),
+      }),
+    })
+    related_is(done, found, expected)
+  end
+end
+
 def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
     code = JSON.int(BDD.get(done, "exit").unwrap!).unwrap!
     BDD.assert(done, code == args[0].to_i!, "expected exit code #{args[0]}; actual #{code}; stderr #{stderr(done)}")
   end
+end
+
+def related_is(ctx: BDD.Context, found: Json, expected: Json) -> BDD.Context
+  none: List[Json] = []
+  entries = JSON.list(at(found, ["relatedInformation"]).unwrap_or(JSON.null())).unwrap_or(none)
+  if entries.size != 1
+    return BDD.assert(ctx, false, "expected one related location in #{found}")
+  end
+  location = at(entries[0], ["location"]).unwrap_or(JSON.null())
+  actual = canonical(JSON.encode(location))
+  wanted = canonical(JSON.encode(expected))
+  message = JSON.string(at(entries[0], ["message"]).unwrap_or(JSON.null())).unwrap_or("")
+  if message == ""
+    return BDD.assert(ctx, false, "the related location of #{found} has no message")
+  end
+  return BDD.assert(ctx, actual == wanted, "expected the location #{wanted}; actual #{actual}")
 end
 
 def answered_within(ctx: BDD.Context, method: String, limit: Int) -> BDD.Context
@@ -473,7 +508,13 @@ def publish_is(ctx: BDD.Context, target: String, expected: Json) -> BDD.Context
 end
 
 def last_message(ctx: BDD.Context, name: String, check: Fn[BDD.Context, String, BDD.Context]) -> BDD.Context
-  return finished(ctx) do |done| message_of(done, name, check) end
+  return last_diagnostic(ctx, name) do |done, found|
+    check.call(done, JSON.string(at(found, ["message"]).unwrap!).unwrap!)
+  end
+end
+
+def last_diagnostic(ctx: BDD.Context, name: String, check: Fn[BDD.Context, Json, BDD.Context]) -> BDD.Context
+  return finished(ctx) do |done| diagnostic_of(done, name, check) end
 end
 
 def nothing_published(ctx: BDD.Context) -> BDD.Context
@@ -485,12 +526,12 @@ def nothing_published(ctx: BDD.Context) -> BDD.Context
   return BDD.assert(ctx, true, "")
 end
 
-def message_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, String, BDD.Context]) -> BDD.Context
+def diagnostic_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, Json, BDD.Context]) -> BDD.Context
   lists = published(ctx, uri(ctx, name))
   if lists.size == 0 or lists[lists.size - 1].size == 0
     return BDD.assert(ctx, false, "#{name} has no diagnostic")
   end
-  return check.call(ctx, JSON.string(at(lists[lists.size - 1][0], ["message"]).unwrap!).unwrap!)
+  return check.call(ctx, lists[lists.size - 1][0])
 end
 
 def published(ctx: BDD.Context, sent: String) -> List[List[Json]]
@@ -700,7 +741,36 @@ def with_folder(ctx: BDD.Context) -> BDD.Context
   if !made.ok?
     return BDD.assert(ctx, false, "cannot make #{path}: #{made.message}")
   end
-  return BDD.set(ctx, "dir", JSON.from(Path.real(path).unwrap!))
+  real = Path.real(path).unwrap!
+  stray = manifest_above(real)
+  if stray != ""
+    _ = Path.remove(real, TIMEOUT_MS)
+    return BDD.assert(ctx, false, "#{stray} exists above the scenario folder #{real}: agentica reads it for every file there; remove it to run the specs")
+  end
+  return BDD.set(ctx, "dir", JSON.from(real))
+end
+
+def manifest_above(path: String) -> String
+  parent = parent_of(path)
+  while true
+    candidate = Path.join([parent, MANIFEST]).unwrap!
+    if File.stat(candidate, TIMEOUT_MS).ok?
+      return candidate
+    end
+    if parent == "/"
+      return ""
+    end
+    parent = parent_of(parent)
+  end
+  return ""
+end
+
+def parent_of(path: String) -> String
+  parts = path.split("/")
+  if parts.size <= 2
+    return "/"
+  end
+  return parts.take(parts.size - 1).join("/")
 end
 
 def folder(ctx: BDD.Context) -> String
@@ -718,7 +788,7 @@ end
 def encoded(path: String) -> String
   parts: List[String] = []
   for char in path.split("")
-    if char == " " or char == "%" or String.code(char) >= ASCII_LIMIT
+    if char == " " or char == "%" or char == "#" or char == "?" or String.code(char) >= ASCII_LIMIT
       for byte in char.to_bytes
         parts = parts.push("%#{HEX_DIGITS.at(byte / 16)}#{HEX_DIGITS.at(byte % 16)}")
       end
