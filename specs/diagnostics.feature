@@ -178,8 +178,10 @@ Feature: Diagnostics in the editor
       end
 
       """
-    When the editor opens "unknown.agc"
-    Then "unknown.agc" gets no diagnostics
+    When the editor opens "unknown.agc" without waiting
+    And the editor waits 1500 milliseconds
+    Then no diagnostics are published
+    And the server warns "cannot check"
 
   Scenario: a file reached through a link and a double slash keeps its position
     Given the language server has started
@@ -231,7 +233,7 @@ Feature: Diagnostics in the editor
       | 1:1-1:1 | error    | PKG-MANIFEST-INVALID |
     And the diagnostic of "app.agc" points to "agentica.toml (package)"
 
-  Scenario: a checker that hangs is stopped
+  Scenario: a checker that hangs is stopped and publishes nothing
     Given the language server has started with the arguments "--agentica specs/fixtures/hanging-agentica"
     And the file "unknown.agc" contains:
       """
@@ -240,8 +242,10 @@ Feature: Diagnostics in the editor
       end
 
       """
-    When the editor opens "unknown.agc"
-    Then "unknown.agc" gets no diagnostics
+    When the editor opens "unknown.agc" without waiting
+    And the editor waits 10500 milliseconds
+    Then no diagnostics are published
+    And the server warns "cannot check"
     And the server exits with code 0
 
   Scenario: a checker that fails without a diagnostic is reported
@@ -253,8 +257,9 @@ Feature: Diagnostics in the editor
       end
 
       """
-    When the editor opens "unknown.agc"
-    Then "unknown.agc" gets no diagnostics
+    When the editor opens "unknown.agc" without waiting
+    And the editor waits 1500 milliseconds
+    Then no diagnostics are published
     And the server warns "agentica exited with status 1 and no diagnostic"
 
   Scenario: a checker that cannot run the check is reported
@@ -266,8 +271,9 @@ Feature: Diagnostics in the editor
       end
 
       """
-    When the editor opens "unknown.agc"
-    Then "unknown.agc" gets no diagnostics
+    When the editor opens "unknown.agc" without waiting
+    And the editor waits 1500 milliseconds
+    Then no diagnostics are published
     And the server warns "agentica exited with status 2"
 
   Scenario: a buffer that is not a file is not checked
@@ -285,10 +291,11 @@ Feature: Diagnostics in the editor
     When the editor opens "notes.txt"
     Then no diagnostics are published
 
-  Scenario: a file that is gone publishes no diagnostics
+  Scenario: a file that is gone publishes nothing
     Given the language server has started
-    When the editor opens "missing.agc"
-    Then "missing.agc" gets no diagnostics
+    When the editor opens "missing.agc" without waiting
+    And the editor waits 1500 milliseconds
+    Then no diagnostics are published
     And the server exits with code 0
 
   Scenario: a check that hangs does not delay the answer to shutdown
@@ -343,3 +350,95 @@ Feature: Diagnostics in the editor
     And the editor waits 1500 milliseconds
     Then "draft.agc" gets no diagnostics
     And "draft.agc" gets nothing more
+
+  Scenario: shutting down stops the running checks
+    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    And the file "unknown.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "unknown.agc" without waiting
+    And the editor waits 300 milliseconds
+    And the editor sends the request "shutdown"
+    And the editor waits 1500 milliseconds
+    Then no diagnostics are published
+    And the server exits with code 0
+
+  Scenario: more files than the limit are all checked
+    Given the language server has started with the arguments "--agentica specs/fixtures/crowded-agentica"
+    And the files "one.agc, two.agc, three.agc, four.agc, five.agc, six.agc" contain:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens the files "one.agc, two.agc, three.agc, four.agc, five.agc, six.agc" without waiting
+    And the editor waits for the diagnostics of 6 files
+    Then "one.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+    And "two.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+    And "three.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+    And "four.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+    And "five.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+    And "six.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: a file waiting for a free check is checked once
+    Given the language server has started with the arguments "--agentica specs/fixtures/crowded-agentica"
+    And the files "one.agc, two.agc, three.agc, four.agc, five.agc" contain:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens the files "one.agc, two.agc, three.agc, four.agc, five.agc" without waiting
+    And the editor saves "five.agc" without waiting as:
+      """
+      def main() -> Void
+        puts("fixed")
+      end
+
+      """
+    And the editor waits for the diagnostics of 5 files
+    And the editor waits 1500 milliseconds
+    Then "five.agc" gets no diagnostics
+    And "five.agc" gets nothing more
+
+  Scenario: a slow check of one file does not hide another file
+    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    And the file "slow.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    And the file "quick.agc" contains:
+      """
+      def main() -> Void
+        puts("hi")
+      end
+
+      """
+    When the editor opens "slow.agc" without waiting
+    And the editor opens "quick.agc" without waiting
+    And the editor waits for the diagnostics of 2 files
+    Then "quick.agc" gets no diagnostics
+    And "slow.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |

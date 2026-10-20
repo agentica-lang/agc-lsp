@@ -1,5 +1,6 @@
 import Events from "events"
 import Rpc from "rpc"
+import Schedule from "schedule"
 import Uri from "uri"
 
 PARSE_ERROR = -32700
@@ -17,8 +18,7 @@ export struct State
   initialized: Bool
   shut_down: Bool
   events: Channel[Events.Event]
-  generations: Map[String, Int]
-  checks: Map[String, Task[Void]]
+  plan: Schedule.Plan
 end
 
 enum Next
@@ -28,16 +28,13 @@ end
 
 export def start(agentica: String) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
-  generations: Map[String, Int] = {}
-  checks: Map[String, Task[Void]] = {}
   return State(
     agentica: agentica,
     encoding: "utf-16",
     initialized: false,
     shut_down: false,
     events: events,
-    generations: generations,
-    checks: checks,
+    plan: Schedule.start(agentica, events),
   )
 end
 
@@ -51,7 +48,7 @@ export def serve(state: State) -> Int
           Next.Continue(next) -> current = next
           Next.Exit(status) -> return finish(current, reader, status)
         end
-      error(_) -> next
+      error(_) -> current = current.with(plan: Schedule.tick(current.plan, current.encoding))
     end
   end
   return finish(current, reader, exit_status(current))
@@ -59,9 +56,7 @@ end
 
 def finish(state: State, reader: Task[Void], status: Int) -> Int
   Task.cancel(reader)
-  for check in state.checks.values
-    Task.cancel(check)
-  end
+  Schedule.stop(state.plan)
   return status
 end
 
@@ -86,11 +81,13 @@ def input(state: State, incoming: Rpc.Incoming) -> Next
 end
 
 def checked(state: State, report: Events.Report) -> State
-  if state.generations.get(report.uri).unwrap_or(0) == report.generation
-    publish(report.uri, report.diagnostics)
-    return state.with(checks: state.checks.delete(report.uri))
+  if state.shut_down or !Schedule.current?(state.plan, report)
+    return state
   end
-  return state
+  if report.outcome.ok?
+    publish(report.uri, report.outcome.unwrap!)
+  end
+  return state.with(plan: Schedule.settle(state.plan, report.uri, state.encoding))
 end
 
 def handle(state: State, message: Json) -> Next
@@ -127,7 +124,7 @@ def request(state: State, id: Json, method: String, params: Json) -> State
     "initialize" -> return initialize(state, id, params)
     "shutdown" ->
       Rpc.respond(id, JSON.null())
-      return state.with(shut_down: true)
+      return state.with(plan: Schedule.stop(state.plan), shut_down: true)
     _ ->
       Rpc.fail(id, METHOD_NOT_FOUND, "unknown method #{method}")
       return state
@@ -179,26 +176,12 @@ def refresh(state: State, uri: String, checking: Bool) -> State
   if !path.ends_with?(AGENTICA_EXTENSION)
     return state
   end
-  generation = state.generations.get(uri).unwrap_or(0) + 1
-  running = state.checks.get(uri)
-  if running.ok?
-    Task.cancel(running.unwrap!)
+  if checking
+    return state.with(plan: Schedule.request(state.plan, uri, path, state.encoding))
   end
-  current = state.with(generations: state.generations.put(uri, generation), checks: state.checks.delete(uri))
-  if !checking
-    none: List[Json] = []
-    publish(uri, none)
-    return current
-  end
-  job = Events.Job(
-    events: state.events,
-    agentica: state.agentica,
-    encoding: state.encoding,
-    path: path,
-    uri: uri,
-    generation: generation,
-  )
-  return current.with(checks: current.checks.put(uri, Task.spawn(&Events.check, job)))
+  none: List[Json] = []
+  publish(uri, none)
+  return state.with(plan: Schedule.forget(state.plan, uri, state.encoding))
 end
 
 def publish(uri: String, found: List[Json]) -> Void

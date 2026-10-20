@@ -32,9 +32,11 @@ def main() -> Void
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
     BDD.step("the file {string} contains:", &file_contains),
+    BDD.step("the files {string} contain:", &files_contain),
     BDD.step("the folder has the link {string} to itself", &links_to_itself),
     BDD.step("the editor opens {string}", &opens),
     BDD.step("the editor opens {string} without waiting", &opens_without_waiting),
+    BDD.step("the editor opens the files {string} without waiting", &opens_files_without_waiting),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
     BDD.step("the editor opens an untitled buffer", &opens_untitled),
     BDD.step("the editor saves {string} as:", &saves_as),
@@ -43,6 +45,7 @@ def main() -> Void
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
     BDD.step("the editor waits {int} milliseconds", &waits),
     BDD.step("the editor waits for diagnostics", &waits_for_diagnostics),
+    BDD.step("the editor waits for the diagnostics of {int} files", &waits_for_files),
     BDD.step("the editor sends {string} before initializing", &sends_request),
     BDD.step("the editor sends the request {string}", &sends_request),
     BDD.step("the editor sends a message that is not JSON", &sends_garbage),
@@ -86,10 +89,25 @@ def started_with_arguments(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def file_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  ready = with_folder(ctx)
-  path = file_path(ready, args[0])
-  written = File.write_text(path, BDD.doc_string(ready), TIMEOUT_MS)
-  return BDD.assert(ready, written.ok?, "cannot write #{path}: #{written.message}")
+  return write_file(with_folder(ctx), args[0])
+end
+
+def files_contain(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  written = with_folder(ctx)
+  for name in names(args[0])
+    written = write_file(written, name)
+  end
+  return written
+end
+
+def write_file(ctx: BDD.Context, name: String) -> BDD.Context
+  path = file_path(ctx, name)
+  written = File.write_text(path, BDD.doc_string(ctx), TIMEOUT_MS)
+  return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
+end
+
+def names(list: String) -> List[String]
+  return list.split(",").map do |name| name.strip end
 end
 
 def links_to_itself(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -104,6 +122,14 @@ end
 
 def opens_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return open_through(ctx, args[0], "")
+end
+
+def opens_files_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  opened = ctx
+  for name in names(args[0])
+    opened = open_through(opened, name, "")
+  end
+  return opened
 end
 
 def opens_through_localhost(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -176,6 +202,14 @@ end
 
 def waits_for_diagnostics(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return add(ctx, JSON.object({"kind": JSON.from("await")}))
+end
+
+def waits_for_files(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  waited = ctx
+  for _ in 0...args[0].to_i!
+    waited = add(waited, JSON.object({"kind": JSON.from("await")}))
+  end
+  return waited
 end
 
 def awaiting(ctx: BDD.Context, name: String) -> BDD.Context

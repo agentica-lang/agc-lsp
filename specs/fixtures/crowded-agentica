@@ -1,0 +1,15 @@
+#!/bin/sh
+for last; do :; done
+dir=$(dirname "$last")
+marker="$dir/running.$$"
+touch "$marker"
+trap 'rm -f "$marker"' EXIT TERM
+running=$(find "$dir" -name 'running.*' | wc -l)
+if [ "$running" -gt 4 ]; then
+  echo "agentica: more than 4 checks at once" >&2
+  exit 2
+fi
+sleep 1
+agentica "$@"
+status=$?
+exit "$status"

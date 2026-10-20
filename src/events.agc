@@ -6,7 +6,7 @@ SEND_TIMEOUT_MS = 10000
 export struct Report
   uri: String
   generation: Int
-  diagnostics: List[Json]
+  outcome: Result[List[Json]]
 end
 
 export enum Event
@@ -33,9 +33,10 @@ export def read_input(events: Channel[Event]) -> Void
   end
 end
 
-export def check(job: Job) -> Void
-  found = Check.diagnostics(job.agentica, job.path, job.encoding)
-  deliver(job.events, Event.Checked(Report(uri: job.uri, generation: job.generation, diagnostics: found)))
+export def check(job: Job) -> Result[Void]
+  outcome = Check.diagnostics(job.agentica, job.path, job.encoding)
+  deliver(job.events, Event.Checked(Report(uri: job.uri, generation: job.generation, outcome: outcome)))
+  return ok()
 end
 
 def last?(incoming: Rpc.Incoming) -> Bool
