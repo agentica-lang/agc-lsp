@@ -14,8 +14,8 @@ written in Agentica.
 - An error in an imported file, or in the `agentica.toml` that `agentica check` finds above the file, is shown at the
   start of the opened file, with the imported file and position in the message and in `relatedInformation`, whose
   location points into that file (the start of the file for an error at a key of `agentica.toml`).
-- Saving a file checks again the other open files whose diagnostic came from it, so fixing an imported file clears the
-  error shown on the files that import it.
+- Saving a file checks again the other open files whose current diagnostic points into it, so fixing an imported file
+  clears the error shown on the files that import it.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
 ## Limitations
@@ -28,8 +28,12 @@ written in Agentica.
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
   logs a warning on stderr, so the editor keeps the diagnostics it already shows. A crash of a check task is only
   logged on stderr and also leaves the previous diagnostics.
-- An error in an imported file is published on the file that was opened, never on the imported file itself, and the
-  files that import it are checked again when it is saved, not while it has unsaved changes.
+- An error in an imported file is published on the file that was opened, never on the imported file itself. Saving a
+  file checks again only the open files whose current diagnostic points into it. A file that imports it and showed no
+  error is not checked again until it is saved or reopened, and neither is a file whose first check is still running
+  when the save comes.
+- A diagnostic in a library module or package file (not an absolute path) has the prefix in its message but no related
+  location.
 
 ## Usage
 

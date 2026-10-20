@@ -100,7 +100,9 @@ def diagnostic(found: Json, path: String, encoding: String) -> Json
   else
     message = "#{where(file, key_path, start)}: #{message}"
     fields = fields.put("range", JSON.object({"start": origin(), "end": origin()}))
-    fields = fields.put("relatedInformation", JSON.array([related(file, key_path, start, stop, encoding)]))
+    if file.starts_with?("/")
+      fields = fields.put("relatedInformation", JSON.array([related(file, key_path, start, stop, encoding)]))
+    end
   end
   return JSON.object(fields.put("message", JSON.from(message)))
 end

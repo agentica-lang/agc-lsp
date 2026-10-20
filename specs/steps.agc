@@ -71,6 +71,7 @@ def main() -> Void
     BDD.step("the server warns {string}", &warns),
     BDD.step("the diagnostic of {string} has a help line", &has_help),
     BDD.step("the diagnostic of {string} points to {string}", &points_to),
+    BDD.step("the diagnostic of {string} has no related location", &has_no_related),
     BDD.step("the diagnostic of {string} points into {string} at {int}:{int}-{int}:{int}", &points_into),
     BDD.step("the server exits with code {int}", &exits_with),
   ])
@@ -332,6 +333,12 @@ end
 def points_to(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return last_message(ctx, args[0]) do |done, message|
     BDD.assert(done, message.contains?("/#{args[1]}: "), "#{message.inspect} does not point to #{args[1]}")
+  end
+end
+
+def has_no_related(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return last_diagnostic(ctx, args[0]) do |done, found|
+    BDD.assert(done, !at(found, ["relatedInformation"]).ok?, "unexpected related location in #{found}")
   end
 end
 

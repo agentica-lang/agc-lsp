@@ -345,3 +345,53 @@ Feature: Errors that come from another file
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And "app.agc" gets no diagnostics
     And "app.agc" gets nothing more
+
+  Scenario: saving an imported file under a path with an accent, a space and a hash refreshes the importer
+    Given the language server has started
+    And the file "né/my #lib.agc" contains:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "né/my #lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "app.agc"
+    And the editor saves "né/my #lib.agc" without waiting as:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    And the editor waits for the diagnostics of 2 files
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And "app.agc" gets no diagnostics
+
+  Scenario: an error in a library module is shown without a related location
+    Given the language server has started with the arguments "--agentica specs/fixtures/library-agentica"
+    And the file "app.agc" contains:
+      """
+      import Queue from "std/queue"
+
+      def main() -> Void
+        puts("hi")
+      end
+
+      """
+    When the editor opens "app.agc"
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And the diagnostic of "app.agc" points to "queue.agc:2:10"
+    And the diagnostic of "app.agc" has no related location
