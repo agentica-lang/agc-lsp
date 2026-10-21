@@ -782,7 +782,7 @@ def item_matches?(item: Json, row: List[String]) -> Bool
   label = JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("")
   kind = JSON.int(at(item, ["kind"]).unwrap_or(JSON.null())).unwrap_or(0)
   detail = JSON.string(at(item, ["detail"]).unwrap_or(JSON.null())).unwrap_or("")
-  documentation = JSON.string(at(item, ["documentation"]).unwrap_or(JSON.null())).unwrap_or("")
+  documentation = JSON.string(at(item, ["documentation", "value"]).unwrap_or(JSON.null())).unwrap_or("")
   if label != row[0] or kind != COMPLETION_KINDS.get(row[1]).unwrap!
     return false
   end

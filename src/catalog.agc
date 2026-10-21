@@ -1,4 +1,5 @@
 LOAD_TIMEOUT_MS = 10000
+SHORTEST_WAIT_MS = 1
 
 export struct Entry
   name: String
@@ -22,7 +23,7 @@ end
 
 export def load(agentica: String) -> Result[Book]
   helper = try Process.spawn_captured(agentica, ["--json", "help"], ".", LOAD_TIMEOUT_MS)
-  loaded = read(helper)
+  loaded = read(helper, Time.now_ms() + LOAD_TIMEOUT_MS)
   Process.close(helper)
   return loaded
 end
@@ -71,14 +72,22 @@ export def namespaces_starting(book: Book, prefix: String) -> List[String]
   return book.namespaces.to_a.sort.filter do |name| name.starts_with?(prefix) end
 end
 
-def read(helper: Process) -> Result[Book]
-  try Process.close_stdin(helper, LOAD_TIMEOUT_MS)
-  output = try Process.output(helper, LOAD_TIMEOUT_MS)
-  status = try Process.wait(helper, LOAD_TIMEOUT_MS)
+def read(helper: Process, deadline: Int) -> Result[Book]
+  try Process.close_stdin(helper, remaining(deadline))
+  output = try Process.output(helper, remaining(deadline))
+  status = try Process.wait(helper, remaining(deadline))
   if status != 0
     return error("agentica exited with status #{status}: #{output.stderr.strip}")
   end
   return parse(output.stdout)
+end
+
+def remaining(deadline: Int) -> Int
+  left = deadline - Time.now_ms()
+  if left < SHORTEST_WAIT_MS
+    return SHORTEST_WAIT_MS
+  end
+  return left
 end
 
 def entry_of(item: Json, name: String) -> Entry

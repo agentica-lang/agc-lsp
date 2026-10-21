@@ -56,7 +56,7 @@ def function_item(entry: Catalog.Entry, by_member: Bool, replaced: Json) -> Json
     "label": JSON.from(label),
     "kind": JSON.from(FUNCTION_KIND),
     "detail": JSON.from(entry.signatures.join("\n")),
-    "documentation": JSON.from(entry.description),
+    "documentation": JSON.object({"kind": JSON.from("markdown"), "value": JSON.from(entry.description)}),
     "textEdit": edit(replaced, label),
   })
 end

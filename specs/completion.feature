@@ -10,11 +10,13 @@ Feature: Completion of builtins
       def main() -> Void
         words = String.sp
         String.
+        names = ["😀", String.up]
       end
 
       """
     And the editor asks for completion in "app.agc" at 2:20
     And the editor asks for completion in "app.agc" at 3:10
+    And the editor asks for completion in "app.agc" at 4:27
     Then the completion at 2:20 offers:
       | label | kind     | builtin      |
       | split | Function | String.split |
@@ -25,6 +27,10 @@ Feature: Completion of builtins
       | split  | Function | String.split  |
       | upcase | Function | String.upcase |
     And the completion at 3:10 does not offer "puts"
+    And the completion at 4:27 offers:
+      | label  | kind     | builtin       |
+      | upcase | Function | String.upcase |
+    And the completion item "upcase" at 4:27 replaces 4:25-4:27
 
   Scenario: at the start of a word namespaces and bare functions are offered
     Given the language server has loaded the builtin catalog
