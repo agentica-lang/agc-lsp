@@ -31,6 +31,7 @@ bin/agc-lsp       the launcher editors run: finds the repo through symlinks, the
 editors/nvim/     Neovim 0.11+ config (agentica.lua)
 editors/vscode/   minimal VS Code extension (language client over stdio)
 specs/            BDD features and their step program (steps.agc)
+VERSION           the release version; CHANGELOG.md lists what each release changed
 ```
 
 ## Commands
