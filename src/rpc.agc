@@ -9,21 +9,23 @@ JSONRPC_VERSION = "2.0"
 
 ## Names what the input holds next: a message, bytes that are not JSON, a lost framing or the end.
 export enum Incoming
+  ## Is a parsed JSON message.
   Message(Json)
+  ## Is a framed body that is not JSON, with the reason.
   Malformed(String)
+  ## Is a lost framing, with the reason.
   Unframed(String)
+  ## Is the end of the input.
   End
 end
 
-## Holds a successful JSON-RPC response.
-export struct Response
+struct Response
   jsonrpc: String
   id: Json
   result: Json
 end
 
-## Holds a JSON-RPC notification.
-export struct Notification
+struct Notification
   jsonrpc: String
   method: String
   params: Json
@@ -33,16 +35,15 @@ end
 export def read() -> Incoming
   length = -1
   while true
-    line = IO.gets()
-    if !line.ok?
-      return Incoming.End
-    end
-    header = line.unwrap!
-    if header == ""
-      break
-    end
-    if header.downcase.starts_with?(LENGTH_HEADER)
-      length = header.slice(LENGTH_HEADER.length, header.length - LENGTH_HEADER.length).strip.to_i.unwrap_or(-1)
+    case IO.gets()
+      ok(header) ->
+        if header == ""
+          break
+        end
+        if header.downcase.starts_with?(LENGTH_HEADER)
+          length = header.slice(LENGTH_HEADER.length, header.length - LENGTH_HEADER.length).strip.to_i.unwrap_or(-1)
+        end
+      error(_) -> return Incoming.End
     end
   end
   if length < 0

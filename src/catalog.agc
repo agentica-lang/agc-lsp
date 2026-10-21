@@ -5,17 +5,25 @@ SHORTEST_WAIT_MS = 1
 
 ## Describes a builtin: its qualified name, its namespace and member, its signatures and its description.
 export struct Entry
+  ## Is the qualified name, such as String.split.
   name: String
+  ## Is the part before the dot, or empty for a bare function.
   namespace: String
+  ## Is the part after the dot.
   member: String
+  ## Lists the signatures, one for each overload.
   signatures: List[String]
+  ## Is the description of the builtin.
   description: String
 end
 
 ## Holds the entries by name, in name order, and the set of namespaces.
 export struct Book
+  ## Maps each qualified name to its entry.
   entries: Map[String, Entry]
+  ## Lists the entries in name order.
   ordered: List[Entry]
+  ## Lists the namespaces.
   namespaces: Set[String]
 end
 
@@ -52,7 +60,14 @@ export def parse(text: String) -> Result[Book]
   if book.entries.size == 0
     return error("the catalog has no builtins")
   end
-  return ok(book.with(ordered: book.entries.keys.sort.map do |name| book.entries.get(name).unwrap! end))
+  ordered: List[Entry] = []
+  for name in book.entries.keys.sort
+    case book.entries.get(name)
+      ok(entry) -> ordered = ordered.push(entry)
+      error(_) -> next
+    end
+  end
+  return ok(book.with(ordered: ordered))
 end
 
 ## Returns the builtin with the qualified name, or an error when there is none.
@@ -106,10 +121,10 @@ end
 def entry_of(item: Json, name: String) -> Entry
   namespace = ""
   member = name
-  dot = name.index_of(".")
-  if dot.ok?
-    namespace = name.slice(0, dot.unwrap!)
-    member = name.slice(dot.unwrap! + 1, name.length - dot.unwrap! - 1)
+  dot = name.index_of(".").unwrap_or(-1)
+  if dot >= 0
+    namespace = name.slice(0, dot)
+    member = name.slice(dot + 1, name.length - dot - 1)
   end
   return Entry(
     name: name,

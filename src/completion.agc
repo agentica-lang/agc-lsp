@@ -20,11 +20,12 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
     bare = functions(Catalog.bare_starting(book, partial), false, replaced)
     return JSON.array(namespaces(book, partial, replaced).concat(bare))
   end
-  receiver = Words.receiver(chars, start)
-  if receiver.ok? and Catalog.namespace?(book, receiver.unwrap!.text)
-    return JSON.array(functions(Catalog.functions_of(book, receiver.unwrap!.text, partial), true, replaced))
+  case Words.receiver(chars, start)
+    ok(receiver) if Catalog.namespace?(book, receiver.text) ->
+      return JSON.array(functions(Catalog.functions_of(book, receiver.text, partial), true, replaced))
+    ok(_) -> return none()
+    error(_) -> return none()
   end
-  return none()
 end
 
 def none() -> Json

@@ -1,6 +1,6 @@
 ## Runs `agentica --json check` on the text of a buffer and maps its diagnostic to LSP.
 
-import Columns from "columns"
+import {UTF16, utf16_width} from "columns"
 import Logger from "std/logger"
 import Uri from "uri"
 
@@ -10,7 +10,6 @@ READ_TIMEOUT_MS = 10_000
 SEVERITY_ERROR = 1
 CHUNK_BYTES = 1_048_576
 SINGLE_SEND_CHARS = 262_144
-UTF16 = "utf-16"
 RELATED_MESSAGE = "the error is here"
 NO_MAIN_MESSAGE = "a program must declare exactly one main"
 STUB_MAIN = "\n\ndef main() -> Void\nend\n"
@@ -207,7 +206,7 @@ def position(at: Place, lines: List[String], encoding: String) -> Json
   line = not_negative(at.line - 1)
   character = not_negative(at.column - 1)
   if encoding == UTF16 and line < lines.size
-    character = Columns.utf16_width(lines[line], character)
+    character = utf16_width(lines[line], character)
   end
   return JSON.object({"line": JSON.from(line), "character": JSON.from(character)})
 end

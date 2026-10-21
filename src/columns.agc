@@ -1,5 +1,7 @@
 ## Converts between code point counts and UTF-16 code unit counts of a line.
 
+export UTF16 = "utf-16"
+export UTF32 = "utf-32"
 SURROGATE_START = 65_536
 
 ## Returns the UTF-16 width of the first characters of a line.

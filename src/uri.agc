@@ -40,9 +40,14 @@ export def same_path?(a: String, b: String) -> Bool
   if a == b
     return true
   end
-  first = Path.real(a)
-  second = Path.real(b)
-  return first.ok? and second.ok? and first.unwrap! == second.unwrap!
+  case Path.real(a)
+    ok(first) ->
+      case Path.real(b)
+        ok(second) -> return first == second
+        error(_) -> return false
+      end
+    error(_) -> return false
+  end
 end
 
 def before(text: String, mark: String) -> String

@@ -1,9 +1,20 @@
 ## Scans the words of a line given as a list of characters.
 
+DIGIT_FIRST = 48
+DIGIT_LAST = 57
+UPPER_FIRST = 65
+UPPER_LAST = 90
+LOWER_FIRST = 97
+LOWER_LAST = 122
+UNDERSCORE = 95
+
 ## Holds a word, the characters from start up to stop.
 export struct Word
+  ## Is the text of the word.
   text: String
+  ## Is the index of its first character.
   start: Int
+  ## Is the index after its last character.
   stop: Int
 end
 
@@ -72,7 +83,7 @@ end
 
 ## Returns true when the text starts with a capital letter.
 export def type_name?(text: String) -> Bool
-  return text.length > 0 and String.code(text.at(0)) >= 65 and String.code(text.at(0)) <= 90
+  return text.length > 0 and String.code(text.at(0)) >= UPPER_FIRST and String.code(text.at(0)) <= UPPER_LAST
 end
 
 ## Returns true when the index is right after the ? or ! that ends a name.
@@ -102,7 +113,12 @@ end
 
 def word_char?(char: String) -> Bool
   code = String.code(char)
-  return (code >= 48 and code <= 57) or (code >= 65 and code <= 90) or (code >= 97 and code <= 122) or code == 95
+  return (
+    (code >= DIGIT_FIRST and code <= DIGIT_LAST) or
+    (code >= UPPER_FIRST and code <= UPPER_LAST) or
+    (code >= LOWER_FIRST and code <= LOWER_LAST) or
+    code == UNDERSCORE
+  )
 end
 
 def suffix?(char: String) -> Bool

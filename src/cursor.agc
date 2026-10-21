@@ -1,15 +1,18 @@
 ## Locates a position of the client in an open document.
 
-import Columns from "columns"
-
-UTF16 = "utf-16"
+import {UTF16, characters_in, utf16_width} from "columns"
 
 ## Holds the line of a position, its characters and the character index the position falls on.
 export struct Cursor
+  ## Is the zero-based line of the position.
   line: Int
+  ## Is the text of the line without its line ending.
   text: String
+  ## Lists the characters of the line.
   chars: List[String]
+  ## Is the index of the character the position falls on.
   index: Int
+  ## Is the position encoding of the session.
   encoding: String
 end
 
@@ -31,7 +34,7 @@ export def locate(documents: Map[String, String], params: Json, encoding: String
   chars = text.split("")
   index = character
   if encoding == UTF16
-    index = Columns.characters_in(text, character)
+    index = characters_in(text, character)
   end
   if index > chars.size
     index = chars.size
@@ -47,7 +50,7 @@ end
 def position(cursor: Cursor, index: Int) -> Json
   character = index
   if cursor.encoding == UTF16
-    character = Columns.utf16_width(cursor.text, index)
+    character = utf16_width(cursor.text, index)
   end
   return JSON.object({"line": JSON.from(cursor.line), "character": JSON.from(character)})
 end

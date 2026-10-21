@@ -10,11 +10,17 @@ VALUE_OPTIONS = Set.new(["--agentica", "--log-level", "--client-log-level", "--l
 
 ## Holds the options given on the command line, with the problems found while reading them.
 export struct Options
+  ## Is the executable that runs the checks.
   agentica: String
+  ## Is the log level of stderr and the log file, or empty for the default.
   level: String
+  ## Is the log level of the editor, or empty for the default.
   client_level: String
+  ## Is the format of the stderr lines, or empty for the default.
   format: String
+  ## Is the path of the log file, or empty for none.
   file: String
+  ## Lists what was wrong with the arguments.
   problems: List[String]
 end
 

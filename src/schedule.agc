@@ -9,18 +9,27 @@ OVERDUE_WAIT_MS = 1
 
 ## Holds a check that waits for its due time.
 export struct Pending
+  ## Is the URI of the file.
   uri: String
+  ## Is the path of the file.
   path: String
+  ## Is the text to check.
   text: String
+  ## Is the time in milliseconds when the check may start.
   due: Int
 end
 
 ## Holds the queue of waiting checks, the running tasks and the generation of each file.
 export struct Plan
+  ## Is the executable that runs the checks.
   agentica: String
+  ## Is the channel that receives the reports.
   events: Channel[Events.Event]
+  ## Maps each URI to the generation of its latest check.
   generations: Map[String, Int]
+  ## Lists the checks that wait to start.
   queue: List[Pending]
+  ## Maps each URI to its running check.
   running: Map[String, Task[Result[Void]]]
 end
 
@@ -148,13 +157,16 @@ end
 def reap(plan: Plan) -> Plan
   alive: Map[String, Task[Result[Void]]] = {}
   for uri in plan.running.keys
-    task = plan.running.get(uri).unwrap!
-    case Task.await(task, REAP_MS)
-      Await.Done(outcome) ->
-        if !outcome.ok?
-          Logger.err("the check of #{uri} crashed: #{outcome.message}")
+    case plan.running.get(uri)
+      ok(task) ->
+        case Task.await(task, REAP_MS)
+          Await.Done(outcome) ->
+            if !outcome.ok?
+              Logger.err("the check of #{uri} crashed: #{outcome.message}")
+            end
+          Await.TimedOut -> alive = alive.put(uri, task)
         end
-      Await.TimedOut -> alive = alive.put(uri, task)
+      error(_) -> next
     end
   end
   return plan.with(running: alive)

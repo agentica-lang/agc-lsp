@@ -927,8 +927,12 @@ end
 
 def reported(ctx: BDD.Context, name: String) -> BDD.Context
   for message in messages(ctx)
-    if at(message, ["id"]).unwrap_or(JSON.from(0)).to_s == "null" and at(message, ["error"]).ok?
-      return expect_error(ctx, at(message, ["error"]).unwrap!, name)
+    case at(message, ["error"])
+      ok(found) ->
+        if at(message, ["id"]).unwrap_or(JSON.from(0)).to_s == "null"
+          return expect_error(ctx, found, name)
+        end
+      error(_) -> next
     end
   end
   return BDD.assert(ctx, false, "no error without an id among #{JSON.array(messages(ctx))}")
@@ -1105,14 +1109,16 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
   extra = JSON.list(BDD.get(ctx, "arguments").unwrap_or(JSON.array(none))).unwrap!
   words = extra.map do |word| JSON.string(word).unwrap! end
   log_path = ""
-  if BDD.get(ctx, "log file").ok?
-    log_path = file_path(ctx, JSON.string(BDD.get(ctx, "log file").unwrap!).unwrap!)
+  log_file = JSON.string(BDD.get(ctx, "log file").unwrap_or(JSON.from(""))).unwrap_or("")
+  if log_file != ""
+    log_path = file_path(ctx, log_file)
     words = words.concat(["--log-file", log_path])
   end
   command = "agentica"
   arguments = ["--allow-run", SERVER].concat(words)
-  if BDD.get(ctx, "launcher").ok?
-    command = JSON.string(BDD.get(ctx, "launcher").unwrap!).unwrap!
+  launcher = JSON.string(BDD.get(ctx, "launcher").unwrap_or(JSON.from(""))).unwrap_or("")
+  if launcher != ""
+    command = launcher
     arguments = words
   end
   ran = session(dir, command, arguments, actions)

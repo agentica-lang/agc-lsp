@@ -43,13 +43,17 @@ def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]
 end
 
 def after_dot(book: Catalog.Book, chars: List[String], word: Words.Word) -> Result[Found]
-  receiver = Words.receiver(chars, word.start)
-  if receiver.ok? and Catalog.namespace?(book, receiver.unwrap!.text)
-    return qualified(book, receiver.unwrap!.text, word, receiver.unwrap!.start)
+  case Words.receiver(chars, word.start)
+    ok(receiver) if Catalog.namespace?(book, receiver.text) ->
+      return qualified(book, receiver.text, word, receiver.start)
+    ok(receiver) if Words.type_name?(receiver.text) ->
+      return error("a capitalized receiver is not a value: #{receiver.text}")
+    ok(_) -> return methods(book, word)
+    error(_) -> return methods(book, word)
   end
-  if receiver.ok? and Words.type_name?(receiver.unwrap!.text)
-    return error("a capitalized receiver is not a value: #{receiver.unwrap!.text}")
-  end
+end
+
+def methods(book: Catalog.Book, word: Words.Word) -> Result[Found]
   entries = Catalog.methods_named(book, word.text)
   if entries.size == 0
     return error("no builtin method #{word.text}")

@@ -26,6 +26,9 @@ If a checkout of the Agentica repository sits at `../agentica`, read
 
 The people version of the rules is `site/content/style.md` of that repository.
 
+Rules marked `[CODE]` are enforced only by the pinned agentica binary (`AGENTICA_VERSION` in CI): `master` may mark
+rules that the pinned release does not enforce yet.
+
 `master` may document builtins newer than the release CI pins
 (`AGENTICA_VERSION` in `.github/workflows/ci.yml`). Use only what that release
 has: `agentica help NAME` on the pinned binary is the authority on signatures.

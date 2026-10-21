@@ -4,6 +4,7 @@ import Catalog from "catalog"
 import Check from "check"
 import Completion from "completion"
 import Cursor from "cursor"
+import {UTF16, UTF32} from "columns"
 import Events from "events"
 import Hover from "hover"
 import Logs from "logs"
@@ -19,8 +20,6 @@ METHOD_NOT_FOUND = -32_601
 SERVER_NOT_INITIALIZED = -32_002
 FULL_SYNC = 1
 AGENTICA_EXTENSION = ".agc"
-UTF16 = "utf-16"
-UTF32 = "utf-32"
 EVENT_CAPACITY = 256
 WAIT_MS = 1000
 READER_CHECK_MS = 1
@@ -28,15 +27,25 @@ CHANGE_DELAY_MS = 200
 
 ## Holds the state of the server: its options, the open documents, the plan of the checks and the catalog.
 export struct State
+  ## Holds the command-line options.
   options: Options.Options
+  ## Is the position encoding that the session uses.
   encoding: String
+  ## Is true once initialize was answered.
   initialized: Bool
+  ## Is true once shutdown was requested.
   shut_down: Bool
+  ## Is the channel of the events of the server loop.
   events: Channel[Events.Event]
+  ## Is the plan of the checks.
   plan: Schedule.Plan
+  ## Maps each URI to the file that its diagnostic points into.
   pointing: Map[String, String]
+  ## Maps each open URI to its text.
   documents: Map[String, String]
+  ## Is the catalog of builtins, empty until it loads.
   catalog: Catalog.Book
+  ## Lists the catalog tasks that have not ended.
   loaders: List[Task[Result[Void]]]
 end
 
@@ -124,10 +133,10 @@ def dispatch(state: State, event: Events.Event) -> Next
   case event
     Events.Event.Checked(report) -> return Next.Continue(checked(state, report))
     Events.Event.Cataloged(outcome) ->
-      if outcome.ok?
-        return Next.Continue(state.with(catalog: outcome.unwrap!))
+      case outcome
+        ok(book) -> return Next.Continue(state.with(catalog: book))
+        error(_) -> return Next.Continue(state)
       end
-      return Next.Continue(state)
     Events.Event.Input(incoming) -> return input(state, incoming)
     Events.Event.Log(logged) ->
       Logs.write_to_editor(logged)
@@ -152,12 +161,17 @@ def checked(state: State, report: Events.Report) -> State
   if state.shut_down or !Schedule.current?(state.plan, report)
     return state
   end
-  pointing = state.pointing
-  if report.outcome.ok?
-    publish(report.uri, report.outcome.unwrap!)
-    pointing = point(pointing, report.uri, Check.points_into(report.outcome.unwrap!))
-  end
+  pointing = published(state, report)
   return state.with(plan: Schedule.settle(state.plan, report.uri, state.encoding), pointing: pointing)
+end
+
+def published(state: State, report: Events.Report) -> Map[String, String]
+  case report.outcome
+    ok(found) ->
+      publish(report.uri, found)
+      return point(state.pointing, report.uri, Check.points_into(found))
+    error(_) -> return state.pointing
+  end
 end
 
 def point(pointing: Map[String, String], uri: String, target: String) -> Map[String, String]
@@ -316,8 +330,12 @@ def saved(state: State, uri: String) -> State
     return refreshed
   end
   for document in refreshed.pointing.keys
-    if document != uri and Uri.same_path?(refreshed.pointing.get(document).unwrap!, path)
-      refreshed = recheck(refreshed, document)
+    case refreshed.pointing.get(document)
+      ok(target) ->
+        if document != uri and Uri.same_path?(target, path)
+          refreshed = recheck(refreshed, document)
+        end
+      error(_) -> next
     end
   end
   return refreshed

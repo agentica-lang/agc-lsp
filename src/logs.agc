@@ -140,7 +140,13 @@ def editor_type(level: LogLevel) -> Int
 end
 
 def editor_text(event: LogEvent) -> String
-  shown = event.fields.keys.map do |key| "#{key}=#{event.fields.get(key).unwrap!}" end
+  shown: List[String] = []
+  for key in event.fields.keys
+    case event.fields.get(key)
+      ok(value) -> shown = shown.push("#{key}=#{value}")
+      error(_) -> next
+    end
+  end
   if shown.size == 0
     return event.message
   end
