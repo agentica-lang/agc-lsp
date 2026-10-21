@@ -9,6 +9,8 @@ SEVERITY_ERROR = 1
 CHUNK_BYTES = 1048576
 SINGLE_SEND_CHARS = 262144
 RELATED_MESSAGE = "the error is here"
+NO_MAIN_MESSAGE = "a program must declare exactly one main"
+STUB_MAIN = "\n\ndef main() -> Void\nend\n"
 
 struct Place
   line: Int
@@ -16,13 +18,18 @@ struct Place
 end
 
 export def diagnostics(agentica: String, path: String, text: String, encoding: String) -> Result[List[Json]]
-  case run(agentica, path, text)
+  deadline = Time.now_ms() + CHECK_TIMEOUT_MS
+  case run(agentica, path, text, deadline)
     ok(problem) ->
       if problem == ""
         return ok([])
       end
       case JSON.parse(problem)
-        ok(found) -> return ok([diagnostic(found, path, text, encoding)])
+        ok(found) ->
+          if without_main?(found, path)
+            return as_module(agentica, path, text, encoding, deadline)
+          end
+          return ok([diagnostic(found, path, text, encoding)])
         error(message) -> return failed("the diagnostic of #{path} is not JSON: #{message}")
       end
     error(message) -> return failed("cannot check #{path}: #{message}")
@@ -47,8 +54,39 @@ def failed(message: String) -> Result[List[Json]]
   return error(message)
 end
 
-def run(agentica: String, path: String, text: String) -> Result[String]
-  deadline = Time.now_ms() + CHECK_TIMEOUT_MS
+def without_main?(found: Json, path: String) -> Bool
+  if text(found, "code") != "CHECK-MAIN" or !text(found, "message").starts_with?(NO_MAIN_MESSAGE)
+    return false
+  end
+  return Uri.same_path?(text(found, "file"), path)
+end
+
+def as_module(agentica: String, path: String, text: String, encoding: String, deadline: Int) -> Result[List[Json]]
+  case run(agentica, path, text + STUB_MAIN, deadline)
+    ok(problem) ->
+      if problem == ""
+        return ok([])
+      end
+      case JSON.parse(problem)
+        ok(found) ->
+          if in_stub?(found, path, text)
+            return ok([])
+          end
+          return ok([diagnostic(found, path, text, encoding)])
+        error(message) -> return failed("the diagnostic of #{path} is not JSON: #{message}")
+      end
+    error(message) -> return failed("cannot check #{path}: #{message}")
+  end
+end
+
+def in_stub?(found: Json, path: String, source: String) -> Bool
+  if !Uri.same_path?(text(found, "file"), path)
+    return false
+  end
+  return place(found, "start").line > source.split("\n").size
+end
+
+def run(agentica: String, path: String, text: String, deadline: Int) -> Result[String]
   checker = try Process.spawn_captured(agentica, ["--json", "check", "--stdin", path], ".", CHECK_TIMEOUT_MS)
   result = collect(checker, text, deadline)
   Process.close(checker)

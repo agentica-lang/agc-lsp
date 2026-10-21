@@ -46,6 +46,11 @@ written in Agentica.
   logs a warning (see Logging), so the editor keeps the diagnostics it already shows. A crash of a check task is
   logged as an error and also leaves the previous diagnostics; a crash of the catalog task is logged as an error and
   leaves hover and completion empty.
+- `agentica check` treats every file as a program, and a module without `main` fails with `CHECK-MAIN` before any
+  function is checked. Until [agentica#516](https://github.com/sonic182/agentica/issues/516) adds a module mode, a file
+  with that error is checked a second time with a stub `main` appended (inside the same 10 s deadline), and that result
+  is published, so modules are checked with a stub `main` and cost a second checker run. A `main` with a wrong
+  signature is reported as is.
 - Hover and completion know the builtins only, not your own functions, structs or imports (nor the `std/` modules).
   The type of a variable is not known, so `xs.size` shows every builtin named `size`, a struct field read such as
   `entry.name` can show builtin members of that name too, and `xs.` completes nothing. A capitalized receiver that is

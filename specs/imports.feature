@@ -442,3 +442,27 @@ Feature: Errors that come from another file
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And the diagnostic of "app.agc" points to "queue.agc:2:10"
     And the diagnostic of "app.agc" has no related location
+
+  Scenario: a module without main that imports a file with an error shows the error of the import
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the file "helpers.agc" contains:
+      """
+      import Lib from "lib"
+
+      export def twice() -> Int
+        return Lib.answer() * 2
+      end
+
+      """
+    When the editor opens "helpers.agc"
+    Then "helpers.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And the diagnostic of "helpers.agc" points into "lib.agc" at 2:10-2:13

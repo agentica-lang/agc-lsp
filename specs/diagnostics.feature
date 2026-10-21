@@ -439,3 +439,42 @@ Feature: Diagnostics in the editor
     And "slow.agc" gets these diagnostics:
       | at       | severity | code               |
       | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: a module without main that is fine publishes no diagnostics
+    Given the language server has started
+    And the file "helpers.agc" contains:
+      """
+      export def double(n: Int) -> Int
+        return n * 2
+      end
+
+      """
+    When the editor opens "helpers.agc"
+    Then "helpers.agc" gets no diagnostics
+
+  Scenario: a type error in a module without main is shown at its place
+    Given the language server has started
+    And the file "helpers.agc" contains:
+      """
+      export def double(n: Int) -> Int
+        return "x"
+      end
+      """
+    When the editor opens "helpers.agc"
+    Then "helpers.agc" gets these diagnostics:
+      | at        | severity | code                |
+      | 2:10-2:13 | error    | CHECK-TYPE-MISMATCH |
+
+  Scenario: a main with the wrong signature is still reported
+    Given the language server has started
+    And the file "wrong.agc" contains:
+      """
+      def main(name: String) -> Void
+        puts(name)
+      end
+
+      """
+    When the editor opens "wrong.agc"
+    Then "wrong.agc" gets these diagnostics:
+      | at      | severity | code       |
+      | 1:1-4:1 | error    | CHECK-MAIN |
