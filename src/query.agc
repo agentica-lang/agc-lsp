@@ -1,4 +1,5 @@
-## Asks agentica for the type and the definition at a position, and for the outline of a file.
+## Asks agentica for the type and the definition at a position, the references of a name, the outline of a file and
+## where a name is declared.
 
 import Catalog from "catalog"
 import Fields from "fields"
@@ -9,6 +10,8 @@ import Uri from "uri"
 
 QUERY_TIMEOUT_MS = 10_000
 EXPECTED_CODES = ["LEX-", "PARSE-", "CHECK-", "QUERY-NO-EXPRESSION"]
+SEARCH_CODES = ["LEX-", "PARSE-", "QUERY-NOT-FOUND"]
+NO_FILES = "no .agc file"
 
 ## Holds the text of a file as the editor shows it, and the path it stands for.
 export struct Buffer
@@ -84,6 +87,34 @@ export enum Outlined
   Found(List[Item])
 end
 
+## Holds where a name is used: what it refers to and the places of its uses.
+export struct Uses
+  ## Tells what the name refers to; a declaration has its own place, which the uses do not repeat.
+  origin: Origin
+  ## Lists the places of the name in the uses, in files with absolute paths.
+  places: List[Places.Span]
+end
+
+## Is what a query of the references gives.
+export enum Referenced
+  ## Is the code of the diagnostic that agentica gave instead of the references.
+  Refused(String)
+  ## Is the uses of the name at the position.
+  Found(Uses)
+end
+
+## Holds a declaration that a search by name found.
+export struct Match
+  ## Is the kind: function, struct, enum, alias, constant, field or variant.
+  kind: String
+  ## Is the name alone.
+  name: String
+  ## Is the struct or the enum that a field or a variant belongs to, or empty.
+  container: String
+  ## Is the place of the name, in a file with an absolute path.
+  name_span: Places.Span
+end
+
 enum Reply
   Answer(Json)
   Refusal(String)
@@ -93,18 +124,50 @@ end
 export def type_at(agentica: String, buffer: Buffer, line: Int, column: Int) -> Result[Typed]
   folder = Uri.folder_of(buffer.path)
   arguments = ["--json", "type-at", "--partial", "--stdin", "#{buffer.path}:#{line}:#{column}"]
-  reply = try ask(agentica, folder, arguments, buffer.text)
+  reply = try ask(agentica, folder, arguments, buffer.text, EXPECTED_CODES)
   case reply
     Reply.Refusal(code) -> return ok(Typed.Refused(code))
     Reply.Answer(found) -> return ok(Typed.Found(subject_of(found, folder)))
   end
 end
 
+## Returns the declaration and the uses of the name at a line and a column of the buffer, counted as for type_at.
+export def references_at(agentica: String, buffer: Buffer, line: Int, column: Int) -> Result[Referenced]
+  folder = Uri.folder_of(buffer.path)
+  arguments = ["--json", "refs", "--partial", "--stdin", "#{buffer.path}:#{line}:#{column}"]
+  reply = try ask(agentica, folder, arguments, buffer.text, EXPECTED_CODES)
+  case reply
+    Reply.Refusal(code) -> return ok(Referenced.Refused(code))
+    Reply.Answer(found) -> return ok(Referenced.Found(uses_of(found, folder)))
+  end
+end
+
+## Returns the declarations of a name in the files below the folder, as they are on disk, none when it has none.
+export def declarations_of(agentica: String, folder: String, name: String) -> Result[List[Match]]
+  none: List[Match] = []
+  case ask(agentica, folder, ["--json", "symbol", name], "", SEARCH_CODES)
+    ok(reply) -> return searched(reply, folder)
+    error(message) if message.contains?(NO_FILES) ->
+      Logger.debug("the search found no agentica file in #{folder}")
+      return ok(none)
+    error(message) -> return error(message)
+  end
+end
+
 ## Returns the declarations of the buffer.
 export def outline_of_buffer(agentica: String, buffer: Buffer) -> Result[Outlined]
   arguments = ["--json", "outline", "--stdin", buffer.path]
-  reply = try ask(agentica, Uri.folder_of(buffer.path), arguments, buffer.text)
+  reply = try ask(agentica, Uri.folder_of(buffer.path), arguments, buffer.text, EXPECTED_CODES)
   return outlined(reply)
+end
+
+def searched(reply: Reply, folder: String) -> Result[List[Match]]
+  case reply
+    Reply.Refusal(_) ->
+      none: List[Match] = []
+      return ok(none)
+    Reply.Answer(found) -> return ok(matches_of(found, folder))
+  end
 end
 
 def outlined(reply: Reply) -> Result[Outlined]
@@ -114,7 +177,13 @@ def outlined(reply: Reply) -> Result[Outlined]
   end
 end
 
-def ask(agentica: String, folder: String, arguments: List[String], text: String) -> Result[Reply]
+def ask(
+  agentica: String,
+  folder: String,
+  arguments: List[String],
+  text: String,
+  codes: List[String],
+) -> Result[Reply]
   deadline = Time.now_ms() + QUERY_TIMEOUT_MS
   output = try Proc.run(agentica, arguments, text, deadline, folder)
   if output.status == 0
@@ -123,19 +192,19 @@ def ask(agentica: String, folder: String, arguments: List[String], text: String)
     end
     return ok(Reply.Answer(try JSON.parse(output.stdout)))
   end
-  code = refusal_code(output.stderr)
+  code = refusal_code(output.stderr, codes)
   if code == ""
     return error("agentica exited with status #{output.status}: #{output.stderr.strip}")
   end
   return ok(Reply.Refusal(code))
 end
 
-def refusal_code(stderr: String) -> String
+def refusal_code(stderr: String, codes: List[String]) -> String
   lines = stderr.strip.split("\n")
   case JSON.parse(lines[lines.size - 1])
     ok(found) ->
       code = Fields.text(found, "code")
-      if expected?(code)
+      if known_code?(code, codes)
         Logger.debug("agentica refused the query: #{code}")
         return code
       end
@@ -144,8 +213,8 @@ def refusal_code(stderr: String) -> String
   end
 end
 
-def expected?(code: String) -> Bool
-  return EXPECTED_CODES.any? do |prefix| code.starts_with?(prefix) end
+def known_code?(code: String, prefixes: List[String]) -> Bool
+  return prefixes.any? do |prefix| code.starts_with?(prefix) end
 end
 
 def subject_of(found: Json, folder: String) -> Subject
@@ -172,6 +241,38 @@ def origin_of(found: Json, folder: String) -> Origin
     return Origin.Builtin(Catalog.from_help(help))
   end
   return Origin.Unknown
+end
+
+def uses_of(found: Json, folder: String) -> Uses
+  places = Fields.items(found, "references").map do |use|
+    located(Places.span(Fields.value(use, "span")), folder)
+  end
+  return Uses(origin: origin_of(found, folder), places: places)
+end
+
+def matches_of(found: Json, folder: String) -> List[Match]
+  for skipped in Fields.items(found, "skipped")
+    diagnostic = Fields.value(skipped, "diagnostic")
+    Logger.debug("the search skipped a file", {
+      "file": Fields.text(skipped, "file"),
+      "code": Fields.text(diagnostic, "code"),
+    })
+  end
+  declared = Fields.items(found, "matches").filter do |match| Fields.text(match, "kind") != "builtin" end
+  return declared.map do |match| match_of(match, folder) end
+end
+
+def match_of(found: Json, folder: String) -> Match
+  container = Fields.text(found, "struct")
+  if container == ""
+    container = Fields.text(found, "enum")
+  end
+  return Match(
+    kind: Fields.text(found, "kind"),
+    name: Fields.text(found, "name"),
+    container: container,
+    name_span: located(Places.span(Fields.value(found, "name_span")), folder),
+  )
 end
 
 def located(span: Places.Span, folder: String) -> Places.Span

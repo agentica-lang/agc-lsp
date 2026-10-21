@@ -3,8 +3,8 @@
 A Language Server Protocol (LSP) server for [Agentica](https://github.com/sonic182/agentica), a language for AI agents,
 written in Agentica.
 
-> **Status:** early stage. Diagnostics of the text in the editor's buffer, hover, completion, go to definition and
-> document symbols.
+> **Status:** early stage. Diagnostics of the text in the editor's buffer, hover, completion, go to definition, find
+> references, document symbols and workspace symbols.
 
 ## What it does
 
@@ -48,6 +48,23 @@ written in Agentica.
   hierarchy: constants, functions, structs with their fields, enums with their variants and type aliases. The range is
   the declaration, the selection range its name and the detail its signature. `outline` only parses, so a file with a
   type error is listed too; a file with a syntax error gets `null`.
+- Find references (`textDocument/references`) asks `agentica --json refs --partial --stdin` about the position, in the
+  text of the buffer, and answers the locations of the uses of the name: a function, struct, enum, variant, field,
+  constant, local, parameter, loop name, pattern name or builtin, in the same file and in the files that it imports
+  (and they import). The declaration is the first location unless the client sets `context.includeDeclaration` to
+  `false`; a builtin has none. A name used in a function with an error is found in the other functions, as for
+  definition. A comment, a string, a keyword, a blank or a document that is not open answers `null` without a
+  process, and so does a position where `agentica` finds no expression (a name in a type annotation). A `std/` module
+  is not on disk, so its declaration is not listed.
+- Workspace symbols (`workspace/symbol`) ask `agentica --json symbol NAME` in the workspace folder and answer where the
+  name is declared, as symbol information with the kind of the declaration (as in document symbols; a field or a
+  variant has its struct or enum as `containerName`) and the range of its name. The query must be the whole name as
+  the code declares it, with the same case: `area`, `Point`, `Point.x` (a field), `Shape.Circle` (a variant),
+  `Models.greet` (through the alias of an import in some file of the workspace). `agentica symbol` does not match
+  prefixes or fuzzily, so `are` finds nothing. A name that is not declared answers an empty list. An empty query, a query that starts with `-` (a name never
+  does, and `agentica` would read it as an option) and an editor that gave no workspace folder answer an empty list
+  without a process. The folder is the first of `workspaceFolders` of
+  `initialize`, else `rootUri`, else `rootPath`; a client with several folders is searched in the first only.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
 ## Limitations
@@ -71,11 +88,13 @@ written in Agentica.
   lines or code inside `#{}` is not recognised. A catalog that cannot be loaded (see Logging) leaves completion empty
   for the session, and the hover of a qualified builtin or a bare call then comes from `type-at`, so it needs a function
   that checks.
-- Definition, document symbols and the type in a hover cost a process each: every request starts `agentica` (`type-at`
-  or `outline`) in a task with a 10 s deadline, so the server loop never waits for it. At most 4 of these tasks run at
-  once; the other requests wait in the order they came. A newer hover, definition or symbols request for the same
-  document supersedes the older ones of the same kind, which are answered with `null` and their process is closed;
-  a hover or definition on a comment, a string, a keyword or a blank answers `null` without a process.
+- Definition, references, document symbols, workspace symbols and the type in a hover cost a process each: every
+  request starts `agentica` (`type-at`, `refs`, `outline` or `symbol`) in a task with a 10 s deadline, so the server
+  loop never waits for it. At most 4 of these tasks run at once; the other requests wait in the order they came. A
+  newer hover, definition, references or symbols request for the same document supersedes the older ones of the same
+  kind, and a newer workspace symbol request supersedes the older ones (of the same workspace folder); they are
+  answered with `null` and their process is closed. A hover, definition or references request on a comment, a string,
+  a keyword or a blank answers `null` without a process.
   A `$/cancelRequest` answers the request with the error `-32800` (request cancelled). The answer is for the text
   that the buffer had when the request came, even if it changed or was closed meanwhile. At `shutdown` the requests
   still in flight are answered with `null` before the answer to `shutdown`. A query that fails (timeout, the binary
@@ -84,12 +103,22 @@ written in Agentica.
 - A `std/` module is not a file on disk, so a name declared there has no location, though its hover has the signature
   and the doc. A function with an error gives `type-at` no type, so definition and hover work in the other functions
   and on the names that resolve in that one, but not on an expression that has the error. Names in type annotations
-  (`n: Int`, `-> Names`, `List[Point]`) give nothing yet, in either request
+  (`n: Int`, `-> Names`, `List[Point]`) give nothing yet, in any of these requests
   ([agentica#531](https://github.com/sonic182/agentica/issues/531)); the same holds for the name of a variant in a
   `case` pattern.
 - Every check and every query starts an `agentica` process that links and checks the file and what it imports again, so
   an answer takes from tens of milliseconds, more for a large program. Imported files are read from disk, not from
   the editor's buffers.
+- References are those in the buffer and the files it links: `refs` is asked about the buffer alone, so a file that
+  only imports the name, and that the buffer does not import, is not searched. Asked on a declaration in a module, it
+  lists the uses in that module and in what it imports, not in the files that import it; asked on a use in a file that
+  imports the module, it lists the uses in that file and in the module. The locations in other files come from disk,
+  so an unsaved change in them moves a location. `refs` needs the program to check apart from the functions with an error:
+  a field, a local or a keyword inside a function with an error gives `null`.
+- Workspace symbols read every `.agc` file below the workspace folder from disk (not the hidden folders, `agc_libs/`
+  or links), so an unsaved buffer or a file that is not saved yet is not searched and a saved file whose buffer
+  changed has the positions of the disk. A file that does not parse is left out, and logged at debug level; the
+  others still answer. Declarations of `std/` modules and builtins are not listed (they have no place).
 - The VS Code extension has not been tested in VS Code.
 - An error in an imported file is published on the file that was opened, never on the imported file itself. Saving a
   file checks again only the open files whose current diagnostic points into it. A file that imports it and showed no
@@ -100,8 +129,8 @@ written in Agentica.
 
 ## Usage
 
-It needs `agentica` (0.8.0 or later; definition, hover on the code and symbols use `type-at` and `outline`, which
-earlier releases lack) on `PATH`, and `--allow-run` to start it:
+It needs `agentica` (0.8.0 or later; definition, hover on the code, references and symbols use `type-at`, `refs`,
+`outline` and `symbol`, which earlier releases lack) on `PATH`, and `--allow-run` to start it:
 
 ```sh
 agentica --allow-run src/main.agc [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level LEVEL] \
@@ -159,8 +188,8 @@ What is logged:
   each check with its URI, generation and duration in milliseconds.
 - `info`: the start (with the `agentica` binary used), the initialization (with the position encoding), the loading
   of the builtin catalog and the shutdown.
-- `warning`: a check that failed (timeout, the checker cannot run, status 1 without a diagnostic), a definition, hover
-  or symbols request whose query failed, a builtin catalog that could not be loaded, a URI that is not a local file, an ignored argument or a setting that is not valid.
+- `warning`: a check that failed (timeout, the checker cannot run, status 1 without a diagnostic), a definition,
+  references, hover, symbols or workspace symbols request whose query failed, a builtin catalog that could not be loaded, a URI that is not a local file, an ignored argument or a setting that is not valid.
 - `error`: a crashed check task or input reader, and a message without a `Content-Length` header, which ends the
   session.
 

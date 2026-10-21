@@ -35,10 +35,9 @@ export def start() -> Plan
   return Plan(queue: [], running: [])
 end
 
-## Returns the plan with the query queued, and the older queries of the same document and method dropped.
+## Returns the plan with the query queued, and the older queries of the same key and method dropped.
 export def submit(plan: Plan, job: Events.QueryJob) -> Change
-  path = job.request.buffer.path
-  older = drop_where(plan) do |old| old.method == job.method and old.request.buffer.path == path end
+  older = drop_where(plan) do |old| old.method == job.method and old.key == job.key end
   return fill(older.with(plan: older.plan.with(queue: older.plan.queue.push(job))))
 end
 

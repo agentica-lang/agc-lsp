@@ -18,6 +18,8 @@ Feature: Server lifecycle
           "hoverProvider": true,
           "definitionProvider": true,
           "documentSymbolProvider": true,
+          "referencesProvider": true,
+          "workspaceSymbolProvider": true,
           "completionProvider": {"triggerCharacters": ["."]}
         },
         "serverInfo": {"name": "agc-lsp"}
@@ -56,8 +58,8 @@ Feature: Server lifecycle
 
   Scenario: an unknown request is not found
     Given the language server has started
-    When the editor sends the request "textDocument/references"
-    Then the server answers "textDocument/references" with the error "method not found"
+    When the editor sends the request "textDocument/rename"
+    Then the server answers "textDocument/rename" with the error "method not found"
     And the server exits with code 0
 
   Scenario: a second initialize is refused

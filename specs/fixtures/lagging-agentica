@@ -1,7 +1,6 @@
 #!/bin/sh
-[ "$2" = type-at ] || exec agentica "$@"
-for last; do :; done
-dir=$(dirname "$last")
+case "$2" in type-at|refs|symbol) ;; *) exec agentica "$@";; esac
+dir=$PWD
 marker="$dir/running.$$"
 touch "$marker"
 trap 'rm -f "$marker"' EXIT

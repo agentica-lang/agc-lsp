@@ -1,4 +1,5 @@
-## Answers definition requests, and hover requests that need the compiler, with the queries of agentica.
+## Answers definition and references requests, and hover requests that need the compiler, with the queries of
+## agentica.
 
 import Catalog from "catalog"
 import Cursor from "cursor"
@@ -42,6 +43,16 @@ export def definition(request: Request) -> Result[Json]
   end
 end
 
+## Returns the locations of the uses of the name under the cursor, with its declaration when asked, or null when
+## agentica finds no name there. A file that is not on disk has no locations.
+export def references(request: Request, with_declaration: Bool) -> Result[Json]
+  found = try Query.references_at(request.agentica, request.buffer, request.cursor.line + 1, request.cursor.index + 1)
+  case found
+    Query.Referenced.Refused(_) -> return ok(JSON.null())
+    Query.Referenced.Found(uses) -> return ok(locations(request, places_of(uses, with_declaration)))
+  end
+end
+
 ## Returns the hover of the name under the cursor: the builtin it is, or its declaration and the type of the
 ## expression. A function with an error has no type, so the catalog answers, or else the result is null.
 export def hover(request: Request) -> Result[Json]
@@ -65,6 +76,47 @@ def location(request: Request, name_span: Places.Span) -> Json
     "uri": JSON.from(location_uri(request, name_span.file)),
     "range": Places.range(lines, name_span.start, name_span.stop, request.cursor.encoding),
   })
+end
+
+def places_of(uses: Query.Uses, with_declaration: Bool) -> List[Places.Span]
+  if !with_declaration
+    return uses.places
+  end
+  case uses.origin
+    Query.Origin.Declared(declaration) -> return [declaration.name_span].concat(uses.places)
+    Query.Origin.Builtin(_) -> return uses.places
+    Query.Origin.Unknown -> return uses.places
+  end
+end
+
+def locations(request: Request, places: List[Places.Span]) -> Json
+  lines = lines_by_file(request, places)
+  found: List[Json] = []
+  for place in places
+    case lines.get(place.file)
+      ok(file_lines) ->
+        found = found.push(JSON.object({
+          "uri": JSON.from(location_uri(request, place.file)),
+          "range": Places.range(file_lines, place.start, place.stop, request.cursor.encoding),
+        }))
+      error(_) -> next
+    end
+  end
+  return JSON.array(found)
+end
+
+def lines_by_file(request: Request, places: List[Places.Span]) -> Map[String, List[String]]
+  loaded: Map[String, List[String]] = {}
+  seen: Set[String] = Set.new([])
+  for place in places
+    if !seen.include?(place.file)
+      seen = seen.add(place.file)
+      if known?(request, place.file)
+        loaded = loaded.put(place.file, lines_of(request, place.file))
+      end
+    end
+  end
+  return loaded
 end
 
 def location_uri(request: Request, path: String) -> String
