@@ -267,3 +267,43 @@ Feature: Hover on builtins
     And the editor hovers over "app.agc" at 3:8 without waiting
     Then there is no hover at 3:8
     And the hover at 3:8 is answered before the shutdown
+
+  Scenario: the code of a hover is fenced with more backticks than its text has
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def shout(text: String) -> String
+        return text.upcase
+      end
+
+      def main() -> Void
+        puts(shout("```"))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 6:9
+    Then the hover at 6:9 shows the type "String"
+    And the hover at 6:9 is fenced with 4 backticks
+
+  Scenario: a keyword, a comment and a blank need no query
+    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
+    And the file "app.agc" contains:
+      """
+      def main() -> Void
+        # puts("hi")
+        puts("hi")
+      end
+
+      """
+    When the editor opens "app.agc" without waiting
+    And the editor hovers over "app.agc" at 1:2
+    And the editor hovers over "app.agc" at 4:2
+    And the editor hovers over "app.agc" at 2:1
+    And the editor asks for the definition in "app.agc" at 2:6
+    And the editor asks for the definition in "app.agc" at 4:2
+    Then there is no hover at 1:2
+    And there is no hover at 4:2
+    And there is no hover at 2:1
+    And there is no definition at 2:6
+    And there is no definition at 4:2
+    And the server never logs "cannot answer the request"

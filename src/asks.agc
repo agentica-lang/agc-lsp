@@ -5,7 +5,6 @@ import Logger from "std/logger"
 
 MAX_QUERIES = 4
 REAP_MS = 1
-SUPERSEDED_METHODS = Set.new(["textDocument/hover", "textDocument/definition"])
 
 ## Holds a query that runs in a task.
 export struct Running
@@ -39,9 +38,6 @@ end
 ## Returns the plan with the query queued, and the older queries of the same document and method dropped.
 export def submit(plan: Plan, job: Events.QueryJob) -> Change
   path = job.request.buffer.path
-  if !SUPERSEDED_METHODS.include?(job.method)
-    return fill(Change(plan: plan.with(queue: plan.queue.push(job)), dropped: []))
-  end
   older = drop_where(plan) do |old| old.method == job.method and old.request.buffer.path == path end
   return fill(older.with(plan: older.plan.with(queue: older.plan.queue.push(job))))
 end
@@ -60,11 +56,18 @@ export def cancel(plan: Plan, id: Json) -> Change
   return fill(drop_where(plan) do |old| same?(old.id, id) end)
 end
 
-## Returns the plan without queries and the ids of all the requests that had not been answered.
-export def abandon(plan: Plan) -> Change
-  dropped: List[Json] = []
+## Cancels the tasks of the running queries.
+export def stop(plan: Plan) -> Void
   for running in plan.running
     Task.cancel(running.task)
+  end
+end
+
+## Returns the plan without queries and the ids of all the requests that had not been answered.
+export def abandon(plan: Plan) -> Change
+  stop(plan)
+  dropped: List[Json] = []
+  for running in plan.running
     dropped = dropped.push(running.job.id)
   end
   for job in plan.queue

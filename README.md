@@ -72,9 +72,10 @@ written in Agentica.
   session.
 - Definition, document symbols and the type in a hover cost a process each: every request starts `agentica` (`type-at`
   or `outline`) in a task with a 10 s deadline, so the server loop never waits for it. At most 4 of these tasks run at
-  once; the other requests wait in the order they came. A newer hover (or definition) request for the same document
-  supersedes the older ones of the same kind, which are answered with `null` and their process is closed; so does a
-  `$/cancelRequest`, which answers the request with the error `-32800` (request cancelled). The answer is for the text
+  once; the other requests wait in the order they came. A newer hover, definition or symbols request for the same
+  document supersedes the older ones of the same kind, which are answered with `null` and their process is closed;
+  a hover or definition on a comment, a string, a keyword or a blank answers `null` without a process.
+  A `$/cancelRequest` answers the request with the error `-32800` (request cancelled). The answer is for the text
   that the buffer had when the request came, even if it changed or was closed meanwhile. At `shutdown` the requests
   still in flight are answered with `null` before the answer to `shutdown`. A query that fails (timeout, the binary
   cannot run) answers `null` and logs a warning; a position or a program that `agentica` refuses (an error in the

@@ -16,6 +16,7 @@ import Rpc from "rpc"
 import Schedule from "schedule"
 import Logger from "std/logger"
 import Uri from "uri"
+import Words from "words"
 
 PARSE_ERROR = -32_700
 INVALID_REQUEST = -32_600
@@ -143,7 +144,7 @@ def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
   for loader in state.loaders
     Task.cancel(loader)
   end
-  Asks.abandon(state.asks)
+  Asks.stop(state.asks)
   Schedule.stop(state.plan)
   return status
 end
@@ -297,7 +298,7 @@ def hover(state: State, id: Json, params: Json) -> State
         Rpc.respond(id, Hover.answer(state.catalog, cursor))
         return state
       end
-      return ask(state, id, "textDocument/hover", lookup_request(state, params, cursor))
+      return ask(state, id, "textDocument/hover", params, cursor)
     error(_) ->
       Rpc.respond(id, JSON.null())
       return state
@@ -306,7 +307,11 @@ end
 
 def definition(state: State, id: Json, params: Json) -> State
   case Cursor.locate(state.documents, params, state.encoding)
-    ok(cursor) -> return ask(state, id, "textDocument/definition", lookup_request(state, params, cursor))
+    ok(cursor) if Words.name_at?(cursor.chars, cursor.index) ->
+      return ask(state, id, "textDocument/definition", params, cursor)
+    ok(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
     error(_) ->
       Rpc.respond(id, JSON.null())
       return state
@@ -318,7 +323,7 @@ def symbols(state: State, id: Json, params: Json) -> State
     Rpc.respond(id, JSON.null())
     return state
   end
-  return ask(state, id, "textDocument/documentSymbol", lookup_request(state, params, Cursor.start(state.encoding)))
+  return ask(state, id, "textDocument/documentSymbol", params, Cursor.start(state.encoding))
 end
 
 def completion(state: State, params: Json) -> Json
@@ -330,15 +335,18 @@ def completion(state: State, params: Json) -> Json
   end
 end
 
-def lookup_request(state: State, params: Json, cursor: Cursor.Cursor) -> Lookup.Request
+def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cursor) -> State
   uri = document_uri(params)
-  buffer = Query.Buffer(path: Uri.path_of(uri).unwrap_or(""), text: state.documents.get(uri).unwrap_or(""))
-  return Lookup.Request(agentica: state.options.agentica, uri: uri, buffer: buffer, cursor: cursor)
-end
-
-def ask(state: State, id: Json, method: String, request: Lookup.Request) -> State
-  job = Events.QueryJob(events: state.events, id: id, method: method, request: request)
-  return dropped_answer(state, Asks.submit(state.asks, job))
+  case Uri.path_of(uri)
+    ok(path) ->
+      buffer = Query.Buffer(path: path, text: state.documents.get(uri).unwrap_or(""))
+      request = Lookup.Request(agentica: state.options.agentica, uri: uri, buffer: buffer, cursor: cursor)
+      job = Events.QueryJob(events: state.events, id: id, method: method, request: request)
+      return dropped_answer(state, Asks.submit(state.asks, job))
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
 end
 
 def cancelled(state: State, params: Json) -> State

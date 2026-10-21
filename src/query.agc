@@ -7,8 +7,7 @@ import Logger from "std/logger"
 import Uri from "uri"
 
 QUERY_TIMEOUT_MS = 10_000
-EXPECTED_CODES = ["LEX-", "PARSE-", "CHECK-", "QUERY-NO-EXPRESSION", "QUERY-USAGE"]
-EMBEDDED_FOLDER = "std/"
+EXPECTED_CODES = ["LEX-", "PARSE-", "CHECK-", "QUERY-NO-EXPRESSION"]
 
 ## Holds the text of a file as the editor shows it, and the path it stands for.
 export struct Buffer
@@ -137,9 +136,8 @@ end
 def subject_of(found: Json, folder: String) -> Subject
   origin = Origin.Unknown
   definition = Fields.value(found, "definition")
-  declared = Places.span(Fields.value(definition, "name_span"))
-  if JSON.kind(definition) == "object" and !declared.file.starts_with?(EMBEDDED_FOLDER)
-    origin = Origin.Declared(located(declared, folder))
+  if JSON.kind(definition) == "object"
+    origin = Origin.Declared(located(Places.span(Fields.value(definition, "name_span")), folder))
   end
   return Subject(
     text: Fields.text(found, "text"),

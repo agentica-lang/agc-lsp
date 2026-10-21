@@ -7,6 +7,7 @@ import Uri from "uri"
 
 STAT_TIMEOUT_MS = 10_000
 SHORT_TEXT_CHARS = 60
+MIN_FENCE = 3
 
 ## Holds what a definition or hover request needs: the compiler, the buffer and the cursor.
 export struct Request
@@ -79,7 +80,27 @@ def typed(subject: Query.Subject) -> String
   if subject.text.contains?("\n") or subject.text.length > SHORT_TEXT_CHARS
     return "```agc\n#{subject.type}\n```"
   end
-  return "```agc\n#{subject.text}: #{subject.type}\n```"
+  fence = fence_for(subject.text)
+  return "#{fence}agc\n#{subject.text}: #{subject.type}\n#{fence}"
+end
+
+def fence_for(text: String) -> String
+  longest = 0
+  run = 0
+  for char in text.split("")
+    if char == "`"
+      run += 1
+      if run > longest
+        longest = run
+      end
+    else
+      run = 0
+    end
+  end
+  if longest < MIN_FENCE
+    longest = MIN_FENCE - 1
+  end
+  return List.repeat("`", longest + 1).join("")
 end
 
 def markdown(request: Request, subject: Query.Subject) -> Json

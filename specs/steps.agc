@@ -160,6 +160,7 @@ def main() -> Void
     BDD.step("the hover at {int}:{int} shows these builtins:", &hover_shows_these),
     BDD.step("the hover at {int}:{int} shows the type {string}", &hover_shows_type),
     BDD.step("the hovers of {string} at {int}:{int} show the type {string}", &hovers_show_type),
+    BDD.step("the hover at {int}:{int} is fenced with {int} backticks", &hover_is_fenced),
     BDD.step("the earlier hovers in a row are answered with null", &earlier_hovers_are_null),
     BDD.step("the hover at {int}:{int} is answered as cancelled", &hover_is_cancelled),
     BDD.step("the hover at {int}:{int} is answered before the shutdown", &hover_precedes_shutdown),
@@ -787,6 +788,21 @@ def earlier_are_null(ctx: BDD.Context) -> BDD.Context
     checked = BDD.assert(checked, result.ok? and result.unwrap!.to_s == "null", message)
   end
   return checked
+end
+
+def hover_is_fenced(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_fenced(done, args[0], args[1], args[2].to_i!) end
+end
+
+def hover_fenced(ctx: BDD.Context, line: String, column: String, width: Int) -> BDD.Context
+  case hover_value(ctx, line, column)
+    ok(value) ->
+      fence = List.repeat("`", width).join("")
+      fenced = value.starts_with?("#{fence}agc\n") and !value.starts_with?("#{fence}`")
+      message = "the hover at #{line}:#{column} is not fenced with #{width} backticks: #{value.inspect}"
+      return BDD.assert(ctx, fenced, message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
 end
 
 def hover_is_cancelled(ctx: BDD.Context, args: List[String]) -> BDD.Context

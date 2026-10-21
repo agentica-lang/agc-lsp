@@ -28,7 +28,7 @@ end
 
 ## Returns true when the hover needs no question to the compiler: nothing is there, or a builtin is named.
 export def settled?(book: Catalog.Book, cursor: Cursor.Cursor) -> Bool
-  if !Words.code?(cursor.chars, cursor.index + 1) or !Words.at(cursor.chars, cursor.index).ok?
+  if !Words.name_at?(cursor.chars, cursor.index)
     return true
   end
   return find(book, cursor).ok?

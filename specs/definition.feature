@@ -77,6 +77,27 @@ Feature: Go to definition
     And the editor asks for the definition in "app.agc" at 4:18
     Then there is no definition at 4:18
 
+  Scenario: a folder of the project named std is found like any other
+    Given the language server has started
+    And the file "std/names.agc" contains:
+      """
+      export def shout(name: String) -> String
+        return name.upcase
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {shout} from "./std/names"
+
+      def main() -> Void
+        puts(shout("ana"))
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 4:8
+    Then the definition at 4:8 is in "std/names.agc" at 1:12-1:17
+
   Scenario: a local, a builtin and a comment have no definition
     Given the language server has started
     When the editor opens "app.agc" with:

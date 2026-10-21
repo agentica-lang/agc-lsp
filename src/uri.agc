@@ -59,14 +59,19 @@ export def folder_of(path: String) -> String
   return parts.take(parts.size - 1).join("/")
 end
 
-## Returns the absolute path of a file that agentica names relative to a folder, or as it is when absolute.
+## Returns the absolute path of a file that agentica names relative to a folder (without a leading ./), or as it is.
 export def resolve(folder: String, file: String) -> String
   if file.starts_with?("/")
     return file
-  elsif folder == "/"
-    return "/#{file}"
   end
-  return "#{folder}/#{file}"
+  relative = file
+  while relative.starts_with?("./")
+    relative = relative.slice(2, relative.length - 2)
+  end
+  if folder == "/"
+    return "/#{relative}"
+  end
+  return "#{folder}/#{relative}"
 end
 
 def before(text: String, mark: String) -> String
