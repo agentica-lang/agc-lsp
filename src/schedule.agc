@@ -3,6 +3,7 @@ import Logger from "std/logger"
 
 MAX_CHECKS = 4
 REAP_MS = 1
+OVERDUE_WAIT_MS = 1
 
 export struct Pending
   uri: String
@@ -59,7 +60,9 @@ export def wait_ms(plan: Plan, limit: Int) -> Int
   wait = limit
   for pending in plan.queue
     left = pending.due - now
-    if left > 0 and left < wait
+    if left <= 0 and plan.running.size < MAX_CHECKS
+      return OVERDUE_WAIT_MS
+    elsif left > 0 and left < wait
       wait = left
     end
   end

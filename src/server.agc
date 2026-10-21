@@ -198,7 +198,7 @@ def notification(state: State, method: String, params: Json) -> State
     return state
   end
   case method
-    "textDocument/didOpen" -> return opened(state, document_uri(params), document_text(params))
+    "textDocument/didOpen" -> return opened(state, document_uri(params), params)
     "textDocument/didChange" ->
       case changed_text(params)
         ok(text) -> return keep(state, document_uri(params), text, CHANGE_DELAY_MS)
@@ -212,9 +212,15 @@ def notification(state: State, method: String, params: Json) -> State
   end
 end
 
-def opened(state: State, uri: String, text: String) -> State
+def opened(state: State, uri: String, params: Json) -> State
   case Uri.path_of(uri)
-    ok(_) -> return keep(state, uri, text, 0)
+    ok(_) ->
+      case document_text(params)
+        ok(text) -> return keep(state, uri, text, 0)
+        error(message) ->
+          Logger.warning("#{message}: #{uri}")
+          return state
+      end
     error(message) ->
       Logger.warning(message)
       return state
@@ -294,9 +300,12 @@ def offered(params: Json) -> List[String]
   return names
 end
 
-def document_text(params: Json) -> String
+def document_text(params: Json) -> Result[String]
   document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
-  return JSON.string(JSON.get(document, "text").unwrap_or(JSON.null())).unwrap_or("")
+  case JSON.get(document, "text")
+    ok(text) -> return JSON.string(text)
+    error(_) -> return error("a didOpen without text")
+  end
 end
 
 def changed_text(params: Json) -> Result[String]
@@ -305,7 +314,11 @@ def changed_text(params: Json) -> Result[String]
   if changes.size == 0
     return error("a change without contentChanges")
   end
-  return JSON.string(JSON.get(changes[changes.size - 1], "text").unwrap_or(JSON.null()))
+  last = changes[changes.size - 1]
+  if JSON.get(last, "range").ok?
+    return error("an incremental change was ignored; the server asks for full sync")
+  end
+  return JSON.string(JSON.get(last, "text").unwrap_or(JSON.null()))
 end
 
 def document_uri(params: Json) -> String

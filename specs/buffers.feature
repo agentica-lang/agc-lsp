@@ -153,3 +153,72 @@ Feature: Unsaved buffers
     And the editor waits 1500 milliseconds
     Then no diagnostics are published
     And the server warns "agentica exited with status 2"
+
+  Scenario: quick changes start one check, not one per change
+    Given the language server has started with the arguments "--agentica specs/fixtures/counting-agentica"
+    And the file "draft.agc" contains:
+      """
+      def main() -> Void
+        puts("hi")
+      end
+
+      """
+    When the editor opens "draft.agc"
+    And the editor types in "draft.agc" without waiting:
+      """
+      def main() -> Void
+        puts("one")
+      end
+
+      """
+    And the editor waits 30 milliseconds
+    And the editor types in "draft.agc" without waiting:
+      """
+      def main() -> Void
+        puts("two")
+      end
+
+      """
+    And the editor waits 30 milliseconds
+    And the editor types in "draft.agc" without waiting:
+      """
+      def main() -> Void
+        puts("three")
+      end
+
+      """
+    And the editor waits for diagnostics
+    Then "draft.agc" gets no diagnostics
+    And "draft.agc" gets no diagnostics
+    And "draft.agc" gets nothing more
+    And the checker ran 2 times for "draft.agc"
+
+  Scenario: an open without the text of the buffer checks nothing
+    Given the language server has started
+    And the file "draft.agc" contains:
+      """
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    When the editor opens "draft.agc" without its text
+    And the editor waits 1500 milliseconds
+    Then no diagnostics are published
+    And the server warns "a didOpen without text"
+
+  Scenario: an incremental change is ignored and the text is kept
+    Given the language server has started
+    And the file "draft.agc" contains:
+      """
+      def main() -> Void
+        puts("hi")
+      end
+
+      """
+    When the editor opens "draft.agc"
+    And the editor changes "draft.agc" incrementally
+    And the editor waits 1500 milliseconds
+    Then "draft.agc" gets no diagnostics
+    And "draft.agc" gets nothing more
+    And the server warns "an incremental change was ignored"

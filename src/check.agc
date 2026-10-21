@@ -7,6 +7,7 @@ READ_TIMEOUT_MS = 10000
 SEVERITY_ERROR = 1
 SURROGATE_START = 65536
 CHUNK_BYTES = 1048576
+SINGLE_SEND_CHARS = 262144
 RELATED_MESSAGE = "the error is here"
 
 struct Place
@@ -81,6 +82,10 @@ def unsent(sent: Result[Void]) -> String
 end
 
 def feed(checker: Process, text: String, deadline: Int) -> Result[Void]
+  if text.length <= SINGLE_SEND_CHARS
+    try Process.send(checker, text, remaining(deadline))
+    return Process.close_stdin(checker, remaining(deadline))
+  end
   rest = text.to_bytes
   while rest.size > 0
     try Process.send_bytes(checker, rest.take(CHUNK_BYTES), remaining(deadline))

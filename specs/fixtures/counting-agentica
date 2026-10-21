@@ -1,0 +1,5 @@
+#!/bin/sh
+for last; do :; done
+echo run >> "$last.runs"
+cat >/dev/null
+exit 0
