@@ -1,9 +1,13 @@
+## Scans the words of a line given as a list of characters.
+
+## Holds a word, the characters from start up to stop.
 export struct Word
   text: String
   start: Int
   stop: Int
 end
 
+## Returns the word that covers the index, with a trailing ? or !, or an error when there is none.
 export def at(chars: List[String], index: Int) -> Result[Word]
   if index < 0 or index >= chars.size
     return error("no character at #{index}")
@@ -13,7 +17,7 @@ export def at(chars: List[String], index: Int) -> Result[Word]
     point -= 1
   end
   if !word_char?(chars[point])
-    return error("not a word")
+    return error("not a word at #{point}")
   end
   start = word_start(chars, point)
   stop = point + 1
@@ -26,6 +30,7 @@ export def at(chars: List[String], index: Int) -> Result[Word]
   return ok(Word(text: chars.take(stop).drop(start).join(""), start: start, stop: stop))
 end
 
+## Returns the index where the word that ends at the index starts.
 export def word_start(chars: List[String], index: Int) -> Int
   start = index
   while start > 0 and word_char?(chars[start - 1])
@@ -34,41 +39,48 @@ export def word_start(chars: List[String], index: Int) -> Int
   return start
 end
 
+## Returns true when a dot comes right before the index.
 export def dotted?(chars: List[String], start: Int) -> Bool
   return start > 0 and chars[start - 1] == "."
 end
 
+## Returns the word before the dot that precedes the index, or an error when there is none.
 export def receiver(chars: List[String], start: Int) -> Result[Word]
   if !dotted?(chars, start)
-    return error("no dot before the word")
+    return error("no dot before the word at #{start}")
   end
   stop = start - 1
   first = word_start(chars, stop)
   if first == stop
-    return error("no word before the dot")
+    return error("no word before the dot at #{stop}")
   end
   return ok(Word(text: chars.take(stop).drop(first).join(""), start: first, stop: stop))
 end
 
+## Returns the word after the dot at the index, or an error when there is none.
 export def member(chars: List[String], stop: Int) -> Result[Word]
   if stop >= chars.size or chars[stop] != "."
-    return error("no dot after the word")
+    return error("no dot after the word at #{stop}")
   end
   return at(chars, stop + 1)
 end
 
+## Returns true when an opening parenthesis comes at the index.
 export def called?(chars: List[String], stop: Int) -> Bool
   return stop < chars.size and chars[stop] == "("
 end
 
+## Returns true when the text starts with a capital letter.
 export def type_name?(text: String) -> Bool
   return text.length > 0 and String.code(text.at(0)) >= 65 and String.code(text.at(0)) <= 90
 end
 
+## Returns true when the index is right after the ? or ! that ends a name.
 export def after_suffix?(chars: List[String], index: Int) -> Bool
   return index > 1 and index <= chars.size and suffix?(chars[index - 1]) and word_char?(chars[index - 2])
 end
 
+## Returns true when the index of the line is neither in a string nor in a comment.
 export def code?(chars: List[String], upto: Int) -> Bool
   in_string = false
   index = 0

@@ -1,27 +1,32 @@
+## Runs the lifecycle of the server and dispatches its requests and notifications.
+
 import Catalog from "catalog"
 import Check from "check"
 import Completion from "completion"
 import Cursor from "cursor"
 import Events from "events"
-import Logger from "std/logger"
 import Hover from "hover"
 import Logs from "logs"
 import Options from "options"
 import Rpc from "rpc"
 import Schedule from "schedule"
+import Logger from "std/logger"
 import Uri from "uri"
 
-PARSE_ERROR = -32700
-INVALID_REQUEST = -32600
-METHOD_NOT_FOUND = -32601
-SERVER_NOT_INITIALIZED = -32002
+PARSE_ERROR = -32_700
+INVALID_REQUEST = -32_600
+METHOD_NOT_FOUND = -32_601
+SERVER_NOT_INITIALIZED = -32_002
 FULL_SYNC = 1
 AGENTICA_EXTENSION = ".agc"
+UTF16 = "utf-16"
+UTF32 = "utf-32"
 EVENT_CAPACITY = 256
 WAIT_MS = 1000
 READER_CHECK_MS = 1
 CHANGE_DELAY_MS = 200
 
+## Holds the state of the server: its options, the open documents, the plan of the checks and the catalog.
 export struct State
   options: Options.Options
   encoding: String
@@ -40,6 +45,7 @@ enum Next
   Exit(Int)
 end
 
+## Returns the state of a server that has not been initialized.
 export def start(options: Options.Options) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
   pointing: Map[String, String] = {}
@@ -47,7 +53,7 @@ export def start(options: Options.Options) -> State
   loaders: List[Task[Result[Void]]] = []
   return State(
     options: options,
-    encoding: "utf-16",
+    encoding: UTF16,
     initialized: false,
     shut_down: false,
     events: events,
@@ -59,6 +65,7 @@ export def start(options: Options.Options) -> State
   )
 end
 
+## Runs the server loop until the editor exits or the input ends, and returns the exit status.
 export def serve(state: State) -> Int
   reader = Task.spawn(&Events.read_input, state.events)
   current = state
@@ -214,9 +221,9 @@ def initialize(state: State, id: Json, params: Json) -> State
     Rpc.fail(id, INVALID_REQUEST, "the server is already initialized")
     return state
   end
-  encoding = "utf-16"
-  if Set.new(offered(params)).include?("utf-32")
-    encoding = "utf-32"
+  encoding = UTF16
+  if Set.new(offered(params)).include?(UTF32)
+    encoding = UTF32
   end
   sync = JSON.object({
     "openClose": JSON.from(true),
@@ -295,11 +302,11 @@ def keep(state: State, uri: String, text: String, delay_ms: Int) -> State
   if path == ""
     return state
   end
-  return check(state.with(documents: state.documents.put(uri, text)), uri, path, text, delay_ms)
+  return check(state.with(documents: state.documents.put(uri, text)), Schedule.delayed(uri, path, text, delay_ms))
 end
 
-def check(state: State, uri: String, path: String, text: String, delay_ms: Int) -> State
-  return state.with(plan: Schedule.request(state.plan, uri, path, text, delay_ms, state.encoding))
+def check(state: State, pending: Schedule.Pending) -> State
+  return state.with(plan: Schedule.request(state.plan, pending, state.encoding))
 end
 
 def saved(state: State, uri: String) -> State
@@ -318,7 +325,7 @@ end
 
 def recheck(state: State, uri: String) -> State
   case state.documents.get(uri)
-    ok(text) -> return check(state, uri, Uri.path_of(uri).unwrap_or(""), text, 0)
+    ok(text) -> return check(state, Schedule.delayed(uri, Uri.path_of(uri).unwrap_or(""), text, 0))
     error(_) -> return state
   end
 end

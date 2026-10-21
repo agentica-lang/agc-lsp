@@ -1,3 +1,5 @@
+## Answers completion requests with the builtins that match the word before the cursor.
+
 import Catalog from "catalog"
 import Cursor from "cursor"
 import Words from "words"
@@ -5,6 +7,7 @@ import Words from "words"
 FUNCTION_KIND = 3
 MODULE_KIND = 9
 
+## Returns the completion items for the word before the cursor, or an empty list when there are none.
 export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   chars = cursor.chars
   if !Words.code?(chars, cursor.index) or Words.after_suffix?(chars, cursor.index)

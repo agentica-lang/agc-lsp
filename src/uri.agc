@@ -1,9 +1,12 @@
+## Converts between file URIs and paths.
+
 FILE_SCHEME = "file://"
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789abcdef"
 HEX_UPPER = "0123456789ABCDEF"
 ASCII_LIMIT = 128
 
+## Returns the path of a local file URI, or an error for another URI.
 export def path_of(uri: String) -> Result[String]
   if !uri.starts_with?(FILE_SCHEME)
     return error("not a file URI: #{uri}")
@@ -17,6 +20,7 @@ export def path_of(uri: String) -> Result[String]
   return decode(rest.slice(slash, rest.length - slash))
 end
 
+## Returns the file URI of a path, with percent escapes for spaces, marks and non-ASCII characters.
 export def of_path(path: String) -> String
   parts: List[String] = []
   for char in path.split("")
@@ -31,6 +35,7 @@ export def of_path(path: String) -> String
   return "#{FILE_SCHEME}#{parts.join("")}"
 end
 
+## Returns true when both paths are the same file, resolving links when both exist.
 export def same_path?(a: String, b: String) -> Bool
   if a == b
     return true

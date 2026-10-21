@@ -1,7 +1,9 @@
+## Sets up the log destinations: stderr, a file and the editor.
+
 import Events from "events"
 import {DEFAULT_CLIENT_LEVEL, DEFAULT_LEVEL, Options, level?} from "options"
-import Logger from "std/logger"
 import Rpc from "rpc"
+import Logger from "std/logger"
 
 MAIN_TASK = 1
 FILE_TIMEOUT_MS = 1000
@@ -12,6 +14,7 @@ struct Chosen
   problem: String
 end
 
+## Returns the options with an unwritable log file dropped, after installing the destinations.
 export def start(options: Options) -> Options
   usable = writable(options)
   level = choose(usable.level, JSON.null(), "logLevel", DEFAULT_LEVEL).level
@@ -24,6 +27,7 @@ export def start(options: Options) -> Options
   return usable
 end
 
+## Attaches the editor as a log destination, with the levels it asked for or the options give.
 export def attach_editor(options: Options, events: Channel[Events.Event], asked: Json) -> Void
   stderr = choose(options.level, asked, "logLevel", DEFAULT_LEVEL)
   editor = choose(options.client_level, asked, "clientLogLevel", DEFAULT_CLIENT_LEVEL)
@@ -38,6 +42,7 @@ export def attach_editor(options: Options, events: Channel[Events.Event], asked:
   end
 end
 
+## Sends the log event to the editor as a window/logMessage notification.
 export def write_to_editor(event: LogEvent) -> Void
   Rpc.log_message(editor_type(event.level), editor_text(event))
 end
