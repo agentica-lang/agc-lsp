@@ -1,2 +1,3 @@
 #!/bin/sh
+[ "$2" = help ] && exec agentica "$@"
 exec sleep 60

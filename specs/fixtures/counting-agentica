@@ -1,4 +1,5 @@
 #!/bin/sh
+[ "$2" = help ] && exec agentica "$@"
 for last; do :; done
 echo run >> "$last.runs"
 cat >/dev/null

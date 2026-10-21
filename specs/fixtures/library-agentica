@@ -1,4 +1,5 @@
 #!/bin/sh
+[ "$2" = help ] && exec agentica "$@"
 cat >/dev/null
 echo '{"code":"CHECK-TYPE-MISMATCH","file":"std/queue.agc","message":"expected Int, found String","range":{"end":{"column":13,"line":2},"start":{"column":10,"line":2}}}' >&2
 exit 1

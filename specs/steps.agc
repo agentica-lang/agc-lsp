@@ -10,6 +10,9 @@ COMMENT_LINE = "# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 LINES_PER_KB = 10
 MANIFEST = "agentica.toml"
 PUBLISH = "textDocument/publishDiagnostics"
+HOVER = "textDocument/hover"
+COMPLETION = "textDocument/completion"
+COMPLETION_KINDS = {"Function": 3, "Module": 9}
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
 LOG_TYPES = {"error": 1, "warning": 2, "info": 3, "debug": 4}
 LOG_MESSAGE = "window/logMessage"
@@ -48,6 +51,11 @@ def main() -> Void
     BDD.step("the language server has started through a relative link to the launcher", &started_through_relative_link),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
+    BDD.step("the language server has loaded the builtin catalog", &started_with_catalog),
+    BDD.step(
+      "the language server has loaded the builtin catalog with the position encodings {string}",
+      &started_with_catalog_and_encodings,
+    ),
     BDD.step("the editor asks for the log level {string}", &asks_log_level),
     BDD.step("the editor asks for the client log level {string}", &asks_client_log_level),
     BDD.step("the server writes its log to {string}", &writes_log_to),
@@ -68,10 +76,13 @@ def main() -> Void
     BDD.step("the editor changes {string} incrementally", &changes_incrementally),
     BDD.step("the editor types in {string}:", &types_in),
     BDD.step("the editor types in {string} without waiting:", &types_in_without_waiting),
+    BDD.step("the editor hovers over {string} at {int}:{int}", &hovers),
+    BDD.step("the editor asks for completion in {string} at {int}:{int}", &asks_completion),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
     BDD.step("the editor waits {int} milliseconds", &waits),
     BDD.step("the editor waits for diagnostics", &waits_for_diagnostics),
+    BDD.step("the editor waits for a log message containing {string}", &waits_for_log),
     BDD.step("the editor waits for the diagnostics of {int} files", &waits_for_files),
     BDD.step("the editor sends {string} before initializing", &sends_request),
     BDD.step("the editor sends the request {string}", &sends_request),
@@ -115,6 +126,13 @@ def main() -> Void
     BDD.step("the diagnostic of {string} points into {string} at {int}:{int}-{int}:{int}", &points_into),
     BDD.step("the checker ran {int} time for {string}", &checker_ran),
     BDD.step("the checker ran {int} times for {string}", &checker_ran),
+    BDD.step("the hover at {int}:{int} shows {string}", &hover_shows),
+    BDD.step("the hover at {int}:{int} shows these builtins:", &hover_shows_these),
+    BDD.step("the hover at {int}:{int} covers {int}:{int}-{int}:{int}", &hover_covers),
+    BDD.step("there is no hover at {int}:{int}", &no_hover),
+    BDD.step("the completion at {int}:{int} offers:", &completion_offers),
+    BDD.step("the completion at {int}:{int} does not offer {string}", &completion_does_not_offer),
+    BDD.step("the completion at {int}:{int} offers nothing", &completion_offers_nothing),
     BDD.step("the server exits with code {int}", &exits_with),
   ])
 end
@@ -160,6 +178,19 @@ end
 def started_with_arguments(ctx: BDD.Context, args: List[String]) -> BDD.Context
   words = args[0].split(" ").map do |word| JSON.from(word) end
   return initialize(BDD.set(ctx, "arguments", JSON.array(words)), JSON.object({}))
+end
+
+def started_with_catalog(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return catalog_loaded(initialize(BDD.set(ctx, "asked client log level", JSON.from("info")), JSON.object({})))
+end
+
+def started_with_catalog_and_encodings(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  asked = BDD.set(ctx, "asked client log level", JSON.from("info"))
+  return catalog_loaded(started_with(asked, args))
+end
+
+def catalog_loaded(ctx: BDD.Context) -> BDD.Context
+  return add(ctx, JSON.object({"kind": JSON.from("log"), "text": JSON.from("loaded the builtin catalog")}))
 end
 
 def asks_log_level(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -332,6 +363,25 @@ def change(ctx: BDD.Context, name: String, text: String) -> BDD.Context
   }))
 end
 
+def hovers(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask(ctx, "hover", HOVER, args)
+end
+
+def asks_completion(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask(ctx, "completion", COMPLETION, args)
+end
+
+def ask(ctx: BDD.Context, key: String, method: String, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
+    "position": position("#{args[1]}:#{args[2]}"),
+  })
+  sent = request(ready, method, params)
+  id = BDD.get(sent, "request #{method}").unwrap!
+  return BDD.set(sent, "#{key} #{args[1]}:#{args[2]}", id)
+end
+
 def closes(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return awaiting(close_document(ctx, args[0]), args[0])
 end
@@ -351,6 +401,10 @@ end
 
 def waits_for_diagnostics(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return add(ctx, JSON.object({"kind": JSON.from("await")}))
+end
+
+def waits_for_log(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return add(ctx, JSON.object({"kind": JSON.from("log"), "text": JSON.from(args[0])}))
 end
 
 def waits_for_files(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -584,10 +638,129 @@ def checker_ran(ctx: BDD.Context, args: List[String]) -> BDD.Context
   end
 end
 
+def hover_shows(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_shown(done, args[0], args[1], [args[2]]) end
+end
+
+def hover_shows_these(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  names = BDD.table(ctx).drop(1).map do |row| row[0] end
+  return finished(ctx) do |done| hover_shown(done, args[0], args[1], names) end
+end
+
+def hover_covers(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_covered(done, args) end
+end
+
+def no_hover(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_absent(done, args[0], args[1]) end
+end
+
+def completion_offers(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  return finished(ctx) do |done| completion_offered(done, args[0], args[1], rows) end
+end
+
+def completion_does_not_offer(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| completion_lacks(done, args[0], args[1], args[2]) end
+end
+
+def completion_offers_nothing(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| completion_empty(done, args[0], args[1]) end
+end
+
 def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
     code = JSON.int(BDD.get(done, "exit").unwrap!).unwrap!
     BDD.assert(done, code == args[0].to_i!, "expected exit code #{args[0]}; actual #{code}; stderr #{stderr(done)}")
+  end
+end
+
+def result_at(ctx: BDD.Context, key: String, line: String, column: String) -> Result[Json]
+  id = try JSON.int(try BDD.get(ctx, "#{key} #{line}:#{column}"))
+  return reply(ctx, id, "result")
+end
+
+def hover_shown(ctx: BDD.Context, line: String, column: String, names: List[String]) -> BDD.Context
+  case result_at(ctx, "hover", line, column)
+    ok(result) ->
+      contents = at(result, ["contents"]).unwrap_or(JSON.null())
+      kind = JSON.string(at(contents, ["kind"]).unwrap_or(JSON.null())).unwrap_or("")
+      value = JSON.string(at(contents, ["value"]).unwrap_or(JSON.null())).unwrap_or("")
+      missing = names.filter do |name| !value.contains?("```agc\n#{name}(") end
+      shown = kind == "markdown" and missing.size == 0
+      return BDD.assert(ctx, shown, "the hover at #{line}:#{column} lacks #{missing.join(", ")} in #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def hover_absent(ctx: BDD.Context, line: String, column: String) -> BDD.Context
+  case result_at(ctx, "hover", line, column)
+    ok(result) ->
+      return BDD.assert(ctx, result.to_s == "null", "expected no hover at #{line}:#{column}; actual #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def hover_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  case result_at(ctx, "hover", args[0], args[1])
+    ok(result) ->
+      start = position("#{args[2]}:#{args[3]}")
+      stop = position("#{args[4]}:#{args[5]}")
+      wanted = canonical(JSON.encode(JSON.object({"start": start, "end": stop})))
+      actual = canonical(JSON.encode(at(result, ["range"]).unwrap_or(JSON.null())))
+      return BDD.assert(ctx, actual == wanted, "expected the range #{wanted}; actual #{actual}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def completion_offered(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context
+  case result_at(ctx, "completion", line, column)
+    ok(result) ->
+      none: List[Json] = []
+      items = JSON.list(result).unwrap_or(none)
+      missing = rows.filter do |row| !offers?(items, row) end
+      return BDD.assert(ctx, missing.size == 0, "the completion at #{line}:#{column} lacks #{missing} in #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def completion_lacks(ctx: BDD.Context, line: String, column: String, label: String) -> BDD.Context
+  case result_at(ctx, "completion", line, column)
+    ok(result) ->
+      found = labels(result).filter do |offered| offered == label end
+      return BDD.assert(ctx, found.size == 0, "the completion at #{line}:#{column} offers #{label}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def completion_empty(ctx: BDD.Context, line: String, column: String) -> BDD.Context
+  case result_at(ctx, "completion", line, column)
+    ok(result) ->
+      empty = JSON.list(result).ok? and labels(result).size == 0
+      return BDD.assert(ctx, empty, "expected an empty list at #{line}:#{column}; actual #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def offers?(items: List[Json], row: List[String]) -> Bool
+  return items.filter do |item| item_matches?(item, row) end.size > 0
+end
+
+def item_matches?(item: Json, row: List[String]) -> Bool
+  label = JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("")
+  kind = JSON.int(at(item, ["kind"]).unwrap_or(JSON.null())).unwrap_or(0)
+  detail = JSON.string(at(item, ["detail"]).unwrap_or(JSON.null())).unwrap_or("")
+  documentation = JSON.string(at(item, ["documentation"]).unwrap_or(JSON.null())).unwrap_or("")
+  if label != row[0] or kind != COMPLETION_KINDS.get(row[1]).unwrap!
+    return false
+  end
+  return row[2] == "" or (detail.starts_with?("#{row[2]}(") and documentation.length > 0)
+end
+
+def labels(result: Json) -> List[String]
+  none: List[Json] = []
+  return JSON.list(result).unwrap_or(none).map do |item|
+    JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("")
   end
 end
 
@@ -980,6 +1153,7 @@ def perform(server: Process, dir: String, action: Json) -> Result[Heard]
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), TIMEOUT_MS)
       return ok(nothing_heard())
     "await" -> return read_until_diagnostics(server)
+    "log" -> return read_until_log(server, try JSON.string(try JSON.get(action, "text")))
     "pause" ->
       Task.sleep(try JSON.int(try JSON.get(action, "ms")))
       return ok(nothing_heard())
@@ -1003,6 +1177,21 @@ def read_until_diagnostics(server: Process) -> Result[Heard]
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
+      return ok(Heard(messages: received, arrivals: arrivals))
+    end
+  end
+  return ok(Heard(messages: received, arrivals: arrivals))
+end
+
+def read_until_log(server: Process, text: String) -> Result[Heard]
+  received: List[Json] = []
+  arrivals: List[Int] = []
+  while true
+    message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
+    received = received.push(message)
+    arrivals = arrivals.push(Time.now_ms())
+    shown = JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("")
+    if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(LOG_MESSAGE).to_s and shown.contains?(text)
       return ok(Heard(messages: received, arrivals: arrivals))
     end
   end

@@ -1,3 +1,4 @@
 #!/bin/sh
+[ "$2" = help ] && exec agentica "$@"
 cat >/dev/null
 exit 1
