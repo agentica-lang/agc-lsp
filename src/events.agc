@@ -3,7 +3,6 @@
 import Catalog from "catalog"
 import Check from "check"
 import Lookup from "lookup"
-import Query from "query"
 import Rpc from "rpc"
 import Logger from "std/logger"
 import Symbols from "symbols"
@@ -60,28 +59,16 @@ export struct Job
   generation: Int
 end
 
-## Holds what the task of a definition or hover request needs: the channel, the request id and the question.
-export struct LookupJob
+## Holds what the task of a definition, hover or document symbol request needs.
+export struct QueryJob
   ## Is the channel that receives the answer.
   events: Channel[Event]
   ## Is the id of the request.
   id: Json
-  ## Is the question.
+  ## Is the method of the request.
+  method: String
+  ## Is the question: the document and the position in it.
   request: Lookup.Request
-end
-
-## Holds what the task of a document symbol request needs.
-export struct SymbolsJob
-  ## Is the channel that receives the answer.
-  events: Channel[Event]
-  ## Is the id of the request.
-  id: Json
-  ## Is the executable that prints the outline.
-  agentica: String
-  ## Is the document, as the editor shows it.
-  buffer: Query.Buffer
-  ## Is the position encoding of the ranges.
-  encoding: String
 end
 
 ## Holds what the catalog task needs.
@@ -135,19 +122,16 @@ export def load_catalog(job: CatalogJob) -> Result[Void]
   return ok()
 end
 
-## Answers a definition request and sends the answer to the channel, returning ok.
-export def answer_definition(job: LookupJob) -> Result[Void]
-  return settle(job.events, job.id, "definition", Lookup.definition(job.request))
-end
-
-## Answers a hover request and sends the answer to the channel, returning ok.
-export def answer_hover(job: LookupJob) -> Result[Void]
-  return settle(job.events, job.id, "hover", Lookup.hover(job.request))
-end
-
-## Answers a document symbol request and sends the answer to the channel, returning ok.
-export def answer_symbols(job: SymbolsJob) -> Result[Void]
-  return settle(job.events, job.id, "document symbols", Symbols.answer(job.agentica, job.buffer, job.encoding))
+## Answers a definition, hover or document symbol request and sends the answer to the channel, returning ok.
+export def answer_query(job: QueryJob) -> Result[Void]
+  request = job.request
+  case job.method
+    "textDocument/definition" -> return settle(job.events, job.id, "definition", Lookup.definition(request))
+    "textDocument/hover" -> return settle(job.events, job.id, "hover", Lookup.hover(request))
+    _ ->
+      outcome = Symbols.answer(request.agentica, request.buffer, request.cursor.encoding)
+      return settle(job.events, job.id, "document symbols", outcome)
+  end
 end
 
 def settle(events: Channel[Event], id: Json, what: String, outcome: Result[Json]) -> Result[Void]

@@ -8,6 +8,7 @@ STRUCT_KIND = 23
 ENUM_KIND = 10
 CONSTANT_KIND = 14
 TYPE_PARAMETER_KIND = 26
+VARIABLE_KIND = 13
 FIELD_KIND = 8
 ENUM_MEMBER_KIND = 22
 KINDS = {
@@ -36,7 +37,7 @@ end
 def symbol(item: Query.Item, lines: List[String], encoding: String) -> Json
   fields: Map[String, Json] = {
     "name": JSON.from(item.name),
-    "kind": JSON.from(KINDS.get(item.kind).unwrap_or(FUNCTION_KIND)),
+    "kind": JSON.from(KINDS.get(item.kind).unwrap_or(VARIABLE_KIND)),
     "range": Places.range(lines, item.span.start, item.span.stop, encoding),
     "selectionRange": Places.range(lines, item.name_span.start, item.name_span.stop, encoding),
   }

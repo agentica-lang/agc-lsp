@@ -10,6 +10,7 @@ src/options.agc   command-line options and their defaults
 src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
 src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file; which open files point into which file; the builtin catalog it keeps
 src/events.agc    the reader, check, catalog and request (definition, hover, symbols) tasks, and the events they send to the server loop
+src/asks.agc      which definition, hover and symbols queries run (at most 4), wait, are superseded or cancelled, per request id
 src/schedule.agc  which checks run (at most 4), wait or are stale, per file, each with the text to check and the time it is due (changes wait 200 ms)
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
 src/catalog.agc   the builtins from `agentica --json help`: loading, parsing, lookups by name, namespace and prefix

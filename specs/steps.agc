@@ -25,6 +25,7 @@ SYMBOL_KINDS = {
   "TypeParameter": 26,
   "Field": 8,
   "EnumMember": 22,
+  "Variable": 13,
 }
 COMPLETION_KINDS = {"Function": 3, "Module": 9}
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
@@ -35,6 +36,7 @@ ERROR_CODES = {
   "invalid request": -32_600,
   "method not found": -32_601,
   "server not initialized": -32_002,
+  "request cancelled": -32_800,
 }
 
 struct Session
@@ -96,7 +98,15 @@ def main() -> Void
     BDD.step("the editor types in {string} without waiting:", &types_in_without_waiting),
     BDD.step("the editor hovers over {string} at {int}:{int}", &hovers),
     BDD.step("the editor asks for completion in {string} at {int}:{int}", &asks_completion),
+    BDD.step("the editor hovers over {string} at {int}:{int} without waiting", &hovers_without_waiting),
+    BDD.step("the editor hovers over {string} at {int}:{int} three times in a row", &hovers_in_a_row),
+    BDD.step("the editor hovers over each of {string} at {int}:{int}", &hovers_over_each),
+    BDD.step("the editor hovers over {string} at {int}:{int} and cancels the request", &hovers_and_cancels),
     BDD.step("the editor asks for the definition in {string} at {int}:{int}", &asks_definition),
+    BDD.step(
+      "the editor asks for the definition in {string} through a localhost URI at {int}:{int}",
+      &asks_definition_through_localhost,
+    ),
     BDD.step("the editor asks for the symbols of {string}", &asks_symbols),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
@@ -149,10 +159,18 @@ def main() -> Void
     BDD.step("the hover at {int}:{int} shows {string}", &hover_shows),
     BDD.step("the hover at {int}:{int} shows these builtins:", &hover_shows_these),
     BDD.step("the hover at {int}:{int} shows the type {string}", &hover_shows_type),
+    BDD.step("the hovers of {string} at {int}:{int} show the type {string}", &hovers_show_type),
+    BDD.step("the earlier hovers in a row are answered with null", &earlier_hovers_are_null),
+    BDD.step("the hover at {int}:{int} is answered as cancelled", &hover_is_cancelled),
+    BDD.step("the hover at {int}:{int} is answered before the shutdown", &hover_precedes_shutdown),
     BDD.step("the hover at {int}:{int} does not show {string}", &hover_does_not_show),
     BDD.step("the hover at {int}:{int} covers {int}:{int}-{int}:{int}", &hover_covers),
     BDD.step("there is no hover at {int}:{int}", &no_hover),
     BDD.step("the definition at {int}:{int} is in {string} at {int}:{int}-{int}:{int}", &definition_is),
+    BDD.step(
+      "the definition at {int}:{int} is in {string} through a localhost URI at {int}:{int}-{int}:{int}",
+      &definition_is_through_localhost,
+    ),
     BDD.step("there is no definition at {int}:{int}", &no_definition),
     BDD.step("the symbols of {string} are:", &symbols_are),
     BDD.step("there are no symbols for {string}", &no_symbols),
@@ -411,22 +429,67 @@ end
 def asks_symbols(ctx: BDD.Context, args: List[String]) -> BDD.Context
   ready = with_folder(ctx)
   params = JSON.object({"textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))})})
-  return answered(request(ready, SYMBOLS, params), SYMBOLS, "symbols #{args[0]}")
+  sent = request(ready, SYMBOLS, params)
+  id = BDD.get(sent, "request #{SYMBOLS}").unwrap!
+  return wait_for(BDD.set(sent, "symbols #{args[0]}", id), [id])
 end
 
 def ask(ctx: BDD.Context, key: String, method: String, args: List[String]) -> BDD.Context
-  ready = with_folder(ctx)
-  params = JSON.object({
-    "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
-    "position": position("#{args[1]}:#{args[2]}"),
-  })
-  return answered(request(ready, method, params), method, "#{key} #{args[1]}:#{args[2]}")
+  sent = put_question(ctx, key, method, args, "")
+  return wait_for(sent, [BDD.get(sent, "#{key} #{args[1]}:#{args[2]}").unwrap!])
 end
 
-def answered(sent: BDD.Context, method: String, key: String) -> BDD.Context
+def put_question(ctx: BDD.Context, key: String, method: String, args: List[String], authority: String) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0], authority))}),
+    "position": position("#{args[1]}:#{args[2]}"),
+  })
+  sent = request(ready, method, params)
   id = BDD.get(sent, "request #{method}").unwrap!
-  waiting = add(sent, JSON.object({"kind": JSON.from("reply"), "id": id}))
-  return BDD.set(waiting, key, id)
+  return BDD.set(sent, "#{key} #{args[1]}:#{args[2]}", id)
+end
+
+def wait_for(ctx: BDD.Context, ids: List[Json]) -> BDD.Context
+  return add(ctx, JSON.object({"kind": JSON.from("replies"), "ids": JSON.array(ids)}))
+end
+
+def hovers_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return put_question(ctx, "hover", HOVER, args, "")
+end
+
+def hovers_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = ctx
+  ids: List[Json] = []
+  for _ in 0...3
+    sent = put_question(sent, "hover", HOVER, args, "")
+    ids = ids.push(BDD.get(sent, "hover #{args[1]}:#{args[2]}").unwrap!)
+  end
+  return wait_for(BDD.set(sent, "in a row", JSON.array(ids)), ids)
+end
+
+def hovers_over_each(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = ctx
+  ids: List[Json] = []
+  for name in names(args[0])
+    sent = put_question(sent, "hover", HOVER, [name, args[1], args[2]], "")
+    id = BDD.get(sent, "hover #{args[1]}:#{args[2]}").unwrap!
+    sent = BDD.set(sent, "hover #{name} #{args[1]}:#{args[2]}", id)
+    ids = ids.push(id)
+  end
+  return wait_for(sent, ids)
+end
+
+def hovers_and_cancels(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = put_question(ctx, "hover", HOVER, args, "")
+  id = BDD.get(sent, "hover #{args[1]}:#{args[2]}").unwrap!
+  cancelled = notify(sent, "$/cancelRequest", JSON.object({"id": id}))
+  return wait_for(cancelled, [id])
+end
+
+def asks_definition_through_localhost(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = put_question(ctx, "definition", DEFINITION, args, LOCALHOST)
+  return wait_for(sent, [BDD.get(sent, "definition #{args[1]}:#{args[2]}").unwrap!])
 end
 
 def closes(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -698,6 +761,63 @@ def hover_shows_type(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| hover_typed(done, args[0], args[1], args[2]) end
 end
 
+def hovers_show_type(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| each_hover_typed(done, args) end
+end
+
+def each_hover_typed(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  checked = ctx
+  for name in names(args[0])
+    checked = hover_typed_of(checked, "hover #{name}", args[1], args[2], args[3])
+  end
+  return checked
+end
+
+def earlier_hovers_are_null(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| earlier_are_null(done) end
+end
+
+def earlier_are_null(ctx: BDD.Context) -> BDD.Context
+  none: List[Json] = []
+  ids = JSON.list(BDD.get(ctx, "in a row").unwrap!).unwrap_or(none)
+  checked = ctx
+  for id in ids.take(ids.size - 1)
+    result = reply(checked, JSON.int(id).unwrap!, "result")
+    message = "expected null for request #{id}; actual #{result}"
+    checked = BDD.assert(checked, result.ok? and result.unwrap!.to_s == "null", message)
+  end
+  return checked
+end
+
+def hover_is_cancelled(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    id = JSON.int(BDD.get(done, "hover #{args[0]}:#{args[1]}").unwrap!).unwrap!
+    id_failed(done, id, "request cancelled")
+  end
+end
+
+def hover_precedes_shutdown(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| answered_before_shutdown(done, "hover #{args[0]}:#{args[1]}") end
+end
+
+def answered_before_shutdown(ctx: BDD.Context, key: String) -> BDD.Context
+  hover = position_of(ctx, BDD.get(ctx, key).unwrap!.to_s)
+  shutdown = position_of(ctx, BDD.get(ctx, "request shutdown").unwrap!.to_s)
+  message = "the answer at #{hover} is not before the shutdown at #{shutdown}"
+  return BDD.assert(ctx, hover >= 0 and hover < shutdown, message)
+end
+
+def position_of(ctx: BDD.Context, id: String) -> Int
+  index = 0
+  for message in messages(ctx)
+    if at(message, ["id"]).unwrap_or(JSON.null()).to_s == id
+      return index
+    end
+    index += 1
+  end
+  return -1
+end
+
 def hover_does_not_show(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| hover_lacks(done, args[0], args[1], args[2]) end
 end
@@ -774,7 +894,11 @@ def hover_shown(ctx: BDD.Context, line: String, column: String, names: List[Stri
 end
 
 def hover_value(ctx: BDD.Context, line: String, column: String) -> Result[String]
-  result = try result_at(ctx, "hover", line, column)
+  return hover_value_of(ctx, "hover", line, column)
+end
+
+def hover_value_of(ctx: BDD.Context, key: String, line: String, column: String) -> Result[String]
+  result = try result_at(ctx, key, line, column)
   if result.to_s == "null"
     return error("no hover at #{line}:#{column}")
   end
@@ -782,7 +906,11 @@ def hover_value(ctx: BDD.Context, line: String, column: String) -> Result[String
 end
 
 def hover_typed(ctx: BDD.Context, line: String, column: String, type: String) -> BDD.Context
-  case hover_value(ctx, line, column)
+  return hover_typed_of(ctx, "hover", line, column, type)
+end
+
+def hover_typed_of(ctx: BDD.Context, key: String, line: String, column: String, type: String) -> BDD.Context
+  case hover_value_of(ctx, key, line, column)
     ok(value) ->
       shown = value.contains?(": #{type}\n```")
       message = "the hover at #{line}:#{column} does not show the type #{type} in #{value.inspect}"
@@ -800,13 +928,21 @@ def hover_lacks(ctx: BDD.Context, line: String, column: String, name: String) ->
   end
 end
 
+def definition_is_through_localhost(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| located_at(done, args, LOCALHOST) end
+end
+
 def definition_found(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return located_at(ctx, args, "")
+end
+
+def located_at(ctx: BDD.Context, args: List[String], authority: String) -> BDD.Context
   case result_at(ctx, "definition", args[0], args[1])
     ok(result) ->
       start = position("#{args[3]}:#{args[4]}")
       stop = position("#{args[5]}:#{args[6]}")
       range = JSON.object({"start": start, "end": stop})
-      wanted = canonical(JSON.encode(JSON.object({"uri": JSON.from(uri(ctx, args[2])), "range": range})))
+      wanted = canonical(JSON.encode(JSON.object({"uri": JSON.from(uri(ctx, args[2], authority)), "range": range})))
       actual = canonical(JSON.encode(result))
       return BDD.assert(ctx, actual == wanted, "expected the location #{wanted}; actual #{actual}")
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1406,7 +1542,7 @@ def perform(server: Process, dir: String, action: Json) -> Result[Heard]
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), TIMEOUT_MS)
       return ok(nothing_heard())
     "await" -> return read_until_diagnostics(server)
-    "reply" -> return read_until_reply(server, try JSON.int(try JSON.get(action, "id")))
+    "replies" -> return read_until_replies(server, try JSON.list(try JSON.get(action, "ids")))
     "log" -> return read_until_log(server, try JSON.string(try JSON.get(action, "text")))
     "pause" ->
       Task.sleep(try JSON.int(try JSON.get(action, "ms")))
@@ -1437,16 +1573,18 @@ def read_until_diagnostics(server: Process) -> Result[Heard]
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_until_reply(server: Process, id: Int) -> Result[Heard]
+def read_until_replies(server: Process, ids: List[Json]) -> Result[Heard]
   received: List[Json] = []
   arrivals: List[Int] = []
-  while true
+  waiting = ids.map do |id| id.to_s end
+  while waiting.size > 0
     message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
-    answers = at(message, ["id"]).unwrap_or(JSON.null()).to_s == id.to_s
-    if answers and (at(message, ["result"]).ok? or at(message, ["error"]).ok?)
-      return ok(Heard(messages: received, arrivals: arrivals))
+    answered = at(message, ["result"]).ok? or at(message, ["error"]).ok?
+    sender = at(message, ["id"]).unwrap_or(JSON.null()).to_s
+    if answered
+      waiting = waiting.filter do |id| id != sender end
     end
   end
   return ok(Heard(messages: received, arrivals: arrivals))

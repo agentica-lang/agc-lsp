@@ -64,15 +64,21 @@ written in Agentica.
   published, so a module costs two checker runs. A `main` with a wrong signature is reported as is.
 - Completion knows the builtins only, not your own functions, structs or imports (nor the `std/` modules), and
   `xs.` completes nothing. The hover of a builtin does not know the type of a variable, so `xs.size` shows every
-  builtin named `size`, a struct field read such as `entry.name` can show builtin members of that name too, and a
+  builtin named `size`, a struct field or method of your own named like a builtin method (`point.size`) shows the
+  builtin signatures and not its type until [agentica#527](https://github.com/sonic182/agentica/issues/527), and a
   capitalized receiver that is not a builtin namespace (a module alias or a type) shows its type only. Strings and
   comments are found with a scan of the line, so a heredoc, a string that spans lines or code inside `#{}` is not
   recognised. A catalog that cannot be loaded (see Logging) leaves completion and the hover of builtins empty for the
   session.
 - Definition, document symbols and the type in a hover cost a process each: every request starts `agentica` (`type-at`
-  or `outline`) in a task with a 10 s deadline, so the server loop never waits for it. The answer is for the text that
-  the buffer had when the request came, even if it changed or was closed meanwhile; an answer that comes after
-  `shutdown` is dropped. A query that fails (timeout, the binary cannot run) answers `null` and logs a warning.
+  or `outline`) in a task with a 10 s deadline, so the server loop never waits for it. At most 4 of these tasks run at
+  once; the other requests wait in the order they came. A newer hover (or definition) request for the same document
+  supersedes the older ones of the same kind, which are answered with `null` and their process is closed; so does a
+  `$/cancelRequest`, which answers the request with the error `-32800` (request cancelled). The answer is for the text
+  that the buffer had when the request came, even if it changed or was closed meanwhile. At `shutdown` the requests
+  still in flight are answered with `null` before the answer to `shutdown`. A query that fails (timeout, the binary
+  cannot run) answers `null` and logs a warning; a position or a program that `agentica` refuses (an error in the
+  program, no expression there) answers `null` and logs at debug level only.
 - `agentica` 0.7.0 gives no signature or `##` doc with a definition and does not identify a builtin in `type-at`, so
   the hover shows the type only, not the doc of your own functions, and the builtins come from the catalog
   ([agentica#527](https://github.com/sonic182/agentica/issues/527)). A local (a parameter, a binding, a loop variable

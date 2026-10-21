@@ -12,6 +12,8 @@ SHORT_TEXT_CHARS = 60
 export struct Request
   ## Is the executable that answers the queries.
   agentica: String
+  ## Is the URI of the document, as the editor wrote it.
+  uri: String
   ## Is the document the request is about, as the editor shows it.
   buffer: Query.Buffer
   ## Is the position of the request in that document.
@@ -50,9 +52,16 @@ def location(request: Request, name_span: Places.Span) -> Json
   end
   lines = lines_of(request, name_span.file)
   return JSON.object({
-    "uri": JSON.from(Uri.of_path(name_span.file)),
+    "uri": JSON.from(location_uri(request, name_span.file)),
     "range": Places.range(lines, name_span.start, name_span.stop, request.cursor.encoding),
   })
+end
+
+def location_uri(request: Request, path: String) -> String
+  if Uri.same_path?(path, request.buffer.path)
+    return request.uri
+  end
+  return Uri.of_path(path)
 end
 
 def known?(request: Request, path: String) -> Bool

@@ -62,6 +62,21 @@ Feature: Go to definition
     And the editor asks for the definition in "app.agc" at 4:8
     Then the definition at 4:8 is in "shared/names.agc" at 1:12-1:17
 
+  Scenario: a function of a std module has no definition
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      import Queue from "std/queue"
+
+      def main() -> Void
+        queue = Queue.new()
+        puts(Queue.size(queue))
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 4:18
+    Then there is no definition at 4:18
+
   Scenario: a local, a builtin and a comment have no definition
     Given the language server has started
     When the editor opens "app.agc" with:
@@ -84,6 +99,23 @@ Feature: Go to definition
     And there is no definition at 5:4
     And there is no definition at 3:6
     And there is no definition at 1:1
+
+  Scenario: the location of a name of the same file keeps the URI of the document
+    Given the language server has started
+    And the file "app.agc" contains:
+      """
+      def double(n: Int) -> Int
+        return n * 2
+      end
+
+      def main() -> Void
+        puts(double(21))
+      end
+
+      """
+    When the editor opens "app.agc" through a localhost URI
+    And the editor asks for the definition in "app.agc" through a localhost URI at 6:9
+    Then the definition at 6:9 is in "app.agc" through a localhost URI at 1:5-1:11
 
   Scenario: a file that does not check has no definition
     Given the language server has started

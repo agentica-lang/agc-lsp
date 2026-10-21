@@ -3,10 +3,12 @@
 import Fields from "fields"
 import Places from "places"
 import Proc from "proc"
+import Logger from "std/logger"
 import Uri from "uri"
 
 QUERY_TIMEOUT_MS = 10_000
-EXPECTED_CODES = ["LEX-", "PARSE-", "CHECK-", "QUERY-NO-EXPRESSION"]
+EXPECTED_CODES = ["LEX-", "PARSE-", "CHECK-", "QUERY-NO-EXPRESSION", "QUERY-USAGE"]
+EMBEDDED_FOLDER = "std/"
 
 ## Holds the text of a file as the editor shows it, and the path it stands for.
 export struct Buffer
@@ -120,6 +122,7 @@ def refusal_code(stderr: String) -> String
     ok(found) ->
       code = Fields.text(found, "code")
       if expected?(code)
+        Logger.debug("agentica refused the query: #{code}")
         return code
       end
       return ""
@@ -134,8 +137,9 @@ end
 def subject_of(found: Json, folder: String) -> Subject
   origin = Origin.Unknown
   definition = Fields.value(found, "definition")
-  if JSON.kind(definition) == "object"
-    origin = Origin.Declared(located(Places.span(Fields.value(definition, "name_span")), folder))
+  declared = Places.span(Fields.value(definition, "name_span"))
+  if JSON.kind(definition) == "object" and !declared.file.starts_with?(EMBEDDED_FOLDER)
+    origin = Origin.Declared(located(declared, folder))
   end
   return Subject(
     text: Fields.text(found, "text"),

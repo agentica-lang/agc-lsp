@@ -211,3 +211,59 @@ Feature: Hover on builtins
       | 2:22-2:26 | error    | CHECK-UNKNOWN-NAME |
     And there is no hover at 2:10
     And the server warns "cannot load the builtin catalog"
+
+  Scenario: a newer hover on a document supersedes the older ones, which are answered with null
+    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        count = 21
+        puts(count)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 3:8 three times in a row
+    Then the earlier hovers in a row are answered with null
+    And the hover at 3:8 shows the type "Int"
+
+  Scenario: at most four queries run at a time and the others wait their turn
+    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
+    And the files "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" contain:
+      """
+      def main() -> Void
+        count = 21
+        puts(count)
+      end
+
+      """
+    When the editor opens the files "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" without waiting
+    And the editor waits for the diagnostics of 6 files
+    And the editor hovers over each of "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" at 3:8
+    Then the hovers of "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" at 3:8 show the type "Int"
+
+  Scenario: a hover that the editor cancels is answered as cancelled
+    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        count = 21
+        puts(count)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 3:8 and cancels the request
+    Then the hover at 3:8 is answered as cancelled
+
+  Scenario: a hover still running at shutdown is answered with null before the shutdown
+    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        count = 21
+        puts(count)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 3:8 without waiting
+    Then there is no hover at 3:8
+    And the hover at 3:8 is answered before the shutdown
