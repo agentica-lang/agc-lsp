@@ -1,5 +1,8 @@
+import Logger from "std/logger"
+
 CHUNK_BYTES = 1_048_576
 LENGTH_HEADER = "content-length:"
+LOG_METHOD = "window/logMessage"
 
 export enum Incoming
   Message(Json)
@@ -50,6 +53,7 @@ end
 
 export def respond(id: Json, result: Json) -> Void
   send(JSON.encode(Response(jsonrpc: "2.0", id: id, result: result)))
+  Logger.debug("sent a response", {"id": JSON.encode(id)})
 end
 
 export def fail(id: Json, code: Int, message: String) -> Void
@@ -59,10 +63,17 @@ export def fail(id: Json, code: Int, message: String) -> Void
     "error": JSON.object({"code": JSON.from(code), "message": JSON.from(message)}),
   }
   send(JSON.encode(failure))
+  Logger.debug("sent an error", {"id": JSON.encode(id), "code": code.to_s})
 end
 
 export def notify(method: String, params: Json) -> Void
   send(JSON.encode(Notification(jsonrpc: "2.0", method: method, params: params)))
+  Logger.debug("sent a notification", {"method": method})
+end
+
+export def log_message(kind: Int, message: String) -> Void
+  params = JSON.object({"type": JSON.from(kind), "message": JSON.from(message)})
+  send(JSON.encode(Notification(jsonrpc: "2.0", method: LOG_METHOD, params: params)))
 end
 
 def body(length: Int) -> Result[String]
