@@ -6,6 +6,7 @@ import Lookup from "lookup"
 import Rpc from "rpc"
 import Logger from "std/logger"
 import Symbols from "symbols"
+import Workspace from "workspace"
 
 SEND_TIMEOUT_MS = 10_000
 
@@ -33,7 +34,7 @@ export enum Event
   Input(Rpc.Incoming)
   ## Is a finished check.
   Checked(Report)
-  ## Is the answer to a definition, hover or document symbol request.
+  ## Is the answer to a definition, references, hover, document symbol or workspace symbol request.
   Answered(Answer)
   ## Is the loaded catalog, or the reason it failed.
   Cataloged(Result[Catalog.Book])
@@ -59,7 +60,17 @@ export struct Job
   generation: Int
 end
 
-## Holds what the task of a definition, hover or document symbol request needs.
+## Is what a query asks.
+export enum Question
+  ## Is a question about a document and a position in it: definition, hover or document symbols.
+  Document(Lookup.Request)
+  ## Is a question about the uses of the name at a position, with true to include its declaration.
+  References(Lookup.Request, Bool)
+  ## Is a search for a name in the files of the workspace.
+  Workspace(Workspace.Request)
+end
+
+## Holds what the task of a definition, references, hover, document symbol or workspace symbol request needs.
 export struct QueryJob
   ## Is the channel that receives the answer.
   events: Channel[Event]
@@ -67,8 +78,10 @@ export struct QueryJob
   id: Json
   ## Is the method of the request.
   method: String
-  ## Is the question: the document and the position in it.
-  request: Lookup.Request
+  ## Is what a newer request of the same method replaces: the path of the document, or the folder of the workspace.
+  key: String
+  ## Is the question.
+  question: Question
 end
 
 ## Holds what the catalog task needs.
@@ -122,9 +135,18 @@ export def load_catalog(job: CatalogJob) -> Result[Void]
   return ok()
 end
 
-## Answers a definition, hover or document symbol request and sends the answer to the channel, returning ok.
+## Answers a query and sends the answer to the channel, returning ok.
 export def answer_query(job: QueryJob) -> Result[Void]
-  request = job.request
+  case job.question
+    Question.Document(request) -> return answer_document(job, request)
+    Question.References(request, with_declaration) ->
+      return settle(job.events, job.id, "references", Lookup.references(request, with_declaration))
+    Question.Workspace(request) ->
+      return settle(job.events, job.id, "workspace symbols", Workspace.answer(request))
+  end
+end
+
+def answer_document(job: QueryJob, request: Lookup.Request) -> Result[Void]
   case job.method
     "textDocument/definition" -> return settle(job.events, job.id, "definition", Lookup.definition(request))
     "textDocument/hover" -> return settle(job.events, job.id, "hover", Lookup.hover(request))

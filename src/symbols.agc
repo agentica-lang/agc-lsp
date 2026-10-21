@@ -1,4 +1,4 @@
-## Answers document symbol requests with the outline of the buffer.
+## Answers document symbol requests with the outline of the buffer, and names the kinds of symbols.
 
 import Places from "places"
 import Query from "query"
@@ -30,6 +30,11 @@ export def answer(agentica: String, buffer: Query.Buffer, encoding: String) -> R
   end
 end
 
+## Returns the LSP symbol kind of a kind of declaration that agentica names, a variable for an unknown one.
+export def kind_of(kind: String) -> Int
+  return KINDS.get(kind).unwrap_or(VARIABLE_KIND)
+end
+
 def symbols(items: List[Query.Item], lines: List[String], encoding: String) -> Json
   return JSON.array(items.map do |item| symbol(item, lines, encoding) end)
 end
@@ -37,7 +42,7 @@ end
 def symbol(item: Query.Item, lines: List[String], encoding: String) -> Json
   fields: Map[String, Json] = {
     "name": JSON.from(item.name),
-    "kind": JSON.from(KINDS.get(item.kind).unwrap_or(VARIABLE_KIND)),
+    "kind": JSON.from(kind_of(item.kind)),
     "range": Places.range(lines, item.span.start, item.span.stop, encoding),
     "selectionRange": Places.range(lines, item.name_span.start, item.name_span.stop, encoding),
   }

@@ -17,6 +17,8 @@ HOVER = "textDocument/hover"
 COMPLETION = "textDocument/completion"
 DEFINITION = "textDocument/definition"
 SYMBOLS = "textDocument/documentSymbol"
+REFERENCES = "textDocument/references"
+WORKSPACE_SYMBOLS = "workspace/symbol"
 SYMBOL_KINDS = {
   "Function": 12,
   "Struct": 23,
@@ -70,6 +72,7 @@ def main() -> Void
     ),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
+    BDD.step("the editor offers the workspace as {string}", &offers_workspace),
     BDD.step("the language server has loaded the builtin catalog", &started_with_catalog),
     BDD.step(
       "the language server has loaded the builtin catalog with the position encodings {string}",
@@ -108,6 +111,13 @@ def main() -> Void
       &asks_definition_through_localhost,
     ),
     BDD.step("the editor asks for the symbols of {string}", &asks_symbols),
+    BDD.step("the editor asks for the references in {string} at {int}:{int}", &asks_references),
+    BDD.step(
+      "the editor asks for the references in {string} at {int}:{int} without the declaration",
+      &asks_references_without_declaration,
+    ),
+    BDD.step("the editor searches the workspace for {string}", &searches_workspace),
+    BDD.step("the editor searches the workspace for {string} three times in a row", &searches_workspace_in_a_row),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
     BDD.step("the editor waits {int} milliseconds", &waits),
@@ -165,6 +175,7 @@ def main() -> Void
     BDD.step("the hovers of {string} at {int}:{int} show the type {string}", &hovers_show_type),
     BDD.step("the hover at {int}:{int} is fenced with {int} backticks", &hover_is_fenced),
     BDD.step("the earlier hovers in a row are answered with null", &earlier_hovers_are_null),
+    BDD.step("the earlier requests in a row are answered with null", &earlier_hovers_are_null),
     BDD.step("the hover at {int}:{int} is answered as cancelled", &hover_is_cancelled),
     BDD.step("the hover at {int}:{int} is answered before the shutdown", &hover_precedes_shutdown),
     BDD.step("the hover at {int}:{int} does not show {string}", &hover_does_not_show),
@@ -179,6 +190,11 @@ def main() -> Void
     BDD.step("the symbols of {string} are:", &symbols_are),
     BDD.step("there are no symbols for {string}", &no_symbols),
     BDD.step("the symbol {string} of {string} covers {int}:{int}-{int}:{int}", &symbol_covers),
+    BDD.step("the references at {int}:{int} are:", &references_are),
+    BDD.step("there are no references at {int}:{int}", &no_references),
+    BDD.step("the workspace symbols for {string} are:", &workspace_symbols_are),
+    BDD.step("there are no workspace symbols for {string}", &no_workspace_symbols),
+    BDD.step("the search for {string} is answered with null", &search_is_null),
     BDD.step("the completion at {int}:{int} offers:", &completion_offers),
     BDD.step("the completion at {int}:{int} does not offer {string}", &completion_does_not_offer),
     BDD.step("the completion at {int}:{int} offers nothing", &completion_offers_nothing),
@@ -241,6 +257,10 @@ end
 
 def catalog_loaded(ctx: BDD.Context) -> BDD.Context
   return add(ctx, JSON.object({"kind": JSON.from("log"), "text": JSON.from("loaded the builtin catalog")}))
+end
+
+def offers_workspace(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return BDD.set(with_folder(ctx), "workspace", JSON.from(args[0]))
 end
 
 def asks_log_level(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -436,6 +456,46 @@ def asks_symbols(ctx: BDD.Context, args: List[String]) -> BDD.Context
   sent = request(ready, SYMBOLS, params)
   id = BDD.get(sent, "request #{SYMBOLS}").unwrap!
   return wait_for(BDD.set(sent, "symbols #{args[0]}", id), [id])
+end
+
+def asks_references(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask_references(ctx, args, true)
+end
+
+def asks_references_without_declaration(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask_references(ctx, args, false)
+end
+
+def ask_references(ctx: BDD.Context, args: List[String], declaration: Bool) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
+    "position": position("#{args[1]}:#{args[2]}"),
+    "context": JSON.object({"includeDeclaration": JSON.from(declaration)}),
+  })
+  sent = request(ready, REFERENCES, params)
+  id = BDD.get(sent, "request #{REFERENCES}").unwrap!
+  return wait_for(BDD.set(sent, "references #{args[1]}:#{args[2]}", id), [id])
+end
+
+def searches_workspace(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = search(ctx, args[0])
+  return wait_for(sent, [BDD.get(sent, "search #{args[0]}").unwrap!])
+end
+
+def searches_workspace_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = ctx
+  ids: List[Json] = []
+  for _ in 0...3
+    sent = search(sent, args[0])
+    ids = ids.push(BDD.get(sent, "search #{args[0]}").unwrap!)
+  end
+  return wait_for(BDD.set(sent, "in a row", JSON.array(ids)), ids)
+end
+
+def search(ctx: BDD.Context, name: String) -> BDD.Context
+  sent = request(with_folder(ctx), WORKSPACE_SYMBOLS, JSON.object({"query": JSON.from(name)}))
+  return BDD.set(sent, "search #{name}", BDD.get(sent, "request #{WORKSPACE_SYMBOLS}").unwrap!)
 end
 
 def ask(ctx: BDD.Context, key: String, method: String, args: List[String]) -> BDD.Context
@@ -1053,6 +1113,100 @@ def symbol_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
   end
 end
 
+def references_are(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  return finished(ctx) do |done| references_listed(done, args[0], args[1], rows) end
+end
+
+def no_references(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| references_absent(done, args[0], args[1]) end
+end
+
+def workspace_symbols_are(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  return finished(ctx) do |done| workspace_symbols_listed(done, args[0], rows) end
+end
+
+def no_workspace_symbols(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| workspace_symbols_absent(done, args[0]) end
+end
+
+def search_is_null(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| workspace_symbols_null(done, args[0]) end
+end
+
+def references_listed(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context
+  case result_at(ctx, "references", line, column)
+    ok(result) ->
+      none: List[Json] = []
+      actual = JSON.list(result).unwrap_or(none).map do |found| location_row(ctx, found) end.sort
+      wanted = rows.map do |row| "#{row[0]} #{row[1]}" end.sort
+      message = "expected the references #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
+      return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def references_absent(ctx: BDD.Context, line: String, column: String) -> BDD.Context
+  case result_at(ctx, "references", line, column)
+    ok(result) ->
+      return BDD.assert(ctx, result.to_s == "null", "expected no references at #{line}:#{column}; actual #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def workspace_symbols_listed(ctx: BDD.Context, name: String, rows: List[List[String]]) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "search #{name}").unwrap!).unwrap!
+  case reply(ctx, id, "result")
+    ok(result) ->
+      none: List[Json] = []
+      actual = JSON.list(result).unwrap_or(none).map do |found| symbol_row(ctx, found) end.sort
+      wanted = rows.map do |row| "#{row[0]} #{row[1]} #{row[2]} #{row[3]}" end.sort
+      message = "expected the workspace symbols #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
+      return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def workspace_symbols_absent(ctx: BDD.Context, name: String) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "search #{name}").unwrap!).unwrap!
+  case reply(ctx, id, "result")
+    ok(result) ->
+      message = "expected an empty list for #{name.inspect}; actual #{result}"
+      return BDD.assert(ctx, result.to_s == "[]", message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def workspace_symbols_null(ctx: BDD.Context, name: String) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "search #{name}").unwrap!).unwrap!
+  case reply(ctx, id, "result")
+    ok(result) -> return BDD.assert(ctx, result.to_s == "null", "expected null for #{name.inspect}; actual #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def location_row(ctx: BDD.Context, location: Json) -> String
+  prefix = uri(ctx, "")
+  found = JSON.string(at(location, ["uri"]).unwrap_or(JSON.null())).unwrap_or("")
+  file = found
+  if found.starts_with?(prefix)
+    file = found.slice(prefix.length, found.length - prefix.length)
+  end
+  return "#{file} #{span_text(at(location, ["range"]).unwrap_or(JSON.null()))}"
+end
+
+def symbol_row(ctx: BDD.Context, found: Json) -> String
+  name = JSON.string(at(found, ["name"]).unwrap_or(JSON.null())).unwrap_or("")
+  container = JSON.string(at(found, ["containerName"]).unwrap_or(JSON.null())).unwrap_or("")
+  if container != ""
+    name = "#{container}.#{name}"
+  end
+  kind = JSON.int(at(found, ["kind"]).unwrap_or(JSON.null())).unwrap_or(0)
+  place = location_row(ctx, at(found, ["location"]).unwrap_or(JSON.null()))
+  return "#{name} #{kind_name(kind)} #{place}"
+end
+
 def symbols_absent(ctx: BDD.Context, name: String) -> BDD.Context
   id = JSON.int(BDD.get(ctx, "symbols #{name}").unwrap!).unwrap!
   case reply(ctx, id, "result")
@@ -1355,7 +1509,23 @@ def initialize(ctx: BDD.Context, capabilities: Json) -> BDD.Context
   if options.size > 0
     params = params.put("initializationOptions", JSON.object(options))
   end
-  return request(ctx, "initialize", JSON.object(params))
+  return request(ctx, "initialize", JSON.object(workspace_params(ctx, params)))
+end
+
+def workspace_params(ctx: BDD.Context, params: Map[String, Json]) -> Map[String, Json]
+  case BDD.get(ctx, "workspace")
+    ok(offered) ->
+      root = "file://#{encoded(folder(ctx))}"
+      case JSON.string(offered).unwrap_or("")
+        "workspace folders" ->
+          entry = JSON.object({"uri": JSON.from(root), "name": JSON.from("workspace")})
+          return params.put("workspaceFolders", JSON.array([entry]))
+        "root URI" -> return params.put("rootUri", JSON.from(root))
+        "root path" -> return params.put("rootPath", JSON.from(folder(ctx)))
+        _ -> return params
+      end
+    error(_) -> return params
+  end
 end
 
 def request(ctx: BDD.Context, method: String, params: Json) -> BDD.Context

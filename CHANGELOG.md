@@ -12,6 +12,11 @@ Needs Agentica 0.8.0 or later.
 
 ### Added
 
+- Find references (`textDocument/references`): the uses of a name in the buffer and the files it imports, from
+  `agentica refs --partial`, with the declaration unless `context.includeDeclaration` is false.
+- Workspace symbols (`workspace/symbol`): where a name is declared in the `.agc` files below the workspace folder, from
+  `agentica symbol`. The name must be written in full (no prefix or fuzzy match); an empty query or a client without a
+  workspace folder gets an empty list. The files are read from disk.
 - Hover on a function, struct, enum, variant, field or constant shows its signature and its `##` doc, then the type of
   the expression (`type-at` gives them since sonic182/agentica#527).
 - Hover on a method call shows the one builtin it is, from the `help` that `type-at` gives, instead of every builtin

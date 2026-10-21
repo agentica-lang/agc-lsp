@@ -7,6 +7,7 @@ import Completion from "completion"
 import Cursor from "cursor"
 import {UTF16, UTF32} from "columns"
 import Events from "events"
+import Fields from "fields"
 import Hover from "hover"
 import Logs from "logs"
 import Lookup from "lookup"
@@ -17,6 +18,7 @@ import Schedule from "schedule"
 import Logger from "std/logger"
 import Uri from "uri"
 import Words from "words"
+import Workspace from "workspace"
 
 PARSE_ERROR = -32_700
 INVALID_REQUEST = -32_600
@@ -52,8 +54,11 @@ export struct State
   catalog: Catalog.Book
   ## Lists the catalog tasks that have not ended.
   loaders: List[Task[Result[Void]]]
-  ## Is the plan of the queries that answer definition, hover and document symbol requests.
+  ## Is the plan of the queries that answer definition, references, hover, document symbol and workspace symbol
+  ## requests.
   asks: Asks.Plan
+  ## Is the absolute path of the workspace folder, empty when the editor gave none.
+  root: String
 end
 
 enum Next
@@ -79,6 +84,7 @@ export def start(options: Options.Options) -> State
     catalog: Catalog.empty(),
     loaders: loaders,
     asks: Asks.start(),
+    root: "",
   )
 end
 
@@ -244,6 +250,8 @@ def request(state: State, id: Json, method: String, params: Json) -> State
     "textDocument/hover" -> return hover(state, id, params)
     "textDocument/definition" -> return definition(state, id, params)
     "textDocument/documentSymbol" -> return symbols(state, id, params)
+    "textDocument/references" -> return references(state, id, params)
+    "workspace/symbol" -> return workspace_symbols(state, id, params)
     "textDocument/completion" ->
       Rpc.respond(id, completion(state, params))
       return state
@@ -278,6 +286,8 @@ def initialize(state: State, id: Json, params: Json) -> State
     "hoverProvider": JSON.from(true),
     "definitionProvider": JSON.from(true),
     "documentSymbolProvider": JSON.from(true),
+    "referencesProvider": JSON.from(true),
+    "workspaceSymbolProvider": JSON.from(true),
     "completionProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from(".")])}),
   })
   Rpc.respond(id, JSON.object({
@@ -288,7 +298,7 @@ def initialize(state: State, id: Json, params: Json) -> State
   Logger.info("initialized", {"encoding": encoding})
   job = Events.CatalogJob(events: state.events, agentica: state.options.agentica)
   loader = Task.spawn(&Events.load_catalog, job)
-  return state.with(encoding: encoding, initialized: true, loaders: [loader])
+  return state.with(encoding: encoding, initialized: true, loaders: [loader], root: Workspace.root_of(params))
 end
 
 def hover(state: State, id: Json, params: Json) -> State
@@ -326,6 +336,42 @@ def symbols(state: State, id: Json, params: Json) -> State
   return ask(state, id, "textDocument/documentSymbol", params, Cursor.start(state.encoding))
 end
 
+def references(state: State, id: Json, params: Json) -> State
+  case Cursor.locate(state.documents, params, state.encoding)
+    ok(cursor) if Words.name_at?(cursor.chars, cursor.index) ->
+      return ask(state, id, "textDocument/references", params, cursor)
+    ok(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def workspace_symbols(state: State, id: Json, params: Json) -> State
+  name = Fields.text(params, "query").strip
+  if state.root == "" or name == ""
+    none: List[Json] = []
+    Rpc.respond(id, JSON.array(none))
+    return state
+  end
+  request = Workspace.Request(
+    agentica: state.options.agentica,
+    root: state.root,
+    name: name,
+    encoding: state.encoding,
+  )
+  job = Events.QueryJob(
+    events: state.events,
+    id: id,
+    method: "workspace/symbol",
+    key: state.root,
+    question: Events.Question.Workspace(request),
+  )
+  return dropped_answer(state, Asks.submit(state.asks, job))
+end
+
 def completion(state: State, params: Json) -> Json
   case Cursor.locate(state.documents, params, state.encoding)
     ok(cursor) -> return Completion.answer(state.catalog, cursor)
@@ -347,12 +393,30 @@ def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cur
         cursor: cursor,
         book: state.catalog,
       )
-      job = Events.QueryJob(events: state.events, id: id, method: method, request: request)
+      job = Events.QueryJob(
+        events: state.events,
+        id: id,
+        method: method,
+        key: path,
+        question: question_of(method, request, params),
+      )
       return dropped_answer(state, Asks.submit(state.asks, job))
     error(_) ->
       Rpc.respond(id, JSON.null())
       return state
   end
+end
+
+def question_of(method: String, request: Lookup.Request, params: Json) -> Events.Question
+  if method == "textDocument/references"
+    return Events.Question.References(request, with_declaration?(params))
+  end
+  return Events.Question.Document(request)
+end
+
+def with_declaration?(params: Json) -> Bool
+  context = Fields.value(params, "context")
+  return JSON.bool(Fields.value(context, "includeDeclaration")).unwrap_or(true)
 end
 
 def cancelled(state: State, params: Json) -> State
