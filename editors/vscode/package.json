@@ -1,0 +1,59 @@
+{
+  "name": "agentica-lsp",
+  "displayName": "Agentica",
+  "description": "Diagnostics for Agentica (.agc) files from the agc-lsp language server.",
+  "version": "0.1.0",
+  "publisher": "agentica-lang",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agentica-lang/agc-lsp.git"
+  },
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": ["Programming Languages", "Linters"],
+  "activationEvents": ["onLanguage:agentica"],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "agentica",
+        "aliases": ["Agentica", "agentica"],
+        "extensions": [".agc"]
+      }
+    ],
+    "configuration": {
+      "title": "Agentica",
+      "properties": {
+        "agentica.server.path": {
+          "type": "string",
+          "default": "agc-lsp",
+          "description": "Command that starts the language server (the bin/agc-lsp launcher of agc-lsp)."
+        },
+        "agentica.server.logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warning", "error"],
+          "default": "warning",
+          "description": "Level of the server log shown in the Agentica output channel (stderr of the server)."
+        },
+        "agentica.server.clientLogLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warning", "error"],
+          "default": "error",
+          "description": "Level of the log messages the server sends to the editor."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node --check extension.js",
+    "vscode:prepublish": "node -e \"require('fs').copyFileSync('../../LICENSE', 'LICENSE')\""
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0"
+  }
+}

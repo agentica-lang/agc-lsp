@@ -47,6 +47,22 @@ agentica --allow-run src/main.agc [--stdio] [--agentica PATH] [--log-level LEVEL
 `--agentica PATH` names the binary that checks the files (default: `agentica` from `PATH`). `--stdio` is accepted
 for clients that pass it; stdio is the only transport. The logging options are described below.
 
+## Editors
+
+`bin/agc-lsp` starts the server from wherever the script lives (a symlink to it works too) and passes its arguments on.
+It runs the `agentica` on `PATH`, or the binary named by the `AGENTICA` environment variable. To have `agc-lsp` on
+`PATH`:
+
+```sh
+ln -s "$PWD/bin/agc-lsp" ~/.local/bin/agc-lsp
+```
+
+- Neovim 0.11+: [editors/nvim/agentica.lua](editors/nvim/agentica.lua) (a note for 0.10 is in the file).
+- VS Code: [editors/vscode](editors/vscode), a minimal extension to install from a `.vsix` (see its README).
+
+Syntax highlighting is not part of this repository; it will come from
+[agentica-lang/agc-tmlanguage](https://github.com/agentica-lang/agc-tmlanguage).
+
 ## Logging
 
 The server logs through `std/logger` to three destinations, each with its own level (`debug`, `info`, `warning` or

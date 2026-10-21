@@ -1,6 +1,7 @@
 import BDD from "std/bdd"
 
 SERVER = "src/main.agc"
+LAUNCHER = "bin/agc-lsp"
 TIMEOUT_MS = 20000
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789ABCDEF"
@@ -39,6 +40,9 @@ end
 def main() -> Void
   BDD.run([
     BDD.step("the language server has started", &started),
+    BDD.step("the language server has started through the launcher", &started_through_launcher),
+    BDD.step("the language server has started through a link to the launcher", &started_through_link),
+    BDD.step("the language server has started through a relative link to the launcher", &started_through_relative_link),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
     BDD.step("the editor asks for the log level {string}", &asks_log_level),
@@ -105,6 +109,34 @@ end
 
 def started(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return initialize(ctx, JSON.object({}))
+end
+
+def started_through_launcher(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return initialize(BDD.set(ctx, "launcher", JSON.from(Path.real(LAUNCHER).unwrap!)), JSON.object({}))
+end
+
+def started_through_link(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  path = file_path(ready, "agc-lsp")
+  linked = link(Path.real(LAUNCHER).unwrap!, path)
+  if !linked.ok?
+    return BDD.assert(ready, false, "cannot link the launcher: #{linked.message}")
+  end
+  return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
+end
+
+def started_through_relative_link(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  first = link(Path.real(LAUNCHER).unwrap!, file_path(ready, "launcher"))
+  if !first.ok?
+    return BDD.assert(ready, false, "cannot link the launcher: #{first.message}")
+  end
+  path = file_path(ready, "agc-lsp")
+  second = link("launcher", path)
+  if !second.ok?
+    return BDD.assert(ready, false, "cannot link the launcher: #{second.message}")
+  end
+  return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
 end
 
 def started_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -787,7 +819,13 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     log_path = file_path(ctx, JSON.string(BDD.get(ctx, "log file").unwrap!).unwrap!)
     words = words.concat(["--log-file", log_path])
   end
-  ran = session(dir, ["--allow-run", SERVER].concat(words), actions)
+  command = "agentica"
+  arguments = ["--allow-run", SERVER].concat(words)
+  if BDD.get(ctx, "launcher").ok?
+    command = JSON.string(BDD.get(ctx, "launcher").unwrap!).unwrap!
+    arguments = words
+  end
+  ran = session(dir, command, arguments, actions)
   log = ""
   if log_path != ""
     log = File.read_text(log_path, TIMEOUT_MS).unwrap_or("")
@@ -801,8 +839,8 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
   end
 end
 
-def session(dir: String, arguments: List[String], actions: List[Json]) -> Result[Session]
-  server = try Process.spawn_captured("agentica", arguments, ".", TIMEOUT_MS)
+def session(dir: String, command: String, arguments: List[String], actions: List[Json]) -> Result[Session]
+  server = try Process.spawn_captured(command, arguments, ".", TIMEOUT_MS)
   received: List[Json] = []
   arrivals: List[Int] = []
   sent: Map[String, Json] = {}

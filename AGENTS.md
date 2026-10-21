@@ -14,6 +14,9 @@ src/schedule.agc  which checks run (at most 4), wait or are stale, per file
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
 src/check.agc     runs `agentica --json check` and maps its diagnostic to LSP (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
+bin/agc-lsp       the launcher editors run: finds the repo through symlinks, then `exec agentica --allow-run src/main.agc "$@"`
+editors/nvim/     Neovim 0.11+ config (agentica.lua)
+editors/vscode/   minimal VS Code extension (language client over stdio)
 specs/            BDD features and their step program (steps.agc)
 ```
 
