@@ -9,27 +9,14 @@ import Uri from "uri"
 CHECK_TIMEOUT_MS = 10_000
 SEVERITY_ERROR = 1
 RELATED_MESSAGE = "the error is here"
-NO_MAIN_MESSAGE = "a program must declare exactly one main"
-STUB_MAIN = "\n\ndef main() -> Void\nend\n"
 
 ## Returns the first diagnostic of the text as LSP diagnostics, or an empty list when the check passes.
 export def diagnostics(agentica: String, path: String, text: String, encoding: String) -> Result[List[Json]]
-  deadline = Time.now_ms() + CHECK_TIMEOUT_MS
-  first = try problems(agentica, path, text, deadline)
-  if first.size == 0
+  found = try problems(agentica, path, text, Time.now_ms() + CHECK_TIMEOUT_MS)
+  if found.size == 0
     return ok([])
   end
-  if !without_main?(first[0], path)
-    return ok([diagnostic(first[0], path, text, encoding)])
-  end
-  second = try problems(agentica, path, "#{text}#{STUB_MAIN}", deadline)
-  if second.size == 0
-    return ok([])
-  end
-  if in_stub?(second[0], path, text)
-    return ok([diagnostic(first[0], path, text, encoding)])
-  end
-  return ok([diagnostic(second[0], path, text, encoding)])
+  return ok([diagnostic(found[0], path, text, encoding)])
 end
 
 ## Returns the URI that the related location of the first diagnostic points into, or an empty text.
@@ -51,14 +38,6 @@ def failed(message: String) -> Result[List[Json]]
   return error(message)
 end
 
-def without_main?(found: Json, path: String) -> Bool
-  message = Fields.text(found, "message")
-  if Fields.text(found, "code") != "CHECK-MAIN" or !message.starts_with?(NO_MAIN_MESSAGE)
-    return false
-  end
-  return Uri.same_path?(Fields.text(found, "file"), path)
-end
-
 def problems(agentica: String, path: String, source: String, deadline: Int) -> Result[List[Json]]
   case run(agentica, path, source, deadline)
     ok(problem) ->
@@ -71,13 +50,6 @@ def problems(agentica: String, path: String, source: String, deadline: Int) -> R
       end
     error(message) -> return failed("cannot check #{path}: #{message}")
   end
-end
-
-def in_stub?(found: Json, path: String, source: String) -> Bool
-  if !Uri.same_path?(Fields.text(found, "file"), path)
-    return false
-  end
-  return Places.place(found, "start").line > source.split("\n").size
 end
 
 def run(agentica: String, path: String, text: String, deadline: Int) -> Result[String]

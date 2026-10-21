@@ -340,7 +340,13 @@ def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cur
   case Uri.path_of(uri)
     ok(path) ->
       buffer = Query.Buffer(path: path, text: state.documents.get(uri).unwrap_or(""))
-      request = Lookup.Request(agentica: state.options.agentica, uri: uri, buffer: buffer, cursor: cursor)
+      request = Lookup.Request(
+        agentica: state.options.agentica,
+        uri: uri,
+        buffer: buffer,
+        cursor: cursor,
+        book: state.catalog,
+      )
       job = Events.QueryJob(events: state.events, id: id, method: method, request: request)
       return dropped_answer(state, Asks.submit(state.asks, job))
     error(_) ->

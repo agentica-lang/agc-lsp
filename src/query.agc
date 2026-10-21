@@ -1,5 +1,6 @@
 ## Asks agentica for the type and the definition at a position, and for the outline of a file.
 
+import Catalog from "catalog"
 import Fields from "fields"
 import Places from "places"
 import Proc from "proc"
@@ -17,12 +18,26 @@ export struct Buffer
   text: String
 end
 
-## Tells where a name is declared.
+## Holds a declaration that a name refers to: a function, struct, enum, variant, field, constant or local.
+export struct Declaration
+  ## Is the kind: function, struct, enum, variant, field, constant, local, parameter, loop or pattern.
+  kind: String
+  ## Is the signature, written as agentica writes it.
+  signature: String
+  ## Is the text of the `##` doc, or empty when there is none.
+  doc: String
+  ## Is the place of the name, in a file with an absolute path.
+  name_span: Places.Span
+end
+
+## Tells what a name refers to.
 export enum Origin
-  ## Is a local, a builtin or a name without declaration.
+  ## Is a name without declaration.
   Unknown
-  ## Is the place of the name of a declaration in the program, in a file with an absolute path.
-  Declared(Places.Span)
+  ## Is a declaration of the program.
+  Declared(Declaration)
+  ## Is a builtin, with its entry of the catalog.
+  Builtin(Catalog.Entry)
 end
 
 ## Holds the expression at a position: its source, its type and where its name is declared.
@@ -33,7 +48,7 @@ export struct Subject
   type: String
   ## Is the place of the whole expression, in the file that was asked.
   span: Places.Span
-  ## Tells where the name of the expression is declared.
+  ## Tells what the name of the expression refers to.
   origin: Origin
 end
 
@@ -77,7 +92,7 @@ end
 ## Returns the expression at a line and a column of the buffer, both counted from 1 in code points.
 export def type_at(agentica: String, buffer: Buffer, line: Int, column: Int) -> Result[Typed]
   folder = Uri.folder_of(buffer.path)
-  arguments = ["--json", "type-at", "--stdin", "#{buffer.path}:#{line}:#{column}"]
+  arguments = ["--json", "type-at", "--partial", "--stdin", "#{buffer.path}:#{line}:#{column}"]
   reply = try ask(agentica, folder, arguments, buffer.text)
   case reply
     Reply.Refusal(code) -> return ok(Typed.Refused(code))
@@ -134,17 +149,29 @@ def expected?(code: String) -> Bool
 end
 
 def subject_of(found: Json, folder: String) -> Subject
-  origin = Origin.Unknown
-  definition = Fields.value(found, "definition")
-  if JSON.kind(definition) == "object"
-    origin = Origin.Declared(located(Places.span(Fields.value(definition, "name_span")), folder))
-  end
   return Subject(
     text: Fields.text(found, "text"),
     type: Fields.text(found, "type"),
     span: located(Places.span(Fields.value(found, "span")), folder),
-    origin: origin,
+    origin: origin_of(found, folder),
   )
+end
+
+def origin_of(found: Json, folder: String) -> Origin
+  definition = Fields.value(found, "definition")
+  if JSON.kind(definition) == "object"
+    return Origin.Declared(Declaration(
+      kind: Fields.text(definition, "kind"),
+      signature: Fields.text(definition, "signature"),
+      doc: Fields.text(definition, "doc"),
+      name_span: located(Places.span(Fields.value(definition, "name_span")), folder),
+    ))
+  end
+  help = Fields.value(found, "help")
+  if Fields.text(found, "kind") == "builtin" and JSON.kind(help) == "object"
+    return Origin.Builtin(Catalog.from_help(help))
+  end
+  return Origin.Unknown
 end
 
 def located(span: Places.Span, folder: String) -> Places.Span

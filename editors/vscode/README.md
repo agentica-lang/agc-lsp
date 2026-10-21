@@ -6,7 +6,7 @@ Syntax highlighting is not part of this extension; it will come from
 
 ## Install locally
 
-1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.7.0 or later.
+1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.8.0 or later.
 2. From this folder:
 
    ```sh

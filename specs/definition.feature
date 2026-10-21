@@ -98,7 +98,42 @@ Feature: Go to definition
     And the editor asks for the definition in "app.agc" at 4:8
     Then the definition at 4:8 is in "std/names.agc" at 1:12-1:17
 
-  Scenario: a local, a builtin and a comment have no definition
+  Scenario: a local, a parameter, a loop name and a pattern name are found where they are declared
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def total(limit: Int) -> Int
+        sum = 0
+        for step in [1, 2, 3]
+          sum += step
+        end
+        return sum + limit
+      end
+
+      def pick(answer: Result[Int]) -> Int
+        case answer
+          ok(value) -> return value
+          error(_) -> return 0
+        end
+      end
+
+      def main() -> Void
+        puts(total(pick(ok(1))))
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 4:5
+    And the editor asks for the definition in "app.agc" at 4:12
+    And the editor asks for the definition in "app.agc" at 6:10
+    And the editor asks for the definition in "app.agc" at 6:17
+    And the editor asks for the definition in "app.agc" at 11:26
+    Then the definition at 4:5 is in "app.agc" at 2:3-2:6
+    And the definition at 4:12 is in "app.agc" at 3:7-3:11
+    And the definition at 6:10 is in "app.agc" at 2:3-2:6
+    And the definition at 6:17 is in "app.agc" at 1:11-1:16
+    And the definition at 11:26 is in "app.agc" at 11:8-11:13
+
+  Scenario: a builtin and a comment have no definition
     Given the language server has started
     When the editor opens "app.agc" with:
       """
@@ -110,16 +145,36 @@ Feature: Go to definition
       end
 
       """
-    And the editor asks for the definition in "app.agc" at 4:11
     And the editor asks for the definition in "app.agc" at 4:16
     And the editor asks for the definition in "app.agc" at 5:4
     And the editor asks for the definition in "app.agc" at 3:6
     And the editor asks for the definition in "ghost.agc" at 1:1
-    Then there is no definition at 4:11
-    And there is no definition at 4:16
+    Then there is no definition at 4:16
     And there is no definition at 5:4
     And there is no definition at 3:6
     And there is no definition at 1:1
+
+  Scenario: a function with an error does not stop the definition in the others
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def double(n: Int) -> Int
+        return n * 2
+      end
+
+      def broken() -> Int
+        return "x"
+      end
+
+      def main() -> Void
+        puts(double(21))
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 10:9
+    And the editor asks for the definition in "app.agc" at 6:10
+    Then the definition at 10:9 is in "app.agc" at 1:5-1:11
+    And there is no definition at 6:10
 
   Scenario: the location of a name of the same file keeps the URI of the document
     Given the language server has started
@@ -138,7 +193,7 @@ Feature: Go to definition
     And the editor asks for the definition in "app.agc" through a localhost URI at 6:9
     Then the definition at 6:9 is in "app.agc" through a localhost URI at 1:5-1:11
 
-  Scenario: a file that does not check has no definition
+  Scenario: a name that is not declared has no definition
     Given the language server has started
     When the editor opens "app.agc" with:
       """
@@ -152,7 +207,9 @@ Feature: Go to definition
 
       """
     And the editor asks for the definition in "app.agc" at 6:9
-    Then there is no definition at 6:9
+    And the editor asks for the definition in "app.agc" at 6:16
+    Then the definition at 6:9 is in "app.agc" at 1:5-1:11
+    And there is no definition at 6:16
 
   Scenario Outline: the position of the editor and the location count in the encoding it asked for
     Given the language server has started with the position encodings "<offered>"

@@ -18,7 +18,7 @@ src/columns.agc   character indexes of a line to and from UTF-16 code units
 src/words.agc     the words of one line: the word at an index, the receiver before a dot, strings and comments
 src/cursor.agc    a request position as the line, its characters and the character index, in the negotiated encoding
 src/hover.agc     textDocument/hover of a builtin: qualified name, bare call or method call
-src/lookup.agc    textDocument/definition and the type hover: `type-at` for the declaration of the name and the type of the expression
+src/lookup.agc    textDocument/definition and the hover of names: `type-at` for the declaration (signature, doc), the builtin and the type of the expression
 src/symbols.agc   textDocument/documentSymbol: the outline of a buffer as a hierarchy
 src/query.agc     `agentica --json type-at --stdin` and `outline` on a buffer or a file, parsed
 src/places.agc    spans printed by agentica to LSP positions and ranges (UTF-16 or code points)

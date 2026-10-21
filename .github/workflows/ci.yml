@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  AGENTICA_VERSION: "0.7.0"
+  AGENTICA_VERSION: "0.8.0"
 
 jobs:
   test:

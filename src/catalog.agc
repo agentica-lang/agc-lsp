@@ -71,6 +71,11 @@ export def parse(text: String) -> Result[Book]
   return ok(book.with(ordered: ordered))
 end
 
+## Returns the entry of the object that `agentica --json help NAME` prints for a builtin.
+export def from_help(item: Json) -> Entry
+  return entry_of(item, field(item, "name"))
+end
+
 ## Returns the builtin with the qualified name, or an error when there is none.
 export def find(book: Book, name: String) -> Result[Entry]
   return book.entries.get(name)
