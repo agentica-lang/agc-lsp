@@ -7,6 +7,7 @@ REAP_MS = 1
 export struct Pending
   uri: String
   path: String
+  text: String
 end
 
 export struct Plan
@@ -23,11 +24,14 @@ export def start(agentica: String, events: Channel[Events.Event]) -> Plan
   return Plan(agentica: agentica, events: events, generations: generations, queue: [], running: running)
 end
 
-export def request(plan: Plan, uri: String, path: String, encoding: String) -> Plan
+export def request(plan: Plan, uri: String, path: String, text: String, encoding: String) -> Plan
   cancelled = cancel(plan, uri)
+  pending = Pending(uri: uri, path: path, text: text)
   queue = cancelled.queue
-  if !waiting?(cancelled, uri)
-    queue = queue.push(Pending(uri: uri, path: path))
+  if waiting?(cancelled, uri)
+    queue = queue.map do |queued| newest(queued, pending) end
+  else
+    queue = queue.push(pending)
   end
   return fill(cancelled.with(queue: queue), encoding)
 end
@@ -66,6 +70,13 @@ def cancel(plan: Plan, uri: String) -> Plan
   return plan.with(generations: plan.generations.put(uri, generation), running: plan.running.delete(uri))
 end
 
+def newest(queued: Pending, pending: Pending) -> Pending
+  if queued.uri == pending.uri
+    return pending
+  end
+  return queued
+end
+
 def waiting?(plan: Plan, uri: String) -> Bool
   return plan.queue.filter do |pending| pending.uri == uri end.size > 0
 end
@@ -88,6 +99,7 @@ def launch(plan: Plan, pending: Pending, encoding: String) -> Plan
     agentica: plan.agentica,
     encoding: encoding,
     path: pending.path,
+    text: pending.text,
     uri: pending.uri,
     generation: plan.generations.get(pending.uri).unwrap_or(0),
   )

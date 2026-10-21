@@ -8,11 +8,11 @@ An LSP server for Agentica, written in Agentica. Plan: sonic182/agentica#346.
 src/main.agc      entry point: options, logging, then the server loop
 src/options.agc   command-line options and their defaults
 src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
-src/server.agc    lifecycle and dispatch of requests and notifications; which open files point into which file
+src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file; which open files point into which file
 src/events.agc    the reader and check tasks, and the events they send to the server loop
-src/schedule.agc  which checks run (at most 4), wait or are stale, per file
+src/schedule.agc  which checks run (at most 4), wait or are stale, per file, each with the text to check
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
-src/check.agc     runs `agentica --json check` and maps its diagnostic to LSP (with relatedInformation)
+src/check.agc     runs `agentica --json check --stdin` on a buffer and maps its diagnostic to LSP (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
 bin/agc-lsp       the launcher editors run: finds the repo through symlinks, then `exec agentica --allow-run src/main.agc "$@"`
 editors/nvim/     Neovim 0.11+ config (agentica.lua)

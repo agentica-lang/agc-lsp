@@ -1,3 +1,4 @@
 #!/bin/sh
+cat >/dev/null
 echo "agentica: cannot run" >&2
 exit 2

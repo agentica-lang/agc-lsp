@@ -21,6 +21,7 @@ export struct Job
   agentica: String
   encoding: String
   path: String
+  text: String
   uri: String
   generation: Int
 end
@@ -41,7 +42,7 @@ export def check(job: Job) -> Result[Void]
   if Logger.enabled?(LogLevel.Debug)
     Logger.debug("check started", {"uri": job.uri, "generation": job.generation.to_s})
   end
-  outcome = Check.diagnostics(job.agentica, job.path, job.encoding)
+  outcome = Check.diagnostics(job.agentica, job.path, job.text, job.encoding)
   if Logger.enabled?(LogLevel.Debug)
     fields = {
       "uri": job.uri,

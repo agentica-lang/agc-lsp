@@ -53,11 +53,15 @@ def main() -> Void
     BDD.step("the folder has the link {string} to itself", &links_to_itself),
     BDD.step("the editor opens {string}", &opens),
     BDD.step("the editor opens {string} without waiting", &opens_without_waiting),
+    BDD.step("the editor opens {string} with:", &opens_with),
     BDD.step("the editor opens the files {string} without waiting", &opens_files_without_waiting),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
     BDD.step("the editor opens an untitled buffer", &opens_untitled),
     BDD.step("the editor saves {string} as:", &saves_as),
     BDD.step("the editor saves {string} without waiting as:", &saves_without_waiting),
+    BDD.step("the editor saves {string} without changes", &saves_without_changes),
+    BDD.step("the editor types in {string}:", &types_in),
+    BDD.step("the editor types in {string} without waiting:", &types_in_without_waiting),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
     BDD.step("the editor waits {int} milliseconds", &waits),
@@ -202,6 +206,11 @@ def opens_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return open_through(ctx, args[0], "")
 end
 
+def opens_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  opened = open_text(with_folder(ctx), args[0], "", BDD.doc_string(ctx))
+  return awaiting(opened, args[0])
+end
+
 def opens_files_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   opened = ctx
   for name in names(args[0])
@@ -226,7 +235,10 @@ end
 
 def open_through(ctx: BDD.Context, name: String, authority: String) -> BDD.Context
   ready = with_folder(ctx)
-  text = File.read_text(file_path(ready, name), TIMEOUT_MS).unwrap_or("")
+  return open_text(ready, name, authority, File.read_text(file_path(ready, name), TIMEOUT_MS).unwrap_or(""))
+end
+
+def open_text(ready: BDD.Context, name: String, authority: String, text: String) -> BDD.Context
   document = JSON.object({
     "uri": JSON.from(uri(ready, name, authority)),
     "languageId": JSON.from("agentica"),
@@ -247,18 +259,37 @@ end
 def save(ctx: BDD.Context, name: String) -> BDD.Context
   ready = with_folder(ctx)
   text = BDD.doc_string(ready)
-  document = JSON.object({"uri": JSON.from(uri(ready, name)), "version": JSON.from(2)})
   written = add(ready, JSON.object({
     "kind": JSON.from("write"),
     "name": JSON.from(name),
     "text": JSON.from(text),
   }))
-  changed = notify(written, "textDocument/didChange", JSON.object({
+  return did_save(change(written, name, text), name)
+end
+
+def saves_without_changes(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(did_save(with_folder(ctx), args[0]), args[0])
+end
+
+def did_save(ctx: BDD.Context, name: String) -> BDD.Context
+  saved = JSON.object({"uri": JSON.from(uri(ctx, name))})
+  return notify(ctx, "textDocument/didSave", JSON.object({"textDocument": saved}))
+end
+
+def types_in(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(change(with_folder(ctx), args[0], BDD.doc_string(ctx)), args[0])
+end
+
+def types_in_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return change(with_folder(ctx), args[0], BDD.doc_string(ctx))
+end
+
+def change(ctx: BDD.Context, name: String, text: String) -> BDD.Context
+  document = JSON.object({"uri": JSON.from(uri(ctx, name)), "version": JSON.from(2)})
+  return notify(ctx, "textDocument/didChange", JSON.object({
     "textDocument": document,
     "contentChanges": JSON.array([JSON.object({"text": JSON.from(text)})]),
   }))
-  saved = JSON.object({"uri": JSON.from(uri(ready, name))})
-  return notify(changed, "textDocument/didSave", JSON.object({"textDocument": saved}))
 end
 
 def closes(ctx: BDD.Context, args: List[String]) -> BDD.Context

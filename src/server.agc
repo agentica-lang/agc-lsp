@@ -11,7 +11,7 @@ PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 SERVER_NOT_INITIALIZED = -32002
-NO_SYNC = 0
+FULL_SYNC = 1
 AGENTICA_EXTENSION = ".agc"
 EVENT_CAPACITY = 256
 WAIT_MS = 1000
@@ -25,6 +25,7 @@ export struct State
   events: Channel[Events.Event]
   plan: Schedule.Plan
   pointing: Map[String, String]
+  documents: Map[String, String]
 end
 
 enum Next
@@ -35,6 +36,7 @@ end
 export def start(options: Options.Options) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
   pointing: Map[String, String] = {}
+  documents: Map[String, String] = {}
   return State(
     options: options,
     encoding: "utf-16",
@@ -43,6 +45,7 @@ export def start(options: Options.Options) -> State
     events: events,
     plan: Schedule.start(options.agentica, events),
     pointing: pointing,
+    documents: documents,
   )
 end
 
@@ -176,7 +179,7 @@ def initialize(state: State, id: Json, params: Json) -> State
   end
   sync = JSON.object({
     "openClose": JSON.from(true),
-    "change": JSON.from(NO_SYNC),
+    "change": JSON.from(FULL_SYNC),
     "save": JSON.object({"includeText": JSON.from(false)}),
   })
   capabilities = JSON.object({"positionEncoding": JSON.from(encoding), "textDocumentSync": sync})
@@ -194,45 +197,77 @@ def notification(state: State, method: String, params: Json) -> State
     return state
   end
   case method
-    "textDocument/didOpen" -> return refresh(state, document_uri(params), true)
+    "textDocument/didOpen" -> return keep(state, document_uri(params), document_text(params))
+    "textDocument/didChange" ->
+      case changed_text(params)
+        ok(text) -> return keep(state, document_uri(params), text)
+        error(message) ->
+          Logger.warning(message)
+          return state
+      end
     "textDocument/didSave" -> return saved(state, document_uri(params))
-    "textDocument/didClose" -> return refresh(state, document_uri(params), false)
+    "textDocument/didClose" -> return closed(state, document_uri(params))
     _ -> return state
   end
 end
 
+def keep(state: State, uri: String, text: String) -> State
+  path = agentica_path(uri)
+  if path == ""
+    return state
+  end
+  return check(state.with(documents: state.documents.put(uri, text)), uri, path, text)
+end
+
+def check(state: State, uri: String, path: String, text: String) -> State
+  return state.with(plan: Schedule.request(state.plan, uri, path, text, state.encoding))
+end
+
 def saved(state: State, uri: String) -> State
-  refreshed = refresh(state, uri, true)
+  refreshed = recheck(state, uri)
   path = Uri.path_of(uri).unwrap_or("")
   if path == ""
     return refreshed
   end
-  plan = refreshed.plan
   for document in refreshed.pointing.keys
     if document != uri and Uri.same_path?(refreshed.pointing.get(document).unwrap!, path)
-      plan = Schedule.request(plan, document, Uri.path_of(document).unwrap_or(""), refreshed.encoding)
+      refreshed = recheck(refreshed, document)
     end
   end
-  return refreshed.with(plan: plan)
+  return refreshed
 end
 
-def refresh(state: State, uri: String, checking: Bool) -> State
-  path = ""
-  case Uri.path_of(uri)
-    ok(found) -> path = found
-    error(message) ->
-      Logger.warning(message)
-      return state
+def recheck(state: State, uri: String) -> State
+  case state.documents.get(uri)
+    ok(text) -> return check(state, uri, Uri.path_of(uri).unwrap_or(""), text)
+    error(_) -> return state
   end
-  if !path.ends_with?(AGENTICA_EXTENSION)
+end
+
+def closed(state: State, uri: String) -> State
+  if agentica_path(uri) == ""
     return state
-  end
-  if checking
-    return state.with(plan: Schedule.request(state.plan, uri, path, state.encoding))
   end
   none: List[Json] = []
   publish(uri, none)
-  return state.with(plan: Schedule.forget(state.plan, uri, state.encoding), pointing: state.pointing.delete(uri))
+  return state.with(
+    plan: Schedule.forget(state.plan, uri, state.encoding),
+    pointing: state.pointing.delete(uri),
+    documents: state.documents.delete(uri),
+  )
+end
+
+def agentica_path(uri: String) -> String
+  case Uri.path_of(uri)
+    ok(path) ->
+      if path.ends_with?(AGENTICA_EXTENSION)
+        return path
+      end
+      return ""
+    error(message) ->
+      Logger.warning(message)
+      return ""
+  end
 end
 
 def publish(uri: String, found: List[Json]) -> Void
@@ -252,6 +287,20 @@ def offered(params: Json) -> List[String]
     names = names.push(JSON.string(encoding).unwrap_or(""))
   end
   return names
+end
+
+def document_text(params: Json) -> String
+  document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
+  return JSON.string(JSON.get(document, "text").unwrap_or(JSON.null())).unwrap_or("")
+end
+
+def changed_text(params: Json) -> Result[String]
+  none: List[Json] = []
+  changes = JSON.list(JSON.get(params, "contentChanges").unwrap_or(JSON.null())).unwrap_or(none)
+  if changes.size == 0
+    return error("a change without contentChanges")
+  end
+  return JSON.string(JSON.get(changes[changes.size - 1], "text").unwrap_or(JSON.null()))
 end
 
 def document_uri(params: Json) -> String
@@ -274,7 +323,7 @@ def response?(message: Json) -> Bool
 end
 
 def object?(message: Json) -> Bool
-  return JSON.encode(message).starts_with?("{")
+  return JSON.kind(message) == "object"
 end
 
 def params(message: Json) -> Json

@@ -6,6 +6,7 @@ SHORTEST_WAIT_MS = 1
 READ_TIMEOUT_MS = 10000
 SEVERITY_ERROR = 1
 SURROGATE_START = 65536
+CHUNK_BYTES = 1048576
 RELATED_MESSAGE = "the error is here"
 
 struct Place
@@ -13,14 +14,14 @@ struct Place
   column: Int
 end
 
-export def diagnostics(agentica: String, path: String, encoding: String) -> Result[List[Json]]
-  case run(agentica, path)
+export def diagnostics(agentica: String, path: String, text: String, encoding: String) -> Result[List[Json]]
+  case run(agentica, path, text)
     ok(problem) ->
       if problem == ""
         return ok([])
       end
       case JSON.parse(problem)
-        ok(found) -> return ok([diagnostic(found, path, encoding)])
+        ok(found) -> return ok([diagnostic(found, path, text, encoding)])
         error(message) -> return failed("the diagnostic of #{path} is not JSON: #{message}")
       end
     error(message) -> return failed("cannot check #{path}: #{message}")
@@ -45,16 +46,17 @@ def failed(message: String) -> Result[List[Json]]
   return error(message)
 end
 
-def run(agentica: String, path: String) -> Result[String]
-  checker = try Process.spawn_captured(agentica, ["--json", "check", path], ".", CHECK_TIMEOUT_MS)
-  result = collect(checker)
+def run(agentica: String, path: String, text: String) -> Result[String]
+  deadline = Time.now_ms() + CHECK_TIMEOUT_MS
+  checker = try Process.spawn_captured(agentica, ["--json", "check", "--stdin", path], ".", CHECK_TIMEOUT_MS)
+  result = collect(checker, text, deadline)
   Process.close(checker)
   return result
 end
 
-def collect(checker: Process) -> Result[String]
-  deadline = Time.now_ms() + CHECK_TIMEOUT_MS
-  output = try Process.output(checker, CHECK_TIMEOUT_MS)
+def collect(checker: Process, text: String, deadline: Int) -> Result[String]
+  try feed(checker, text, deadline)
+  output = try Process.output(checker, remaining(deadline))
   status = try Process.wait(checker, remaining(deadline))
   case status
     0 -> return ok("")
@@ -66,6 +68,15 @@ def collect(checker: Process) -> Result[String]
       return ok(problem)
     _ -> return error("agentica exited with status #{status}: #{output.stderr.strip}")
   end
+end
+
+def feed(checker: Process, text: String, deadline: Int) -> Result[Void]
+  rest = text.to_bytes
+  while rest.size > 0
+    try Process.send_bytes(checker, rest.take(CHUNK_BYTES), remaining(deadline))
+    rest = rest.drop(CHUNK_BYTES)
+  end
+  return Process.close_stdin(checker, remaining(deadline))
 end
 
 def remaining(deadline: Int) -> Int
@@ -81,7 +92,7 @@ def last_line(text: String) -> String
   return lines[lines.size - 1].strip
 end
 
-def diagnostic(found: Json, path: String, encoding: String) -> Json
+def diagnostic(found: Json, path: String, text: String, encoding: String) -> Json
   file = text(found, "file")
   message = text(found, "message")
   help = text(found, "help")
@@ -97,7 +108,7 @@ def diagnostic(found: Json, path: String, encoding: String) -> Json
     "source": JSON.from("agentica"),
   }
   if Uri.same_path?(file, path)
-    fields = fields.put("range", span(path, start, stop, encoding))
+    fields = fields.put("range", span(text.split("\n"), start, stop, encoding))
   else
     message = "#{where(file, key_path, start)}: #{message}"
     fields = fields.put("range", JSON.object({"start": origin(), "end": origin()}))
@@ -111,14 +122,13 @@ end
 def related(file: String, key_path: String, start: Place, stop: Place, encoding: String) -> Json
   range = JSON.object({"start": origin(), "end": origin()})
   if key_path == "" and start.line > 0
-    range = span(file, start, stop, encoding)
+    range = span(source_lines(file), start, stop, encoding)
   end
   location = JSON.object({"uri": JSON.from(Uri.of_path(file)), "range": range})
   return JSON.object({"location": location, "message": JSON.from(RELATED_MESSAGE)})
 end
 
-def span(path: String, start: Place, stop: Place, encoding: String) -> Json
-  lines = source_lines(path)
+def span(lines: List[String], start: Place, stop: Place, encoding: String) -> Json
   return JSON.object({"start": position(start, lines, encoding), "end": position(stop, lines, encoding)})
 end
 

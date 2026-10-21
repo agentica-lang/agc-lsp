@@ -14,7 +14,7 @@ Feature: Server lifecycle
       {
         "capabilities": {
           "positionEncoding": "utf-16",
-          "textDocumentSync": {"openClose": true, "change": 0, "save": {"includeText": false}}
+          "textDocumentSync": {"openClose": true, "change": 1, "save": {"includeText": false}}
         },
         "serverInfo": {"name": "agc-lsp"}
       }
