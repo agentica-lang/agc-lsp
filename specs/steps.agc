@@ -65,6 +65,7 @@ def main() -> Void
     BDD.step("the editor opens {string}", &opens),
     BDD.step("the editor opens {string} without waiting", &opens_without_waiting),
     BDD.step("the editor opens {string} with:", &opens_with),
+    BDD.step("the editor opens {string} with Windows line endings:", &opens_with_windows_endings),
     BDD.step("the editor opens {string} with a buffer of {int} KB without waiting", &opens_with_large_buffer),
     BDD.step("the editor opens the files {string} without waiting", &opens_files_without_waiting),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
@@ -249,6 +250,11 @@ end
 def opens_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   opened = open_text(with_folder(ctx), args[0], "", BDD.doc_string(ctx))
   return awaiting(opened, args[0])
+end
+
+def opens_with_windows_endings(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  text = BDD.doc_string(ctx).split("\n").join("\r\n")
+  return awaiting(open_text(with_folder(ctx), args[0], "", text), args[0])
 end
 
 def opens_with_large_buffer(ctx: BDD.Context, args: List[String]) -> BDD.Context

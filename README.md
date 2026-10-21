@@ -47,9 +47,11 @@ written in Agentica.
   logged as an error and also leaves the previous diagnostics; a crash of the catalog task is logged as an error and
   leaves hover and completion empty.
 - Hover and completion know the builtins only, not your own functions, structs or imports (nor the `std/` modules).
-  The type of a variable is not known, so `xs.size` shows every builtin named `size` and `xs.` completes nothing. Strings
-  and comments are found with a scan of the line, so a heredoc, a string that spans lines or code inside `#{}` is
-  not recognised. A catalog that cannot be loaded (see Logging) leaves hover and completion empty for the session.
+  The type of a variable is not known, so `xs.size` shows every builtin named `size`, a struct field read such as
+  `entry.name` can show builtin members of that name too, and `xs.` completes nothing. A capitalized receiver that is
+  not a builtin namespace (a module alias or a type) shows nothing. Strings and comments are found with a scan of the
+  line, so a heredoc, a string that spans lines or code inside `#{}` is not recognised. A catalog that cannot be
+  loaded (see Logging) leaves hover and completion empty for the session.
 - An error in an imported file is published on the file that was opened, never on the imported file itself. Saving a
   file checks again only the open files whose current diagnostic points into it. A file that imports it and showed no
   error is not checked again until it is saved or reopened, and neither is a file whose first check is still running

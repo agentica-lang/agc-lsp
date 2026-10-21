@@ -10,13 +10,14 @@ end
 
 export struct Book
   entries: Map[String, Entry]
+  ordered: List[Entry]
   namespaces: Set[String]
 end
 
 export def empty() -> Book
   entries: Map[String, Entry] = {}
   namespaces: Set[String] = Set.new([])
-  return Book(entries: entries, namespaces: namespaces)
+  return Book(entries: entries, ordered: [], namespaces: namespaces)
 end
 
 export def load(agentica: String) -> Result[Book]
@@ -43,7 +44,7 @@ export def parse(text: String) -> Result[Book]
   if book.entries.size == 0
     return error("the catalog has no builtins")
   end
-  return ok(book)
+  return ok(book.with(ordered: book.entries.keys.sort.map do |name| book.entries.get(name).unwrap! end))
 end
 
 export def find(book: Book, name: String) -> Result[Entry]
@@ -55,15 +56,11 @@ export def namespace?(book: Book, name: String) -> Bool
 end
 
 export def methods_named(book: Book, member: String) -> List[Entry]
-  return sorted(book.entries.keys).map do |name| book.entries.get(name).unwrap! end.filter do |entry|
-    entry.namespace != "" and entry.member == member
-  end
+  return book.ordered.filter do |entry| entry.namespace != "" and entry.member == member end
 end
 
 export def functions_of(book: Book, namespace: String, prefix: String) -> List[Entry]
-  return sorted(book.entries.keys).map do |name| book.entries.get(name).unwrap! end.filter do |entry|
-    entry.namespace == namespace and entry.member.starts_with?(prefix)
-  end
+  return book.ordered.filter do |entry| entry.namespace == namespace and entry.member.starts_with?(prefix) end
 end
 
 export def bare_starting(book: Book, prefix: String) -> List[Entry]
@@ -71,7 +68,7 @@ export def bare_starting(book: Book, prefix: String) -> List[Entry]
 end
 
 export def namespaces_starting(book: Book, prefix: String) -> List[String]
-  return sorted(book.namespaces.to_a).filter do |name| name.starts_with?(prefix) end
+  return book.namespaces.to_a.sort.filter do |name| name.starts_with?(prefix) end
 end
 
 def read(helper: Process) -> Result[Book]
@@ -87,11 +84,10 @@ end
 def entry_of(item: Json, name: String) -> Entry
   namespace = ""
   member = name
-  case name.index_of(".")
-    ok(dot) ->
-      namespace = name.slice(0, dot)
-      member = name.slice(dot + 1, name.length - dot - 1)
-    error(_) -> namespace = ""
+  dot = name.index_of(".")
+  if dot.ok?
+    namespace = name.slice(0, dot.unwrap!)
+    member = name.slice(dot.unwrap! + 1, name.length - dot.unwrap! - 1)
   end
   return Entry(
     name: name,
@@ -113,8 +109,4 @@ end
 
 def field(item: Json, key: String) -> String
   return JSON.string(JSON.get(item, key).unwrap_or(JSON.null())).unwrap_or("")
-end
-
-def sorted(names: List[String]) -> List[String]
-  return names.sort
 end

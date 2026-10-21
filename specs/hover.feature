@@ -56,6 +56,27 @@ Feature: Hover on builtins
       | Range.size |
     And the hover at 4:15 covers 4:14-4:18
 
+  Scenario: a call on a module or a type shows nothing even when a builtin has that name
+    Given the language server has loaded the builtin catalog
+    And the file "parts.agc" contains:
+      """
+      export def split(text: String) -> List[String]
+        return text.split(",")
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Parts from "parts"
+
+      def main() -> Void
+        puts(Parts.split("a,b"))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 4:16
+    Then there is no hover at 4:16
+
   Scenario: names that are not builtins, comments and strings show nothing
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

@@ -61,6 +61,14 @@ export def called?(chars: List[String], stop: Int) -> Bool
   return stop < chars.size and chars[stop] == "("
 end
 
+export def type_name?(text: String) -> Bool
+  return text.length > 0 and String.code(text.at(0)) >= 65 and String.code(text.at(0)) <= 90
+end
+
+export def after_suffix?(chars: List[String], index: Int) -> Bool
+  return index > 1 and index <= chars.size and suffix?(chars[index - 1]) and word_char?(chars[index - 2])
+end
+
 export def code?(chars: List[String], upto: Int) -> Bool
   in_string = false
   index = 0

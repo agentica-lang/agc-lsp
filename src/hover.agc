@@ -44,6 +44,9 @@ def after_dot(book: Catalog.Book, chars: List[String], word: Words.Word) -> Resu
   if receiver.ok? and Catalog.namespace?(book, receiver.unwrap!.text)
     return qualified(book, receiver.unwrap!.text, word, receiver.unwrap!.start)
   end
+  if receiver.ok? and Words.type_name?(receiver.unwrap!.text)
+    return error("a capitalized receiver is not a value")
+  end
   entries = Catalog.methods_named(book, word.text)
   if entries.size == 0
     return error("no builtin method #{word.text}")

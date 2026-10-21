@@ -48,7 +48,7 @@ Feature: Completion of builtins
       | String | Module |         |
     And the completion at 3:6 does not offer "puts"
 
-  Scenario: nothing is offered after a variable, in a comment or in a string
+  Scenario: nothing is offered after a variable, in a comment, in a string or after a question mark
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:
       """
@@ -57,15 +57,18 @@ Feature: Completion of builtins
         xs.
         # String.
         t = "Str"
+        e = IO.eof?
       end
 
       """
     And the editor asks for completion in "app.agc" at 3:6
     And the editor asks for completion in "app.agc" at 4:12
     And the editor asks for completion in "app.agc" at 5:11
+    And the editor asks for completion in "app.agc" at 6:14
     Then the completion at 3:6 offers nothing
     And the completion at 4:12 offers nothing
     And the completion at 5:11 offers nothing
+    And the completion at 6:14 offers nothing
 
   Scenario: a position past the end of the line offers what the end of the line offers
     Given the language server has loaded the builtin catalog with the position encodings "utf-16, utf-32"
@@ -85,6 +88,21 @@ Feature: Completion of builtins
     And the completion at 2:5 offers:
       | label | kind     | builtin |
       | puts  | Function | puts    |
+
+  Scenario: a Windows line ending is not part of the line
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with Windows line endings:
+      """
+      def main() -> Void
+        pu
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 2:40
+    Then the completion at 2:40 offers:
+      | label | kind     | builtin |
+      | puts  | Function | puts    |
+    And the completion item "puts" at 2:40 replaces 2:3-2:5
 
   Scenario: a document that was never opened offers nothing
     Given the language server has loaded the builtin catalog

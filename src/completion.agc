@@ -7,7 +7,7 @@ MODULE_KIND = 9
 
 export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   chars = cursor.chars
-  if !Words.code?(chars, cursor.index)
+  if !Words.code?(chars, cursor.index) or Words.after_suffix?(chars, cursor.index)
     return none()
   end
   start = Words.word_start(chars, cursor.index)

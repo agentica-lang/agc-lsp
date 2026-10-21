@@ -21,6 +21,9 @@ export def locate(documents: Map[String, String], params: Json, encoding: String
     return error("no such position")
   end
   text = lines[line]
+  if text.ends_with?("\r")
+    text = text.slice(0, text.length - 1)
+  end
   chars = text.split("")
   index = character
   if encoding == UTF16
