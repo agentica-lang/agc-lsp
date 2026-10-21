@@ -814,7 +814,8 @@ def hover_fenced(ctx: BDD.Context, line: String, column: String, width: Int) -> 
   case hover_value(ctx, line, column)
     ok(value) ->
       fence = List.repeat("`", width).join("")
-      fenced = value.contains?("\n#{fence}agc\n") and value.ends_with?("\n#{fence}") and !value.ends_with?("`#{fence}")
+      opened = value.starts_with?("#{fence}agc\n") or value.contains?("\n#{fence}agc\n")
+      fenced = opened and value.ends_with?("\n#{fence}") and !value.ends_with?("`#{fence}")
       message = "the hover at #{line}:#{column} is not fenced with #{width} backticks: #{value.inspect}"
       return BDD.assert(ctx, fenced, message)
     error(message) -> return BDD.assert(ctx, false, message)

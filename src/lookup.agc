@@ -142,13 +142,32 @@ end
 
 def covered(request: Request, subject: Query.Subject) -> Json
   case subject.origin
-    Query.Origin.Builtin(_) ->
+    Query.Origin.Builtin(entry) ->
       case Words.at(request.cursor.chars, request.cursor.index)
-        ok(word) -> return Cursor.range(request.cursor, word.start, word.stop)
+        ok(word) ->
+          name = qualified(request.cursor.chars, entry, word)
+          return Cursor.range(request.cursor, name.start, name.stop)
         error(_) -> return span_range(request, subject)
       end
     Query.Origin.Declared(_) -> return span_range(request, subject)
     Query.Origin.Unknown -> return span_range(request, subject)
+  end
+end
+
+def qualified(chars: List[String], entry: Catalog.Entry, word: Words.Word) -> Words.Word
+  if entry.namespace == ""
+    return word
+  end
+  if word.text == entry.namespace
+    case Words.member(chars, word.stop)
+      ok(member) -> return word.with(stop: member.stop)
+      error(_) -> return word
+    end
+  end
+  case Words.receiver(chars, word.start)
+    ok(receiver) if receiver.text == entry.namespace -> return word.with(start: receiver.start)
+    ok(_) -> return word
+    error(_) -> return word
   end
 end
 
@@ -160,7 +179,7 @@ end
 def answer(request: Request, subject: Query.Subject) -> Json
   found = sections(subject)
   if found.size == 0
-    return JSON.null()
+    return Hover.answer(request.book, request.cursor)
   end
   value = JSON.object({"kind": JSON.from("markdown"), "value": JSON.from(found.join(SECTION_BREAK))})
   return JSON.object({"contents": value, "range": covered(request, subject)})

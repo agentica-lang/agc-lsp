@@ -84,6 +84,7 @@ Feature: Hover on builtins
       """
     And the editor hovers over "app.agc" at 2:16
     Then the hover at 2:16 shows the declaration "String.upcase(s: String) -> String"
+    And the hover at 2:16 covers 2:8-2:21
 
   Scenario: a call of a function of the code shows the type of the expression
     Given the language server has started

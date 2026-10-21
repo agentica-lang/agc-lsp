@@ -21,8 +21,8 @@ written in Agentica.
 - Hover and completion of the Agentica builtins come from the catalog that `agentica --json help` prints, loaded once
   per session in a task (a completion is an empty list until it arrives).
   - Hover (markdown): on `String.split` (on either part of the name) the signature in an `agc` code block and the
-    description; on a bare builtin call such as `puts(`. The range is the whole qualified name. Nothing in a string or in
-    a `#` comment. These two answer at once, without a process.
+    description; on a bare builtin call such as `puts(`. The range is the whole qualified name. Nothing in a string or
+    in a `#` comment. These two answer at once, without a process.
   - Hover on anything else asks `agentica --json type-at --partial --stdin` about the position, in the text of the
     buffer:
     - A method call such as `xs.split(",")` shows the one builtin that it is (the signature and the description, as for
@@ -39,8 +39,8 @@ written in Agentica.
     bare function); nothing after `x.` when `x` is not a namespace, in a string or in a comment. Each item has a
     `textEdit` that replaces the partial word before the cursor, so names ending in `?` or `!` complete correctly. A
     position past the end of a line means the end of the line.
-- Go to definition (`textDocument/definition`) asks `agentica --json type-at --stdin` about the position, in the text
-  of the buffer, and answers the location of the name of the declaration: a function, struct, enum, variant, field,
+- Go to definition (`textDocument/definition`) asks `agentica --json type-at --partial --stdin` about the position, in
+  the text of the buffer, and answers the location of the name of the declaration: a function, struct, enum, variant, field,
   constant, local, parameter, loop name or pattern name, in the same file or in an imported file (a `std/` module is
   not on disk, so it has no location). A builtin, a comment, a name that is not declared and a position inside a
   function with an error that gives no type have none (`null`). The other functions of the file may have errors.
