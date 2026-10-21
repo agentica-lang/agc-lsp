@@ -133,6 +133,7 @@ def main() -> Void
     BDD.step("the completion at {int}:{int} offers:", &completion_offers),
     BDD.step("the completion at {int}:{int} does not offer {string}", &completion_does_not_offer),
     BDD.step("the completion at {int}:{int} offers nothing", &completion_offers_nothing),
+    BDD.step("the completion item {string} at {int}:{int} replaces {int}:{int}-{int}:{int}", &completion_replaces),
     BDD.step("the server exits with code {int}", &exits_with),
   ])
 end
@@ -668,6 +669,10 @@ def completion_offers_nothing(ctx: BDD.Context, args: List[String]) -> BDD.Conte
   return finished(ctx) do |done| completion_empty(done, args[0], args[1]) end
 end
 
+def completion_replaces(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| completion_replaced(done, args) end
+end
+
 def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
     code = JSON.int(BDD.get(done, "exit").unwrap!).unwrap!
@@ -720,6 +725,27 @@ def completion_offered(ctx: BDD.Context, line: String, column: String, rows: Lis
       items = JSON.list(result).unwrap_or(none)
       missing = rows.filter do |row| !offers?(items, row) end
       return BDD.assert(ctx, missing.size == 0, "the completion at #{line}:#{column} lacks #{missing} in #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def completion_replaced(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  case result_at(ctx, "completion", args[1], args[2])
+    ok(result) ->
+      none: List[Json] = []
+      items = JSON.list(result).unwrap_or(none).filter do |item|
+        JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
+      end
+      if items.size == 0
+        return BDD.assert(ctx, false, "the completion at #{args[1]}:#{args[2]} lacks #{args[0]}")
+      end
+      edit = at(items[0], ["textEdit"]).unwrap_or(JSON.null())
+      start = position("#{args[3]}:#{args[4]}")
+      stop = position("#{args[5]}:#{args[6]}")
+      range = JSON.object({"start": start, "end": stop})
+      wanted = canonical(JSON.encode(JSON.object({"range": range, "newText": JSON.from(args[0])})))
+      actual = canonical(JSON.encode(edit))
+      return BDD.assert(ctx, actual == wanted, "expected the edit #{wanted}; actual #{actual}")
     error(message) -> return BDD.assert(ctx, false, message)
   end
 end

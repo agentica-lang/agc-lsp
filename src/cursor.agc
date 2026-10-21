@@ -26,6 +26,9 @@ export def locate(documents: Map[String, String], params: Json, encoding: String
   if encoding == UTF16
     index = Columns.characters_in(text, character)
   end
+  if index > chars.size
+    index = chars.size
+  end
   return ok(Cursor(line: line, text: text, chars: chars, index: index, encoding: encoding))
 end
 

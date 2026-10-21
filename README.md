@@ -19,13 +19,15 @@ written in Agentica.
   clears the error shown on the files that import it.
 - Hover and completion of the Agentica builtins come from the catalog that `agentica --json help` prints, loaded once
   per session in a task (a hover or a completion before it arrives answers `null` or an empty list).
-  - Hover: on `String.split` (on either part of the name) the signature and the description; on a bare builtin call
-    such as `puts(`; on a method call such as `xs.split(",")`, every builtin of that name (`String.split`). The range is
+  - Hover (markdown): on `String.split` (on either part of the name) the signature in an `agc` code block and the
+    description; on a bare builtin call such as `puts(`; on a method call such as `xs.split(",")`, every builtin of that name (`String.split`). The range is
     the whole qualified name, or the method name. Nothing in a string, in a `#` comment or on a name that is not a
     builtin.
   - Completion (trigger character `.`): after `String.` and a partial name, the functions of that namespace; at the
-    start of a word, the namespaces and the bare functions that start with it; nothing after `x.` when `x` is not a
-    namespace, in a string or in a comment.
+    start of a word, the namespaces and the bare functions that start with it (at a blank position, every namespace and
+    bare function); nothing after `x.` when `x` is not a namespace, in a string or in a comment. Each item has a
+    `textEdit` that replaces the partial word before the cursor, so names ending in `?` or `!` complete correctly. A
+    position past the end of a line means the end of the line.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
 ## Limitations
@@ -42,7 +44,8 @@ written in Agentica.
   import it).
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
   logs a warning (see Logging), so the editor keeps the diagnostics it already shows. A crash of a check task is
-  logged as an error and also leaves the previous diagnostics.
+  logged as an error and also leaves the previous diagnostics; a crash of the catalog task is logged as an error and
+  leaves hover and completion empty.
 - Hover and completion know the builtins only, not your own functions, structs or imports (nor the `std/` modules).
   The type of a variable is not known, so `xs.size` shows every builtin named `size` and `xs.` completes nothing. Strings
   and comments are found with a scan of the line, so a heredoc, a string that spans lines or code inside `#{}` is

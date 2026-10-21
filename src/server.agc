@@ -66,7 +66,7 @@ export def serve(state: State) -> Int
     case current.events.recv(Schedule.wait_ms(current.plan, WAIT_MS))
       ok(event) ->
         case dispatch(current, event)
-          Next.Continue(next) -> current = next.with(plan: Schedule.tick(next.plan, next.encoding))
+          Next.Continue(next) -> current = watch(next.with(plan: Schedule.tick(next.plan, next.encoding)))
           Next.Exit(status) -> return finish(current, reader, status)
         end
       error(_) ->
@@ -74,7 +74,7 @@ export def serve(state: State) -> Int
           Logger.err("the reader of the input crashed")
           return finish(current, reader, 1)
         end
-        current = current.with(plan: Schedule.tick(current.plan, current.encoding))
+        current = watch(current.with(plan: Schedule.tick(current.plan, current.encoding)))
     end
   end
   return finish(current, reader, exit_status(current))
@@ -85,6 +85,23 @@ def reader_crashed?(reader: Task[Result[Void]]) -> Bool
     Await.Done(outcome) -> return !outcome.ok?
     Await.TimedOut -> return false
   end
+end
+
+def watch(state: State) -> State
+  if state.loaders.size == 0
+    return state
+  end
+  running: List[Task[Result[Void]]] = []
+  for loader in state.loaders
+    case Task.await(loader, READER_CHECK_MS)
+      Await.Done(outcome) ->
+        if !outcome.ok?
+          Logger.err("the builtin catalog task crashed: #{outcome.message}")
+        end
+      Await.TimedOut -> running = running.push(loader)
+    end
+  end
+  return state.with(loaders: running)
 end
 
 def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int

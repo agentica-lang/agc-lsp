@@ -12,12 +12,14 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   end
   start = Words.word_start(chars, cursor.index)
   partial = chars.take(cursor.index).drop(start).join("")
+  replaced = Cursor.range(cursor, start, cursor.index)
   if !Words.dotted?(chars, start)
-    return JSON.array(namespaces(book, partial).concat(functions(Catalog.bare_starting(book, partial), false)))
+    bare = functions(Catalog.bare_starting(book, partial), false, replaced)
+    return JSON.array(namespaces(book, partial, replaced).concat(bare))
   end
   receiver = Words.receiver(chars, start)
   if receiver.ok? and Catalog.namespace?(book, receiver.unwrap!.text)
-    return JSON.array(functions(Catalog.functions_of(book, receiver.unwrap!.text, partial), true))
+    return JSON.array(functions(Catalog.functions_of(book, receiver.unwrap!.text, partial), true, replaced))
   end
   return none()
 end
@@ -27,17 +29,25 @@ def none() -> Json
   return JSON.array(items)
 end
 
-def namespaces(book: Catalog.Book, prefix: String) -> List[Json]
+def namespaces(book: Catalog.Book, prefix: String, replaced: Json) -> List[Json]
   return Catalog.namespaces_starting(book, prefix).map do |name|
-    JSON.object({"label": JSON.from(name), "kind": JSON.from(MODULE_KIND)})
+    JSON.object({
+      "label": JSON.from(name),
+      "kind": JSON.from(MODULE_KIND),
+      "textEdit": edit(replaced, name),
+    })
   end
 end
 
-def functions(entries: List[Catalog.Entry], by_member: Bool) -> List[Json]
-  return entries.map do |entry| function_item(entry, by_member) end
+def functions(entries: List[Catalog.Entry], by_member: Bool, replaced: Json) -> List[Json]
+  return entries.map do |entry| function_item(entry, by_member, replaced) end
 end
 
-def function_item(entry: Catalog.Entry, by_member: Bool) -> Json
+def edit(replaced: Json, text: String) -> Json
+  return JSON.object({"range": replaced, "newText": JSON.from(text)})
+end
+
+def function_item(entry: Catalog.Entry, by_member: Bool, replaced: Json) -> Json
   label = entry.name
   if by_member
     label = entry.member
@@ -47,5 +57,6 @@ def function_item(entry: Catalog.Entry, by_member: Bool) -> Json
     "kind": JSON.from(FUNCTION_KIND),
     "detail": JSON.from(entry.signatures.join("\n")),
     "documentation": JSON.from(entry.description),
+    "textEdit": edit(replaced, label),
   })
 end
