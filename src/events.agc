@@ -1,3 +1,4 @@
+import Catalog from "catalog"
 import Check from "check"
 import Logger from "std/logger"
 import Rpc from "rpc"
@@ -13,6 +14,7 @@ end
 export enum Event
   Input(Rpc.Incoming)
   Checked(Report)
+  Cataloged(Result[Catalog.Book])
   Log(LogEvent)
 end
 
@@ -24,6 +26,11 @@ export struct Job
   text: String
   uri: String
   generation: Int
+end
+
+export struct CatalogJob
+  events: Channel[Event]
+  agentica: String
 end
 
 export def read_input(events: Channel[Event]) -> Result[Void]
@@ -53,6 +60,17 @@ export def check(job: Job) -> Result[Void]
     Logger.debug("check finished", fields)
   end
   deliver(job.events, Event.Checked(Report(uri: job.uri, generation: job.generation, outcome: outcome)))
+  return ok()
+end
+
+export def load_catalog(job: CatalogJob) -> Result[Void]
+  outcome = Catalog.load(job.agentica)
+  if !outcome.ok?
+    Logger.warning("cannot load the builtin catalog from #{job.agentica}: #{outcome.message}")
+  else
+    Logger.info("loaded the builtin catalog", {"builtins": outcome.unwrap!.entries.size.to_s})
+  end
+  deliver(job.events, Event.Cataloged(outcome))
   return ok()
 end
 

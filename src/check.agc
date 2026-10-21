@@ -1,3 +1,4 @@
+import Columns from "columns"
 import Logger from "std/logger"
 import Uri from "uri"
 
@@ -5,7 +6,6 @@ CHECK_TIMEOUT_MS = 10000
 SHORTEST_WAIT_MS = 1
 READ_TIMEOUT_MS = 10000
 SEVERITY_ERROR = 1
-SURROGATE_START = 65536
 CHUNK_BYTES = 1048576
 SINGLE_SEND_CHARS = 262144
 RELATED_MESSAGE = "the error is here"
@@ -164,32 +164,13 @@ def position(at: Place, lines: List[String], encoding: String) -> Json
   line = not_negative(at.line - 1)
   character = not_negative(at.column - 1)
   if encoding == "utf-16" and line < lines.size
-    character = utf16_width(lines[line], character)
+    character = Columns.utf16_width(lines[line], character)
   end
   return JSON.object({"line": JSON.from(line), "character": JSON.from(character)})
 end
 
 def origin() -> Json
   return JSON.object({"line": JSON.from(0), "character": JSON.from(0)})
-end
-
-def utf16_width(line: String, characters: Int) -> Int
-  width = 0
-  for char in line.slice(0, smaller(characters, line.length)).split("")
-    if String.code(char) >= SURROGATE_START
-      width += 2
-    else
-      width += 1
-    end
-  end
-  return width + not_negative(characters - line.length)
-end
-
-def smaller(a: Int, b: Int) -> Int
-  if a < b
-    return a
-  end
-  return b
 end
 
 def not_negative(n: Int) -> Int

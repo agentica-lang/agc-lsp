@@ -3,7 +3,7 @@
 A Language Server Protocol (LSP) server for [Agentica](https://github.com/sonic182/agentica), a language for AI agents,
 written in Agentica.
 
-> **Status:** early stage. Diagnostics of the text in the editor's buffer.
+> **Status:** early stage. Diagnostics of the text in the editor's buffer, and hover and completion of builtins.
 
 ## What it does
 
@@ -17,6 +17,17 @@ written in Agentica.
   location points into that file (the start of the file for an error at a key of `agentica.toml`).
 - Saving a file checks again the other open files whose current diagnostic points into it, so fixing an imported file
   clears the error shown on the files that import it.
+- Hover and completion of the Agentica builtins come from the catalog that `agentica --json help` prints, loaded once
+  per session in a task (a hover or a completion before it arrives answers `null` or an empty list).
+  - Hover (markdown): on `String.split` (on either part of the name) the signature in an `agc` code block and the
+    description; on a bare builtin call such as `puts(`; on a method call such as `xs.split(",")`, every builtin of
+    that name (`String.split`). The range is the whole qualified name, or the method name. Nothing in a string, in a
+    `#` comment or on a name that is not a builtin.
+  - Completion (trigger character `.`): after `String.` and a partial name, the functions of that namespace; at the
+    start of a word, the namespaces and the bare functions that start with it (at a blank position, every namespace and
+    bare function); nothing after `x.` when `x` is not a namespace, in a string or in a comment. Each item has a
+    `textEdit` that replaces the partial word before the cursor, so names ending in `?` or `!` complete correctly. A
+    position past the end of a line means the end of the line.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
 ## Limitations
@@ -33,7 +44,14 @@ written in Agentica.
   import it).
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
   logs a warning (see Logging), so the editor keeps the diagnostics it already shows. A crash of a check task is
-  logged as an error and also leaves the previous diagnostics.
+  logged as an error and also leaves the previous diagnostics; a crash of the catalog task is logged as an error and
+  leaves hover and completion empty.
+- Hover and completion know the builtins only, not your own functions, structs or imports (nor the `std/` modules).
+  The type of a variable is not known, so `xs.size` shows every builtin named `size`, a struct field read such as
+  `entry.name` can show builtin members of that name too, and `xs.` completes nothing. A capitalized receiver that is
+  not a builtin namespace (a module alias or a type) shows nothing. Strings and comments are found with a scan of the
+  line, so a heredoc, a string that spans lines or code inside `#{}` is not recognised. A catalog that cannot be
+  loaded (see Logging) leaves hover and completion empty for the session.
 - An error in an imported file is published on the file that was opened, never on the imported file itself. Saving a
   file checks again only the open files whose current diagnostic points into it. A file that imports it and showed no
   error is not checked again until it is saved or reopened, and neither is a file whose first check is still running
@@ -50,8 +68,9 @@ agentica --allow-run src/main.agc [--stdio] [--agentica PATH] [--log-level LEVEL
   [--log-format text|json] [--log-file PATH]
 ```
 
-`--agentica PATH` names the binary that checks the files (default: `agentica` from `PATH`). `--stdio` is accepted
-for clients that pass it; stdio is the only transport. The logging options are described below.
+`--agentica PATH` names the binary that checks the files and prints the builtin catalog (default: `agentica` from
+`PATH`). `--stdio` is accepted for clients that pass it; stdio is the only transport. The logging options are described
+below.
 
 ## Editors
 
@@ -98,10 +117,10 @@ What is logged:
 
 - `debug`: each message received and sent (the method and the id, never document text), and the start and the end of
   each check with its URI, generation and duration in milliseconds.
-- `info`: the start (with the `agentica` binary used), the initialization (with the position encoding) and the
-  shutdown.
-- `warning`: a check that failed (timeout, the checker cannot run, status 1 without a diagnostic), a URI that is not
-  a local file, an ignored argument or a setting that is not valid.
+- `info`: the start (with the `agentica` binary used), the initialization (with the position encoding), the loading
+  of the builtin catalog and the shutdown.
+- `warning`: a check that failed (timeout, the checker cannot run, status 1 without a diagnostic), a builtin catalog
+  that could not be loaded, a URI that is not a local file, an ignored argument or a setting that is not valid.
 - `error`: a crashed check task or input reader, and a message without a `Content-Length` header, which ends the
   session.
 

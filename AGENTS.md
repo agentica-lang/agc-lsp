@@ -8,10 +8,16 @@ An LSP server for Agentica, written in Agentica. Plan: sonic182/agentica#346.
 src/main.agc      entry point: options, logging, then the server loop
 src/options.agc   command-line options and their defaults
 src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
-src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file; which open files point into which file
-src/events.agc    the reader and check tasks, and the events they send to the server loop
+src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file; which open files point into which file; the builtin catalog it keeps
+src/events.agc    the reader, check and catalog tasks, and the events they send to the server loop
 src/schedule.agc  which checks run (at most 4), wait or are stale, per file, each with the text to check and the time it is due (changes wait 200 ms)
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
+src/catalog.agc   the builtins from `agentica --json help`: loading, parsing, lookups by name, namespace and prefix
+src/columns.agc   character indexes of a line to and from UTF-16 code units
+src/words.agc     the words of one line: the word at an index, the receiver before a dot, strings and comments
+src/cursor.agc    a request position as the line, its characters and the character index, in the negotiated encoding
+src/hover.agc     textDocument/hover of a builtin: qualified name, bare call or method call
+src/completion.agc textDocument/completion of builtins: after `Ns.` or at the start of a word
 src/check.agc     runs `agentica --json check --stdin` on a buffer and maps its diagnostic to LSP (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
 bin/agc-lsp       the launcher editors run: finds the repo through symlinks, then `exec agentica --allow-run src/main.agc "$@"`

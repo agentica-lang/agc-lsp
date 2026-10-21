@@ -14,7 +14,9 @@ Feature: Server lifecycle
       {
         "capabilities": {
           "positionEncoding": "utf-16",
-          "textDocumentSync": {"openClose": true, "change": 1, "save": {"includeText": false}}
+          "textDocumentSync": {"openClose": true, "change": 1, "save": {"includeText": false}},
+          "hoverProvider": true,
+          "completionProvider": {"triggerCharacters": ["."]}
         },
         "serverInfo": {"name": "agc-lsp"}
       }
@@ -52,8 +54,8 @@ Feature: Server lifecycle
 
   Scenario: an unknown request is not found
     Given the language server has started
-    When the editor sends the request "textDocument/hover"
-    Then the server answers "textDocument/hover" with the error "method not found"
+    When the editor sends the request "textDocument/definition"
+    Then the server answers "textDocument/definition" with the error "method not found"
     And the server exits with code 0
 
   Scenario: a second initialize is refused

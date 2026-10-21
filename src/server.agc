@@ -1,6 +1,10 @@
+import Catalog from "catalog"
 import Check from "check"
+import Completion from "completion"
+import Cursor from "cursor"
 import Events from "events"
 import Logger from "std/logger"
+import Hover from "hover"
 import Logs from "logs"
 import Options from "options"
 import Rpc from "rpc"
@@ -27,6 +31,8 @@ export struct State
   plan: Schedule.Plan
   pointing: Map[String, String]
   documents: Map[String, String]
+  catalog: Catalog.Book
+  loaders: List[Task[Result[Void]]]
 end
 
 enum Next
@@ -38,6 +44,7 @@ export def start(options: Options.Options) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
   pointing: Map[String, String] = {}
   documents: Map[String, String] = {}
+  loaders: List[Task[Result[Void]]] = []
   return State(
     options: options,
     encoding: "utf-16",
@@ -47,6 +54,8 @@ export def start(options: Options.Options) -> State
     plan: Schedule.start(options.agentica, events),
     pointing: pointing,
     documents: documents,
+    catalog: Catalog.empty(),
+    loaders: loaders,
   )
 end
 
@@ -57,7 +66,7 @@ export def serve(state: State) -> Int
     case current.events.recv(Schedule.wait_ms(current.plan, WAIT_MS))
       ok(event) ->
         case dispatch(current, event)
-          Next.Continue(next) -> current = next.with(plan: Schedule.tick(next.plan, next.encoding))
+          Next.Continue(next) -> current = watch(next.with(plan: Schedule.tick(next.plan, next.encoding)))
           Next.Exit(status) -> return finish(current, reader, status)
         end
       error(_) ->
@@ -65,7 +74,7 @@ export def serve(state: State) -> Int
           Logger.err("the reader of the input crashed")
           return finish(current, reader, 1)
         end
-        current = current.with(plan: Schedule.tick(current.plan, current.encoding))
+        current = watch(current.with(plan: Schedule.tick(current.plan, current.encoding)))
     end
   end
   return finish(current, reader, exit_status(current))
@@ -78,8 +87,28 @@ def reader_crashed?(reader: Task[Result[Void]]) -> Bool
   end
 end
 
+def watch(state: State) -> State
+  if state.loaders.size == 0
+    return state
+  end
+  running: List[Task[Result[Void]]] = []
+  for loader in state.loaders
+    case Task.await(loader, READER_CHECK_MS)
+      Await.Done(outcome) ->
+        if !outcome.ok?
+          Logger.err("the builtin catalog task crashed: #{outcome.message}")
+        end
+      Await.TimedOut -> running = running.push(loader)
+    end
+  end
+  return state.with(loaders: running)
+end
+
 def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
   Task.cancel(reader)
+  for loader in state.loaders
+    Task.cancel(loader)
+  end
   Schedule.stop(state.plan)
   return status
 end
@@ -87,6 +116,11 @@ end
 def dispatch(state: State, event: Events.Event) -> Next
   case event
     Events.Event.Checked(report) -> return Next.Continue(checked(state, report))
+    Events.Event.Cataloged(outcome) ->
+      if outcome.ok?
+        return Next.Continue(state.with(catalog: outcome.unwrap!))
+      end
+      return Next.Continue(state)
     Events.Event.Input(incoming) -> return input(state, incoming)
     Events.Event.Log(logged) ->
       Logs.write_to_editor(logged)
@@ -159,6 +193,12 @@ def request(state: State, id: Json, method: String, params: Json) -> State
   end
   case method
     "initialize" -> return initialize(state, id, params)
+    "textDocument/hover" ->
+      Rpc.respond(id, hover(state, params))
+      return state
+    "textDocument/completion" ->
+      Rpc.respond(id, completion(state, params))
+      return state
     "shutdown" ->
       Logger.info("shutting down")
       Rpc.respond(id, JSON.null())
@@ -183,14 +223,37 @@ def initialize(state: State, id: Json, params: Json) -> State
     "change": JSON.from(FULL_SYNC),
     "save": JSON.object({"includeText": JSON.from(false)}),
   })
-  capabilities = JSON.object({"positionEncoding": JSON.from(encoding), "textDocumentSync": sync})
+  capabilities = JSON.object({
+    "positionEncoding": JSON.from(encoding),
+    "textDocumentSync": sync,
+    "hoverProvider": JSON.from(true),
+    "completionProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from(".")])}),
+  })
   Rpc.respond(id, JSON.object({
     "capabilities": capabilities,
     "serverInfo": JSON.object({"name": JSON.from("agc-lsp")}),
   }))
   Logs.attach_editor(state.options, state.events, JSON.get(params, "initializationOptions").unwrap_or(JSON.null()))
   Logger.info("initialized", {"encoding": encoding})
-  return state.with(encoding: encoding, initialized: true)
+  job = Events.CatalogJob(events: state.events, agentica: state.options.agentica)
+  loader = Task.spawn(&Events.load_catalog, job)
+  return state.with(encoding: encoding, initialized: true, loaders: [loader])
+end
+
+def hover(state: State, params: Json) -> Json
+  case Cursor.locate(state.documents, params, state.encoding)
+    ok(cursor) -> return Hover.answer(state.catalog, cursor)
+    error(_) -> return JSON.null()
+  end
+end
+
+def completion(state: State, params: Json) -> Json
+  case Cursor.locate(state.documents, params, state.encoding)
+    ok(cursor) -> return Completion.answer(state.catalog, cursor)
+    error(_) ->
+      none: List[Json] = []
+      return JSON.array(none)
+  end
 end
 
 def notification(state: State, method: String, params: Json) -> State
