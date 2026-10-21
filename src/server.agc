@@ -170,7 +170,6 @@ def initialize(state: State, id: Json, params: Json) -> State
     Rpc.fail(id, INVALID_REQUEST, "the server is already initialized")
     return state
   end
-  Logs.attach_editor(state.options, state.events, JSON.get(params, "initializationOptions").unwrap_or(JSON.null()))
   encoding = "utf-16"
   if Set.new(offered(params)).include?("utf-32")
     encoding = "utf-32"
@@ -185,6 +184,7 @@ def initialize(state: State, id: Json, params: Json) -> State
     "capabilities": capabilities,
     "serverInfo": JSON.object({"name": JSON.from("agc-lsp")}),
   }))
+  Logs.attach_editor(state.options, state.events, JSON.get(params, "initializationOptions").unwrap_or(JSON.null()))
   Logger.info("initialized", {"encoding": encoding})
   return state.with(encoding: encoding, initialized: true)
 end
@@ -260,6 +260,9 @@ def document_uri(params: Json) -> String
 end
 
 def log_received(message: Json, method: String) -> Void
+  if !Logger.enabled?(LogLevel.Debug)
+    return
+  end
   case JSON.get(message, "id")
     ok(id) -> Logger.debug("received a message", {"method": method, "id": JSON.encode(id)})
     error(_) -> Logger.debug("received a message", {"method": method})

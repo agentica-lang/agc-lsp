@@ -60,15 +60,17 @@ The server logs through `std/logger` to three destinations, each with its own le
 
 - `--log-level LEVEL` sets the level of stderr and of the log file; the file has no level of its own.
 - `--client-log-level LEVEL` sets the level of the log messages sent to the editor. The types are 1 (error),
-  2 (warning), 3 (info) and 4 (log, for debug). Nothing is sent before the `initialize` request has been answered.
+  2 (warning), 3 (info) and 4 (log, for debug). The handler starts after the `initialize` request has been answered,
+  so the editor gets nothing before the answer.
 - `--log-format text|json` sets the format of stderr: `TIME LEVEL message key=value ...` (the default) or one JSON
   object per line. The log file is always JSON lines, appended to if it exists. A file that cannot be written is warned
   about and not used.
 - The editor can set the two levels in the `initializationOptions` of `initialize`, for example
   `{"logLevel": "debug", "clientLogLevel": "info"}`. An option on the command line wins over the same setting from the
   editor.
-- An unknown level or format, an option without a value and an unknown argument are warned about and ignored; the
-  default stays.
+- An invalid option (an unknown level or format, an option without a value, an unknown argument) is warned about and
+  ignored, as if it was not given. A level the editor sets in `initializationOptions` then applies, or else the
+  default. A level from the editor that is not valid is also warned about and ignored.
 
 What is logged:
 

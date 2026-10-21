@@ -88,10 +88,13 @@ def main() -> Void
     BDD.step("the editor gets a {string} log message containing {string}", &gets_log_message),
     BDD.step("the editor gets an {string} log message containing {string}", &gets_log_message),
     BDD.step("the editor gets no log messages", &gets_no_log_messages),
+    BDD.step("the editor gets no log message containing {string}", &gets_no_log_message_containing),
+    BDD.step("the answer to initialize comes before the log messages", &answers_before_logging),
     BDD.step("the log file {string} has a {string} line containing {string}", &log_file_has_line),
     BDD.step("the log file {string} has an {string} line containing {string}", &log_file_has_line),
     BDD.step("the log file {string} has no {string} lines", &log_file_has_no_lines),
     BDD.step("the log file {string} has only JSON lines", &log_file_only_json),
+    BDD.step("the log file {string} never contains {string}", &log_file_never_contains),
     BDD.step("the diagnostic of {string} has a help line", &has_help),
     BDD.step("the diagnostic of {string} points to {string}", &points_to),
     BDD.step("the diagnostic of {string} has no related location", &has_no_related),
@@ -394,6 +397,31 @@ end
 def gets_no_log_messages(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
     BDD.assert(done, log_messages(done).size == 0, "unexpected log messages #{JSON.array(log_messages(done))}")
+  end
+end
+
+def gets_no_log_message_containing(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    found = log_messages(done).filter do |message|
+      JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("").contains?(args[0])
+    end
+    BDD.assert(done, found.size == 0, "unexpected log messages #{JSON.array(found)}")
+  end
+end
+
+def answers_before_logging(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| answered_first(done) end
+end
+
+def answered_first(ctx: BDD.Context) -> BDD.Context
+  first = messages(ctx)[0]
+  answer = at(first, ["id"]).unwrap_or(JSON.null()).to_s == "1" and at(first, ["result"]).ok?
+  return BDD.assert(ctx, answer, "the first message is not the answer to initialize: #{first}")
+end
+
+def log_file_never_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    BDD.assert(done, !log_text(done).contains?(args[1]), "#{args[1].inspect} found in #{log_text(done).inspect}")
   end
 end
 

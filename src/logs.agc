@@ -87,10 +87,11 @@ def choose(given: String, asked: Json, key: String, default: String) -> Chosen
   case JSON.get(asked, key)
     error(_) -> return Chosen(level: fallback, problem: "")
     ok(value) ->
-      name = JSON.string(value).unwrap_or(JSON.encode(value))
-      if name == "null"
+      if JSON.null?(value)
         return Chosen(level: fallback, problem: "")
-      elsif level?(name)
+      end
+      name = JSON.string(value).unwrap_or(JSON.encode(value))
+      if level?(name)
         return Chosen(level: level_named(name), problem: "")
       end
       problem = "unknown log level #{name} for #{key} in the initializationOptions; keeping the default"

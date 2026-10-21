@@ -53,7 +53,9 @@ end
 
 export def respond(id: Json, result: Json) -> Void
   send(JSON.encode(Response(jsonrpc: "2.0", id: id, result: result)))
-  Logger.debug("sent a response", {"id": JSON.encode(id)})
+  if Logger.enabled?(LogLevel.Debug)
+    Logger.debug("sent a response", {"id": JSON.encode(id)})
+  end
 end
 
 export def fail(id: Json, code: Int, message: String) -> Void
@@ -63,7 +65,9 @@ export def fail(id: Json, code: Int, message: String) -> Void
     "error": JSON.object({"code": JSON.from(code), "message": JSON.from(message)}),
   }
   send(JSON.encode(failure))
-  Logger.debug("sent an error", {"id": JSON.encode(id), "code": code.to_s})
+  if Logger.enabled?(LogLevel.Debug)
+    Logger.debug("sent an error", {"id": JSON.encode(id), "code": code.to_s})
+  end
 end
 
 export def notify(method: String, params: Json) -> Void

@@ -34,7 +34,8 @@ Feature: Logging
     And the server logs a "warning" line containing "no diagnostic"
 
   Scenario: the start and the end of a check are logged at debug level
-    Given the language server has started with the arguments "--log-level debug"
+    Given the server writes its log to "server.log"
+    And the language server has started with the arguments "--log-level debug --client-log-level debug"
     And the file "ok.agc" contains:
       """
       def main() -> Void
@@ -48,6 +49,8 @@ Feature: Logging
     And the server logs a "debug" line containing "check finished"
     And the server logs a "debug" line containing "textDocument/didOpen"
     And the server never logs "hidden-text"
+    And the editor gets no log message containing "hidden-text"
+    And the log file "server.log" never contains "hidden-text"
 
   Scenario: the starting, the initialization and the shutdown are logged at info level
     Given the language server has started with the arguments "--log-level info --agentica specs/fixtures/noisy-agentica"
@@ -183,11 +186,23 @@ Feature: Logging
     Given the language server has started with the arguments "--log-level"
     Then the server warns "needs a value"
 
-  Scenario: an unknown level from the editor is warned about and the default is kept
-    Given the editor asks for the log level "loud"
+  Scenario Outline: an unknown level from the editor is warned about and the default is kept
+    Given the editor asks for the log level "<level>"
     And the language server has started
-    Then the server warns "unknown log level loud"
+    Then the server warns "unknown log level <level>"
     And the server logs no "info" lines
+
+    Examples:
+      | level |
+      | loud  |
+      | null  |
+
+  Scenario: the editor gets nothing before the answer to initialize
+    Given the editor asks for the log level "loud"
+    And the editor asks for the client log level "warning"
+    And the language server has started
+    Then the editor gets a "warning" log message containing "unknown log level loud"
+    And the answer to initialize comes before the log messages
 
   Scenario: logging to the editor and to stderr does not slow down many checks
     Given the language server has started with the arguments "--log-level debug --client-log-level debug --agentica specs/fixtures/crowded-agentica"
