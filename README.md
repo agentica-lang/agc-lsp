@@ -20,9 +20,9 @@ written in Agentica.
 - Hover and completion of the Agentica builtins come from the catalog that `agentica --json help` prints, loaded once
   per session in a task (a hover or a completion before it arrives answers `null` or an empty list).
   - Hover (markdown): on `String.split` (on either part of the name) the signature in an `agc` code block and the
-    description; on a bare builtin call such as `puts(`; on a method call such as `xs.split(",")`, every builtin of that name (`String.split`). The range is
-    the whole qualified name, or the method name. Nothing in a string, in a `#` comment or on a name that is not a
-    builtin.
+    description; on a bare builtin call such as `puts(`; on a method call such as `xs.split(",")`, every builtin of
+    that name (`String.split`). The range is the whole qualified name, or the method name. Nothing in a string, in a
+    `#` comment or on a name that is not a builtin.
   - Completion (trigger character `.`): after `String.` and a partial name, the functions of that namespace; at the
     start of a word, the namespaces and the bare functions that start with it (at a blank position, every namespace and
     bare function); nothing after `x.` when `x` is not a namespace, in a string or in a comment. Each item has a
