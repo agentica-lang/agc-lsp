@@ -55,19 +55,29 @@ def run(agentica: String, path: String, text: String) -> Result[String]
 end
 
 def collect(checker: Process, text: String, deadline: Int) -> Result[String]
-  try feed(checker, text, deadline)
+  sent = feed(checker, text, deadline)
   output = try Process.output(checker, remaining(deadline))
   status = try Process.wait(checker, remaining(deadline))
   case status
-    0 -> return ok("")
+    0 ->
+      if !sent.ok?
+        return error(unsent(sent))
+      end
+      return ok("")
     1 ->
       problem = last_line(output.stderr)
-      if problem == ""
+      if problem == "" and !sent.ok?
+        return error(unsent(sent))
+      elsif problem == ""
         return error("agentica exited with status 1 and no diagnostic")
       end
       return ok(problem)
     _ -> return error("agentica exited with status #{status}: #{output.stderr.strip}")
   end
+end
+
+def unsent(sent: Result[Void]) -> String
+  return "cannot send the buffer: #{sent.message}"
 end
 
 def feed(checker: Process, text: String, deadline: Int) -> Result[Void]
@@ -92,7 +102,7 @@ def last_line(text: String) -> String
   return lines[lines.size - 1].strip
 end
 
-def diagnostic(found: Json, path: String, text: String, encoding: String) -> Json
+def diagnostic(found: Json, path: String, source: String, encoding: String) -> Json
   file = text(found, "file")
   message = text(found, "message")
   help = text(found, "help")
@@ -108,7 +118,7 @@ def diagnostic(found: Json, path: String, text: String, encoding: String) -> Jso
     "source": JSON.from("agentica"),
   }
   if Uri.same_path?(file, path)
-    fields = fields.put("range", span(text.split("\n"), start, stop, encoding))
+    fields = fields.put("range", span(source.split("\n"), start, stop, encoding))
   else
     message = "#{where(file, key_path, start)}: #{message}"
     fields = fields.put("range", JSON.object({"start": origin(), "end": origin()}))

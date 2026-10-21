@@ -8,6 +8,7 @@ export struct Pending
   uri: String
   path: String
   text: String
+  due: Int
 end
 
 export struct Plan
@@ -24,9 +25,9 @@ export def start(agentica: String, events: Channel[Events.Event]) -> Plan
   return Plan(agentica: agentica, events: events, generations: generations, queue: [], running: running)
 end
 
-export def request(plan: Plan, uri: String, path: String, text: String, encoding: String) -> Plan
+export def request(plan: Plan, uri: String, path: String, text: String, delay_ms: Int, encoding: String) -> Plan
   cancelled = cancel(plan, uri)
-  pending = Pending(uri: uri, path: path, text: text)
+  pending = Pending(uri: uri, path: path, text: text, due: Time.now_ms() + delay_ms)
   queue = cancelled.queue
   if waiting?(cancelled, uri)
     queue = queue.map do |queued| newest(queued, pending) end
@@ -51,6 +52,18 @@ end
 
 export def tick(plan: Plan, encoding: String) -> Plan
   return fill(plan, encoding)
+end
+
+export def wait_ms(plan: Plan, limit: Int) -> Int
+  now = Time.now_ms()
+  wait = limit
+  for pending in plan.queue
+    left = pending.due - now
+    if left > 0 and left < wait
+      wait = left
+    end
+  end
+  return wait
 end
 
 export def stop(plan: Plan) -> Plan
@@ -86,9 +99,15 @@ def fill(plan: Plan, encoding: String) -> Plan
   if current.queue.size > 0 and current.running.size >= MAX_CHECKS
     current = reap(current)
   end
-  while current.queue.size > 0 and current.running.size < MAX_CHECKS
-    pending = current.queue[0]
-    current = launch(current.with(queue: current.queue.drop(1)), pending, encoding)
+  now = Time.now_ms()
+  while current.running.size < MAX_CHECKS
+    due = current.queue.filter do |pending| pending.due <= now end
+    if due.size == 0
+      break
+    end
+    pending = due[0]
+    remaining = current.queue.filter do |queued| queued.uri != pending.uri end
+    current = launch(current.with(queue: remaining), pending, encoding)
   end
   return current
 end

@@ -10,7 +10,7 @@ src/options.agc   command-line options and their defaults
 src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
 src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file; which open files point into which file
 src/events.agc    the reader and check tasks, and the events they send to the server loop
-src/schedule.agc  which checks run (at most 4), wait or are stale, per file, each with the text to check
+src/schedule.agc  which checks run (at most 4), wait or are stale, per file, each with the text to check and the time it is due (changes wait 200 ms)
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
 src/check.agc     runs `agentica --json check --stdin` on a buffer and maps its diagnostic to LSP (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back

@@ -6,6 +6,8 @@ TIMEOUT_MS = 20000
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789ABCDEF"
 ASCII_LIMIT = 128
+COMMENT_LINE = "# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+LINES_PER_KB = 10
 MANIFEST = "agentica.toml"
 PUBLISH = "textDocument/publishDiagnostics"
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
@@ -54,6 +56,7 @@ def main() -> Void
     BDD.step("the editor opens {string}", &opens),
     BDD.step("the editor opens {string} without waiting", &opens_without_waiting),
     BDD.step("the editor opens {string} with:", &opens_with),
+    BDD.step("the editor opens {string} with a buffer of {int} KB without waiting", &opens_with_large_buffer),
     BDD.step("the editor opens the files {string} without waiting", &opens_files_without_waiting),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
     BDD.step("the editor opens an untitled buffer", &opens_untitled),
@@ -211,6 +214,11 @@ def opens_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return awaiting(opened, args[0])
 end
 
+def opens_with_large_buffer(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  lines = (0...args[1].to_i! * LINES_PER_KB).to_a.map do |_| COMMENT_LINE end
+  return open_text(with_folder(ctx), args[0], "", lines.join("\n") + "\n")
+end
+
 def opens_files_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   opened = ctx
   for name in names(args[0])
@@ -238,7 +246,8 @@ def open_through(ctx: BDD.Context, name: String, authority: String) -> BDD.Conte
   return open_text(ready, name, authority, File.read_text(file_path(ready, name), TIMEOUT_MS).unwrap_or(""))
 end
 
-def open_text(ready: BDD.Context, name: String, authority: String, text: String) -> BDD.Context
+def open_text(ctx: BDD.Context, name: String, authority: String, text: String) -> BDD.Context
+  ready = BDD.set(ctx, "open #{name}", JSON.from(true))
   document = JSON.object({
     "uri": JSON.from(uri(ready, name, authority)),
     "languageId": JSON.from("agentica"),
@@ -258,6 +267,9 @@ end
 
 def save(ctx: BDD.Context, name: String) -> BDD.Context
   ready = with_folder(ctx)
+  if !BDD.get(ready, "open #{name}").ok?
+    ready = open_through(ready, name, "")
+  end
   text = BDD.doc_string(ready)
   written = add(ready, JSON.object({
     "kind": JSON.from("write"),

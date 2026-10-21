@@ -16,6 +16,7 @@ AGENTICA_EXTENSION = ".agc"
 EVENT_CAPACITY = 256
 WAIT_MS = 1000
 READER_CHECK_MS = 1
+CHANGE_DELAY_MS = 200
 
 export struct State
   options: Options.Options
@@ -53,7 +54,7 @@ export def serve(state: State) -> Int
   reader = Task.spawn(&Events.read_input, state.events)
   current = state
   while true
-    case current.events.recv(WAIT_MS)
+    case current.events.recv(Schedule.wait_ms(current.plan, WAIT_MS))
       ok(event) ->
         case dispatch(current, event)
           Next.Continue(next) -> current = next
@@ -197,10 +198,10 @@ def notification(state: State, method: String, params: Json) -> State
     return state
   end
   case method
-    "textDocument/didOpen" -> return keep(state, document_uri(params), document_text(params))
+    "textDocument/didOpen" -> return opened(state, document_uri(params), document_text(params))
     "textDocument/didChange" ->
       case changed_text(params)
-        ok(text) -> return keep(state, document_uri(params), text)
+        ok(text) -> return keep(state, document_uri(params), text, CHANGE_DELAY_MS)
         error(message) ->
           Logger.warning(message)
           return state
@@ -211,16 +212,25 @@ def notification(state: State, method: String, params: Json) -> State
   end
 end
 
-def keep(state: State, uri: String, text: String) -> State
+def opened(state: State, uri: String, text: String) -> State
+  case Uri.path_of(uri)
+    ok(_) -> return keep(state, uri, text, 0)
+    error(message) ->
+      Logger.warning(message)
+      return state
+  end
+end
+
+def keep(state: State, uri: String, text: String, delay_ms: Int) -> State
   path = agentica_path(uri)
   if path == ""
     return state
   end
-  return check(state.with(documents: state.documents.put(uri, text)), uri, path, text)
+  return check(state.with(documents: state.documents.put(uri, text)), uri, path, text, delay_ms)
 end
 
-def check(state: State, uri: String, path: String, text: String) -> State
-  return state.with(plan: Schedule.request(state.plan, uri, path, text, state.encoding))
+def check(state: State, uri: String, path: String, text: String, delay_ms: Int) -> State
+  return state.with(plan: Schedule.request(state.plan, uri, path, text, delay_ms, state.encoding))
 end
 
 def saved(state: State, uri: String) -> State
@@ -239,7 +249,7 @@ end
 
 def recheck(state: State, uri: String) -> State
   case state.documents.get(uri)
-    ok(text) -> return check(state, uri, Uri.path_of(uri).unwrap_or(""), text)
+    ok(text) -> return check(state, uri, Uri.path_of(uri).unwrap_or(""), text, 0)
     error(_) -> return state
   end
 end
@@ -258,16 +268,11 @@ def closed(state: State, uri: String) -> State
 end
 
 def agentica_path(uri: String) -> String
-  case Uri.path_of(uri)
-    ok(path) ->
-      if path.ends_with?(AGENTICA_EXTENSION)
-        return path
-      end
-      return ""
-    error(message) ->
-      Logger.warning(message)
-      return ""
+  path = Uri.path_of(uri).unwrap_or("")
+  if path.ends_with?(AGENTICA_EXTENSION)
+    return path
   end
+  return ""
 end
 
 def publish(uri: String, found: List[Json]) -> Void

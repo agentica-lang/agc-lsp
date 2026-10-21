@@ -27,7 +27,9 @@ written in Agentica.
   checks run at once (the cap counts check tasks, and a cancelled checker process may still be ending for a
   moment); the other files wait in order. A newer `didOpen`, `didChange`, `didSave` or `didClose` of the
   same file cancels its older check, whose result is never published, so quick changes publish only the diagnostics
-  of the last text.
+  of the last text. A check requested by `didChange` waits 200 ms for the next change before it starts (a newer change
+  replaces its text and restarts the wait); `didOpen`, `didSave` and the re-check of the files that import a saved file
+  start at once.
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
   logs a warning (see Logging), so the editor keeps the diagnostics it already shows. A crash of a check task is
   logged as an error and also leaves the previous diagnostics.

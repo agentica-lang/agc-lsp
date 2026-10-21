@@ -146,3 +146,10 @@ Feature: Unsaved buffers
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And the diagnostic of "app/main.agc" points into "app/lib.agc" at 2:10-2:13
+
+  Scenario: a checker that fails without reading a large buffer is still reported
+    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
+    When the editor opens "big.agc" with a buffer of 400 KB without waiting
+    And the editor waits 1500 milliseconds
+    Then no diagnostics are published
+    And the server warns "agentica exited with status 2"
