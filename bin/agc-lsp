@@ -1,0 +1,12 @@
+#!/bin/sh
+# Starts the agc-lsp language server over stdio. Set AGENTICA to use another agentica binary.
+script=$0
+while [ -L "$script" ]; do
+  target=$(readlink "$script")
+  case $target in
+    /*) script=$target ;;
+    *) script=$(dirname "$script")/$target ;;
+  esac
+done
+root=$(cd "$(dirname "$script")/.." && pwd -P)
+exec "${AGENTICA:-agentica}" --allow-run "$root/src/main.agc" "$@"
