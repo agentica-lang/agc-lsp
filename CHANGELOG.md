@@ -8,6 +8,28 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Needs Agentica 0.8.0 or later.
+
+### Added
+
+- Hover on a function, struct, enum, variant, field or constant shows its signature and its `##` doc, then the type of
+  the expression (`type-at` gives them since sonic182/agentica#527).
+- Hover on a method call shows the one builtin it is, from the `help` that `type-at` gives, instead of every builtin
+  with that name; the catalog still answers when the function has an error. A builtin is also shown from the program
+  when the catalog cannot be loaded.
+- Go to definition on a local, a parameter, a loop name and a pattern name (sonic182/agentica#530).
+- Definition and hover answer in the functions that check while another function has an error, and on the names that
+  resolve in a function with an error (`type-at --partial`).
+
+### Changed
+
+- CI and the docs need Agentica 0.8.0.
+- A module without `main` is checked in one run (sonic182/agentica#516, #525).
+
+### Removed
+
+- The second check with a stub `main` appended to a module.
+
 ## [0.0.1] - 2026-10-21
 
 First release. Needs Agentica 0.7.0 or later.

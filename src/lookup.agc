@@ -1,13 +1,18 @@
-## Answers definition requests, and hover requests on what is not a builtin, with the queries of agentica.
+## Answers definition requests, and hover requests that need the compiler, with the queries of agentica.
 
+import Catalog from "catalog"
 import Cursor from "cursor"
+import Hover from "hover"
 import Places from "places"
 import Query from "query"
 import Uri from "uri"
+import Words from "words"
 
 STAT_TIMEOUT_MS = 10_000
 SHORT_TEXT_CHARS = 60
 MIN_FENCE = 3
+SECTION_BREAK = "\n\n---\n\n"
+LOCAL_KINDS = Set.new(["local", "parameter", "loop", "pattern"])
 
 ## Holds what a definition or hover request needs: the compiler, the buffer and the cursor.
 export struct Request
@@ -19,6 +24,8 @@ export struct Request
   buffer: Query.Buffer
   ## Is the position of the request in that document.
   cursor: Cursor.Cursor
+  ## Is the catalog of builtins, which answers a hover when the program gives no type.
+  book: Catalog.Book
 end
 
 ## Returns the location of the declaration of the name under the cursor, or null when there is none.
@@ -28,18 +35,20 @@ export def definition(request: Request) -> Result[Json]
     Query.Typed.Refused(_) -> return ok(JSON.null())
     Query.Typed.Found(subject) ->
       case subject.origin
-        Query.Origin.Declared(name_span) -> return ok(location(request, name_span))
+        Query.Origin.Declared(declaration) -> return ok(location(request, declaration.name_span))
+        Query.Origin.Builtin(_) -> return ok(JSON.null())
         Query.Origin.Unknown -> return ok(JSON.null())
       end
   end
 end
 
-## Returns the hover with the type of the expression under the cursor, or null when the program has an error.
+## Returns the hover of the name under the cursor: the builtin it is, or its declaration and the type of the
+## expression. A function with an error has no type, so the catalog answers, or else the result is null.
 export def hover(request: Request) -> Result[Json]
   typed = try subject_at(request)
   case typed
-    Query.Typed.Refused(_) -> return ok(JSON.null())
-    Query.Typed.Found(subject) -> return ok(markdown(request, subject))
+    Query.Typed.Refused(_) -> return ok(Hover.answer(request.book, request.cursor))
+    Query.Typed.Found(subject) -> return ok(answer(request, subject))
   end
 end
 
@@ -78,10 +87,14 @@ end
 
 def typed(subject: Query.Subject) -> String
   if subject.text.contains?("\n") or subject.text.length > SHORT_TEXT_CHARS
-    return "```agc\n#{subject.type}\n```"
+    return fenced(subject.type)
   end
-  fence = fence_for(subject.text)
-  return "#{fence}agc\n#{subject.text}: #{subject.type}\n#{fence}"
+  return fenced("#{subject.text}: #{subject.type}")
+end
+
+def fenced(code: String) -> String
+  fence = fence_for(code)
+  return "#{fence}agc\n#{code}\n#{fence}"
 end
 
 def fence_for(text: String) -> String
@@ -103,9 +116,52 @@ def fence_for(text: String) -> String
   return List.repeat("`", longest + 1).join("")
 end
 
-def markdown(request: Request, subject: Query.Subject) -> Json
-  contents = JSON.object({"kind": JSON.from("markdown"), "value": JSON.from(typed(subject))})
+def declaration_text(declaration: Query.Declaration) -> String
+  if declaration.doc == ""
+    return fenced(declaration.signature)
+  end
+  return "#{fenced(declaration.signature)}\n\n#{declaration.doc}"
+end
+
+def sections(subject: Query.Subject) -> List[String]
+  case subject.origin
+    Query.Origin.Builtin(entry) -> return [Hover.describe(entry)]
+    Query.Origin.Declared(declaration) if !LOCAL_KINDS.include?(declaration.kind) ->
+      return [declaration_text(declaration)].concat(typed_sections(subject))
+    Query.Origin.Declared(_) -> return typed_sections(subject)
+    Query.Origin.Unknown -> return typed_sections(subject)
+  end
+end
+
+def typed_sections(subject: Query.Subject) -> List[String]
+  if subject.type == ""
+    return []
+  end
+  return [typed(subject)]
+end
+
+def covered(request: Request, subject: Query.Subject) -> Json
+  case subject.origin
+    Query.Origin.Builtin(_) ->
+      case Words.at(request.cursor.chars, request.cursor.index)
+        ok(word) -> return Cursor.range(request.cursor, word.start, word.stop)
+        error(_) -> return span_range(request, subject)
+      end
+    Query.Origin.Declared(_) -> return span_range(request, subject)
+    Query.Origin.Unknown -> return span_range(request, subject)
+  end
+end
+
+def span_range(request: Request, subject: Query.Subject) -> Json
   lines = request.buffer.text.split("\n")
-  range = Places.range(lines, subject.span.start, subject.span.stop, request.cursor.encoding)
-  return JSON.object({"contents": contents, "range": range})
+  return Places.range(lines, subject.span.start, subject.span.stop, request.cursor.encoding)
+end
+
+def answer(request: Request, subject: Query.Subject) -> Json
+  found = sections(subject)
+  if found.size == 0
+    return JSON.null()
+  end
+  value = JSON.object({"kind": JSON.from("markdown"), "value": JSON.from(found.join(SECTION_BREAK))})
+  return JSON.object({"contents": value, "range": covered(request, subject)})
 end

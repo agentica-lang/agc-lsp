@@ -159,6 +159,9 @@ def main() -> Void
     BDD.step("the hover at {int}:{int} shows {string}", &hover_shows),
     BDD.step("the hover at {int}:{int} shows these builtins:", &hover_shows_these),
     BDD.step("the hover at {int}:{int} shows the type {string}", &hover_shows_type),
+    BDD.step("the hover at {int}:{int} shows the declaration {string}", &hover_shows_declaration),
+    BDD.step("the hover at {int}:{int} shows the documentation {string}", &hover_shows_documentation),
+    BDD.step("the hover at {int}:{int} reads:", &hover_reads),
     BDD.step("the hovers of {string} at {int}:{int} show the type {string}", &hovers_show_type),
     BDD.step("the hover at {int}:{int} is fenced with {int} backticks", &hover_is_fenced),
     BDD.step("the earlier hovers in a row are answered with null", &earlier_hovers_are_null),
@@ -762,6 +765,19 @@ def hover_shows_type(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| hover_typed(done, args[0], args[1], args[2]) end
 end
 
+def hover_shows_declaration(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_declared(done, args[0], args[1], args[2]) end
+end
+
+def hover_shows_documentation(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_documented(done, args[0], args[1], args[2]) end
+end
+
+def hover_reads(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  expected = BDD.doc_string(ctx)
+  return finished(ctx) do |done| hover_read(done, args[0], args[1], expected) end
+end
+
 def hovers_show_type(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| each_hover_typed(done, args) end
 end
@@ -798,7 +814,7 @@ def hover_fenced(ctx: BDD.Context, line: String, column: String, width: Int) -> 
   case hover_value(ctx, line, column)
     ok(value) ->
       fence = List.repeat("`", width).join("")
-      fenced = value.starts_with?("#{fence}agc\n") and !value.starts_with?("#{fence}`")
+      fenced = value.contains?("\n#{fence}agc\n") and value.ends_with?("\n#{fence}") and !value.ends_with?("`#{fence}")
       message = "the hover at #{line}:#{column} is not fenced with #{width} backticks: #{value.inspect}"
       return BDD.assert(ctx, fenced, message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -931,6 +947,35 @@ def hover_typed_of(ctx: BDD.Context, key: String, line: String, column: String, 
       shown = value.contains?(": #{type}\n```")
       message = "the hover at #{line}:#{column} does not show the type #{type} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def hover_declared(ctx: BDD.Context, line: String, column: String, signature: String) -> BDD.Context
+  case hover_value(ctx, line, column)
+    ok(value) ->
+      shown = value.starts_with?("```agc\n#{signature}\n```\n")
+      message = "the hover at #{line}:#{column} does not start with the declaration #{signature} in #{value.inspect}"
+      return BDD.assert(ctx, shown, message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def hover_documented(ctx: BDD.Context, line: String, column: String, doc: String) -> BDD.Context
+  case hover_value(ctx, line, column)
+    ok(value) ->
+      shown = value.contains?("\n\n#{doc}\n\n")
+      message = "the hover at #{line}:#{column} does not show the documentation #{doc} in #{value.inspect}"
+      return BDD.assert(ctx, shown, message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def hover_read(ctx: BDD.Context, line: String, column: String, expected: String) -> BDD.Context
+  case hover_value(ctx, line, column)
+    ok(value) ->
+      message = "the hover at #{line}:#{column} reads #{value.inspect}; expected #{expected.inspect}"
+      return BDD.assert(ctx, value == expected, message)
     error(message) -> return BDD.assert(ctx, false, message)
   end
 end

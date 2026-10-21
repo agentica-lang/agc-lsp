@@ -33,7 +33,7 @@ Feature: Hover on builtins
     Then the hover at 3:4 shows "puts"
     And the hover at 3:4 covers 3:3-3:7
 
-  Scenario: a method call shows every builtin with that name
+  Scenario: a method call shows the builtin of the type of its receiver
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:
       """
@@ -48,13 +48,42 @@ Feature: Hover on builtins
     And the editor hovers over "app.agc" at 4:15
     Then the hover at 3:18 shows "String.split"
     And the hover at 3:18 covers 3:16-3:21
-    And the hover at 4:15 shows these builtins:
+    And the hover at 4:15 shows "List.size"
+    And the hover at 4:15 does not show "Map.size"
+    And the hover at 4:15 covers 4:14-4:18
+
+  Scenario: a method call in a function with an error shows every builtin with that name
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        parts = ["a", "b"]
+        puts(parts.size + oops)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 3:15
+    Then the hover at 3:15 shows these builtins:
       | builtin    |
       | List.size  |
       | Map.size   |
       | Set.size   |
       | Range.size |
-    And the hover at 4:15 covers 4:14-4:18
+    And the hover at 3:15 covers 3:14-3:18
+
+  Scenario: a builtin is shown from the program when the catalog cannot be loaded
+    Given the editor asks for the client log level "warning"
+    And the language server has started with the arguments "--agentica specs/fixtures/nohelp-agentica"
+    And the editor waits for a log message containing "cannot load the builtin catalog"
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        puts(String.upcase("x"))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 2:16
+    Then the hover at 2:16 shows the declaration "String.upcase(s: String) -> String"
 
   Scenario: a call of a function of the code shows the type of the expression
     Given the language server has started
@@ -84,6 +113,174 @@ Feature: Hover on builtins
     Then the hover at 8:9 shows the type "Int"
     And the hover at 8:9 covers 8:8-8:18
     And the hover at 9:12 shows the type "String"
+
+  Scenario: a function of the code shows its signature and its doc before the type of the call
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      ## Returns a greeting for a name.
+      ##
+      ## The name is used as given.
+      export def greet(name: String) -> String
+        return "hello #{name}"
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.greet("Ana"))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 4:12
+    Then the hover at 4:12 reads:
+      """
+      ```agc
+      greet(name: String) -> String
+      ```
+
+      Returns a greeting for a name.
+
+      The name is used as given.
+
+      ---
+
+      ```agc
+      Lib.greet("Ana"): String
+      ```
+      """
+    And the hover at 4:12 covers 4:8-4:24
+
+  Scenario: a field, a struct and a variant show their declaration and their doc
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      ## Holds a point of the plane.
+      struct Point
+        ## Is the distance to the left edge.
+        x: Int
+        y: Int
+      end
+
+      ## Is the way a shape is drawn.
+      enum Pen
+        ## Draws a line of a width.
+        Line(Int)
+        Dot
+      end
+
+      def main() -> Void
+        point = Point(x: 1, y: 2)
+        pen = Pen.Line(3)
+        puts(point.x)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 18:14
+    And the editor hovers over "app.agc" at 16:12
+    And the editor hovers over "app.agc" at 17:14
+    Then the hover at 18:14 shows the declaration "x: Int"
+    And the hover at 18:14 shows the documentation "Is the distance to the left edge."
+    And the hover at 18:14 shows the type "Int"
+    And the hover at 16:12 shows the declaration "struct Point"
+    And the hover at 16:12 shows the documentation "Holds a point of the plane."
+    And the hover at 17:14 shows the declaration "Line(Int)"
+    And the hover at 17:14 shows the documentation "Draws a line of a width."
+
+  Scenario: a local, a parameter and a loop name show their type only
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def total(limit: Int) -> Int
+        sum = 0
+        for step in [1, 2, 3]
+          sum += step
+        end
+        return sum + limit
+      end
+
+      def main() -> Void
+        puts(total(5))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 6:17
+    Then the hover at 6:17 reads:
+      """
+      ```agc
+      limit: Int
+      ```
+      """
+
+  Scenario: a field with the name of a builtin method shows the field and not the builtin
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Crowd
+        ## Is the number of people.
+        size: Int
+      end
+
+      def main() -> Void
+        crowd = Crowd(size: 3)
+        puts(crowd.size)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 8:15
+    Then the hover at 8:15 shows the declaration "size: Int"
+    And the hover at 8:15 shows the type "Int"
+    And the hover at 8:15 does not show "List.size"
+
+  Scenario: a function with an error does not stop the hover in the others
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      ## Returns the double of a number.
+      def double(n: Int) -> Int
+        return n * 2
+      end
+
+      def broken() -> Int
+        return "x"
+      end
+
+      def main() -> Void
+        puts(double(21))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 11:9
+    And the editor hovers over "app.agc" at 7:10
+    Then the hover at 11:9 shows the declaration "double(n: Int) -> Int"
+    And the hover at 11:9 shows the documentation "Returns the double of a number."
+    And there is no hover at 7:10
+
+  Scenario: a name that resolves in a function with an error shows its declaration without a type
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def double(n: Int) -> Int
+        return n * 2
+      end
+
+      def main() -> Void
+        puts(double(oops))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 6:9
+    And the editor hovers over "app.agc" at 6:16
+    Then the hover at 6:9 reads:
+      """
+      ```agc
+      double(n: Int) -> Int
+      ```
+      """
+    And there is no hover at 6:16
 
   Scenario: a name that is not a builtin shows its type and not the builtin of the same name
     Given the language server has loaded the builtin catalog
@@ -205,11 +402,11 @@ Feature: Hover on builtins
       end
 
       """
-    And the editor hovers over "app.agc" at 2:10
+    And the editor hovers over "app.agc" at 2:23
     Then "app.agc" gets these diagnostics:
       | at        | severity | code               |
       | 2:22-2:26 | error    | CHECK-UNKNOWN-NAME |
-    And there is no hover at 2:10
+    And there is no hover at 2:23
     And the server warns "cannot load the builtin catalog"
 
   Scenario: a newer hover on a document supersedes the older ones, which are answered with null

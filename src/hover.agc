@@ -8,6 +8,7 @@ struct Found
   entries: List[Catalog.Entry]
   start: Int
   stop: Int
+  by_receiver: Bool
 end
 
 ## Returns the hover of the builtin under the cursor, or null when there is none.
@@ -19,19 +20,29 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
     ok(found) ->
       contents = JSON.object({
         "kind": JSON.from("markdown"),
-        "value": JSON.from(found.entries.map do |entry| markdown(entry) end.join("\n\n---\n\n")),
+        "value": JSON.from(found.entries.map do |entry| describe(entry) end.join("\n\n---\n\n")),
       })
       return JSON.object({"contents": contents, "range": Cursor.range(cursor, found.start, found.stop)})
     error(_) -> return JSON.null()
   end
 end
 
-## Returns true when the hover needs no question to the compiler: nothing is there, or a builtin is named.
+## Returns true when the hover needs no question to the compiler: nothing is there, or a builtin is named
+## without a receiver, since the type of a receiver decides which builtin a method call is.
 export def settled?(book: Catalog.Book, cursor: Cursor.Cursor) -> Bool
   if !Words.name_at?(cursor.chars, cursor.index)
     return true
   end
-  return find(book, cursor).ok?
+  case find(book, cursor)
+    ok(found) -> return !found.by_receiver
+    error(_) -> return false
+  end
+end
+
+## Returns the markdown of a builtin: its signatures in code blocks, then its description.
+export def describe(entry: Catalog.Entry) -> String
+  signatures = entry.signatures.map do |signature| "```agc\n#{signature}\n```" end
+  return "#{signatures.join("\n")}\n\n#{entry.description}"
 end
 
 def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]
@@ -47,7 +58,7 @@ def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]
     return error("not a call: #{word.text}")
   end
   entry = try Catalog.find(book, word.text)
-  return ok(Found(entries: [entry], start: word.start, stop: word.stop))
+  return ok(Found(entries: [entry], start: word.start, stop: word.stop, by_receiver: false))
 end
 
 def after_dot(book: Catalog.Book, chars: List[String], word: Words.Word) -> Result[Found]
@@ -66,15 +77,10 @@ def methods(book: Catalog.Book, word: Words.Word) -> Result[Found]
   if entries.size == 0
     return error("no builtin method #{word.text}")
   end
-  return ok(Found(entries: entries, start: word.start, stop: word.stop))
+  return ok(Found(entries: entries, start: word.start, stop: word.stop, by_receiver: true))
 end
 
 def qualified(book: Catalog.Book, namespace: String, member: Words.Word, start: Int) -> Result[Found]
   entry = try Catalog.find(book, "#{namespace}.#{member.text}")
-  return ok(Found(entries: [entry], start: start, stop: member.stop))
-end
-
-def markdown(entry: Catalog.Entry) -> String
-  signatures = entry.signatures.map do |signature| "```agc\n#{signature}\n```" end
-  return "#{signatures.join("\n")}\n\n#{entry.description}"
+  return ok(Found(entries: [entry], start: start, stop: member.stop, by_receiver: false))
 end
