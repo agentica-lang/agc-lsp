@@ -57,7 +57,7 @@ export def serve(state: State) -> Int
     case current.events.recv(Schedule.wait_ms(current.plan, WAIT_MS))
       ok(event) ->
         case dispatch(current, event)
-          Next.Continue(next) -> current = next
+          Next.Continue(next) -> current = next.with(plan: Schedule.tick(next.plan, next.encoding))
           Next.Exit(status) -> return finish(current, reader, status)
         end
       error(_) ->
@@ -261,7 +261,14 @@ def recheck(state: State, uri: String) -> State
 end
 
 def closed(state: State, uri: String) -> State
-  if agentica_path(uri) == ""
+  path = ""
+  case Uri.path_of(uri)
+    ok(found) -> path = found
+    error(message) ->
+      Logger.warning(message)
+      return state
+  end
+  if !path.ends_with?(AGENTICA_EXTENSION)
     return state
   end
   none: List[Json] = []

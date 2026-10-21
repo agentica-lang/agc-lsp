@@ -57,7 +57,11 @@ end
 
 def collect(checker: Process, text: String, deadline: Int) -> Result[String]
   sent = feed(checker, text, deadline)
-  output = try Process.output(checker, remaining(deadline))
+  captured = Process.output(checker, remaining(deadline))
+  if !captured.ok? and !sent.ok?
+    return error(unsent(sent))
+  end
+  output = try captured
   status = try Process.wait(checker, remaining(deadline))
   case status
     0 ->
