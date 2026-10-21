@@ -5,7 +5,10 @@ import Fields from "fields"
 import Places from "places"
 import Query from "query"
 import Symbols from "symbols"
+import Logger from "std/logger"
 import Uri from "uri"
+
+READ_TIMEOUT_MS = 10_000
 
 ## Holds what a workspace symbol request needs: the compiler, the folder, the name and the position encoding.
 export struct Request
@@ -42,11 +45,34 @@ end
 ## list is empty when there are none.
 export def answer(request: Request) -> Result[Json]
   found = try Query.declarations_of(request.agentica, request.root, request.name)
-  return ok(JSON.array(found.map do |match| symbol(request, match) end))
+  lines = lines_by_file(found)
+  symbols: List[Json] = []
+  for match in found
+    case lines.get(match.name_span.file)
+      ok(file_lines) -> symbols = symbols.push(symbol(request, match, file_lines))
+      error(_) -> Logger.debug("the search dropped a match in a file that cannot be read: #{match.name_span.file}")
+    end
+  end
+  return ok(JSON.array(symbols))
 end
 
-def symbol(request: Request, match: Query.Match) -> Json
-  lines = Places.source_lines(match.name_span.file)
+def lines_by_file(found: List[Query.Match]) -> Map[String, List[String]]
+  loaded: Map[String, List[String]] = {}
+  seen: Set[String] = Set.new([])
+  for match in found
+    file = match.name_span.file
+    if !seen.include?(file)
+      seen = seen.add(file)
+      case File.read_text(file, READ_TIMEOUT_MS)
+        ok(text) -> loaded = loaded.put(file, text.split("\n"))
+        error(_) -> next
+      end
+    end
+  end
+  return loaded
+end
+
+def symbol(request: Request, match: Query.Match, lines: List[String]) -> Json
   range = Places.range(lines, match.name_span.start, match.name_span.stop, request.encoding)
   fields: Map[String, Json] = {
     "name": JSON.from(match.name),

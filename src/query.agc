@@ -10,7 +10,8 @@ import Uri from "uri"
 
 QUERY_TIMEOUT_MS = 10_000
 EXPECTED_CODES = ["LEX-", "PARSE-", "CHECK-", "QUERY-NO-EXPRESSION"]
-SEARCH_CODES = ["LEX-", "PARSE-", "QUERY-NOT-FOUND", "QUERY-USAGE"]
+SEARCH_CODES = ["LEX-", "PARSE-", "QUERY-NOT-FOUND"]
+NO_FILES = "no .agc file"
 
 ## Holds the text of a file as the editor shows it, and the path it stands for.
 export struct Buffer
@@ -143,12 +144,13 @@ end
 
 ## Returns the declarations of a name in the files below the folder, as they are on disk, none when it has none.
 export def declarations_of(agentica: String, folder: String, name: String) -> Result[List[Match]]
-  reply = try ask(agentica, folder, ["--json", "symbol", name], "", SEARCH_CODES)
-  case reply
-    Reply.Refusal(_) ->
-      none: List[Match] = []
+  none: List[Match] = []
+  case ask(agentica, folder, ["--json", "symbol", name], "", SEARCH_CODES)
+    ok(reply) -> return searched(reply, folder)
+    error(message) if message.contains?(NO_FILES) ->
+      Logger.debug("the search found no agentica file in #{folder}")
       return ok(none)
-    Reply.Answer(found) -> return ok(matches_of(found, folder))
+    error(message) -> return error(message)
   end
 end
 
@@ -157,6 +159,15 @@ export def outline_of_buffer(agentica: String, buffer: Buffer) -> Result[Outline
   arguments = ["--json", "outline", "--stdin", buffer.path]
   reply = try ask(agentica, Uri.folder_of(buffer.path), arguments, buffer.text, EXPECTED_CODES)
   return outlined(reply)
+end
+
+def searched(reply: Reply, folder: String) -> Result[List[Match]]
+  case reply
+    Reply.Refusal(_) ->
+      none: List[Match] = []
+      return ok(none)
+    Reply.Answer(found) -> return ok(matches_of(found, folder))
+  end
 end
 
 def outlined(reply: Reply) -> Result[Outlined]

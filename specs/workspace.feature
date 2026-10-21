@@ -91,6 +91,28 @@ Feature: Workspace symbols
     Then there are no workspace symbols for "area"
     And the server never logs "cannot answer the request"
 
+  Scenario: a query that looks like an option starts no process
+    Given the editor offers the workspace as "workspace folders"
+    And the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
+    And the file "shapes.agc" contains:
+      """
+      export def area(side: Int) -> Int
+        return side * side
+      end
+      """
+    When the editor searches the workspace for "--help"
+    And the editor searches the workspace for "-area"
+    Then there are no workspace symbols for "--help"
+    And there are no workspace symbols for "-area"
+    And the server never logs "cannot answer the request"
+
+  Scenario: a workspace folder without agentica files gets no symbols and no warning
+    Given the editor offers the workspace as "workspace folders"
+    And the language server has started
+    When the editor searches the workspace for "area"
+    Then there are no workspace symbols for "area"
+    And the server never logs "cannot answer the request"
+
   Scenario: a file that cannot be read is left out and logged
     Given the editor offers the workspace as "workspace folders"
     And the language server has started with the arguments "--log-level debug"

@@ -107,9 +107,13 @@ end
 
 def lines_by_file(request: Request, places: List[Places.Span]) -> Map[String, List[String]]
   loaded: Map[String, List[String]] = {}
+  seen: Set[String] = Set.new([])
   for place in places
-    if !loaded.get(place.file).ok? and known?(request, place.file)
-      loaded = loaded.put(place.file, lines_of(request, place.file))
+    if !seen.include?(place.file)
+      seen = seen.add(place.file)
+      if known?(request, place.file)
+        loaded = loaded.put(place.file, lines_of(request, place.file))
+      end
     end
   end
   return loaded

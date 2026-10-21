@@ -351,7 +351,7 @@ end
 
 def workspace_symbols(state: State, id: Json, params: Json) -> State
   name = Fields.text(params, "query").strip
-  if state.root == "" or name == ""
+  if state.root == "" or name == "" or name.starts_with?("-")
     none: List[Json] = []
     Rpc.respond(id, JSON.array(none))
     return state

@@ -61,8 +61,9 @@ written in Agentica.
   variant has its struct or enum as `containerName`) and the range of its name. The query must be the whole name as
   the code declares it, with the same case: `area`, `Point`, `Point.x` (a field), `Shape.Circle` (a variant),
   `Models.greet` (through the alias of an import in some file of the workspace). `agentica symbol` does not match
-  prefixes or fuzzily, so `are` finds nothing. An empty query, a name that is not declared and an editor that gave no
-  workspace folder answer an empty list, without a process. The folder is the first of `workspaceFolders` of
+  prefixes or fuzzily, so `are` finds nothing. A name that is not declared answers an empty list. An empty query, a query that starts with `-` (a name never
+  does, and `agentica` would read it as an option) and an editor that gave no workspace folder answer an empty list
+  without a process. The folder is the first of `workspaceFolders` of
   `initialize`, else `rootUri`, else `rootPath`; a client with several folders is searched in the first only.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 

@@ -192,3 +192,20 @@ Feature: Find references
       | offered        | asked | use       |
       | utf-16         | 6:17  | 6:15-6:21 |
       | utf-16, utf-32 | 6:16  | 6:14-6:20 |
+
+  Scenario: a newer references request on a document supersedes the older ones, which are answered with null
+    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        count = 21
+        puts(count)
+      end
+
+      """
+    And the editor asks for the references in "app.agc" at 3:8 three times in a row
+    Then the earlier requests in a row are answered with null
+    And the references at 3:8 are:
+      | file    | at       |
+      | app.agc | 2:3-2:8  |
+      | app.agc | 3:8-3:13 |

@@ -116,6 +116,10 @@ def main() -> Void
       "the editor asks for the references in {string} at {int}:{int} without the declaration",
       &asks_references_without_declaration,
     ),
+    BDD.step(
+      "the editor asks for the references in {string} at {int}:{int} three times in a row",
+      &asks_references_in_a_row,
+    ),
     BDD.step("the editor searches the workspace for {string}", &searches_workspace),
     BDD.step("the editor searches the workspace for {string} three times in a row", &searches_workspace_in_a_row),
     BDD.step("the editor closes {string}", &closes),
@@ -466,7 +470,22 @@ def asks_references_without_declaration(ctx: BDD.Context, args: List[String]) ->
   return ask_references(ctx, args, false)
 end
 
+def asks_references_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = ctx
+  ids: List[Json] = []
+  for _ in 0...3
+    sent = put_references(sent, args, true)
+    ids = ids.push(BDD.get(sent, "references #{args[1]}:#{args[2]}").unwrap!)
+  end
+  return wait_for(BDD.set(sent, "in a row", JSON.array(ids)), ids)
+end
+
 def ask_references(ctx: BDD.Context, args: List[String], declaration: Bool) -> BDD.Context
+  sent = put_references(ctx, args, declaration)
+  return wait_for(sent, [BDD.get(sent, "references #{args[1]}:#{args[2]}").unwrap!])
+end
+
+def put_references(ctx: BDD.Context, args: List[String], declaration: Bool) -> BDD.Context
   ready = with_folder(ctx)
   params = JSON.object({
     "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
@@ -475,7 +494,7 @@ def ask_references(ctx: BDD.Context, args: List[String], declaration: Bool) -> B
   })
   sent = request(ready, REFERENCES, params)
   id = BDD.get(sent, "request #{REFERENCES}").unwrap!
-  return wait_for(BDD.set(sent, "references #{args[1]}:#{args[2]}", id), [id])
+  return BDD.set(sent, "references #{args[1]}:#{args[2]}", id)
 end
 
 def searches_workspace(ctx: BDD.Context, args: List[String]) -> BDD.Context
