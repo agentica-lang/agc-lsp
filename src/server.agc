@@ -1,5 +1,8 @@
 import Check from "check"
 import Events from "events"
+import Logger from "std/logger"
+import Logs from "logs"
+import Options from "options"
 import Rpc from "rpc"
 import Schedule from "schedule"
 import Uri from "uri"
@@ -15,7 +18,7 @@ WAIT_MS = 1000
 READER_CHECK_MS = 1
 
 export struct State
-  agentica: String
+  options: Options.Options
   encoding: String
   initialized: Bool
   shut_down: Bool
@@ -29,16 +32,16 @@ enum Next
   Exit(Int)
 end
 
-export def start(agentica: String) -> State
+export def start(options: Options.Options) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
   pointing: Map[String, String] = {}
   return State(
-    agentica: agentica,
+    options: options,
     encoding: "utf-16",
     initialized: false,
     shut_down: false,
     events: events,
-    plan: Schedule.start(agentica, events),
+    plan: Schedule.start(options.agentica, events),
     pointing: pointing,
   )
 end
@@ -55,7 +58,7 @@ export def serve(state: State) -> Int
         end
       error(_) ->
         if reader_crashed?(reader)
-          IO.warn("agc-lsp: the reader of the input crashed")
+          Logger.err("the reader of the input crashed")
           return finish(current, reader, 1)
         end
         current = current.with(plan: Schedule.tick(current.plan, current.encoding))
@@ -81,6 +84,9 @@ def dispatch(state: State, event: Events.Event) -> Next
   case event
     Events.Event.Checked(report) -> return Next.Continue(checked(state, report))
     Events.Event.Input(incoming) -> return input(state, incoming)
+    Events.Event.Log(logged) ->
+      Logs.write_to_editor(logged)
+      return Next.Continue(state)
   end
 end
 
@@ -91,7 +97,7 @@ def input(state: State, incoming: Rpc.Incoming) -> Next
       Rpc.fail(JSON.null(), PARSE_ERROR, message)
       return Next.Continue(state)
     Rpc.Incoming.Unframed(message) ->
-      IO.warn("agc-lsp: #{message}; the stream cannot be read further")
+      Logger.err("#{message}; the stream cannot be read further")
       return Next.Exit(1)
     Rpc.Incoming.Message(message) -> return handle(state, message)
   end
@@ -122,6 +128,7 @@ def handle(state: State, message: Json) -> Next
     return Next.Continue(state)
   end
   method = JSON.string(JSON.get(message, "method").unwrap_or(JSON.null())).unwrap_or("")
+  log_received(message, method)
   if method == "exit"
     return Next.Exit(exit_status(state))
   end
@@ -149,6 +156,7 @@ def request(state: State, id: Json, method: String, params: Json) -> State
   case method
     "initialize" -> return initialize(state, id, params)
     "shutdown" ->
+      Logger.info("shutting down")
       Rpc.respond(id, JSON.null())
       return state.with(plan: Schedule.stop(state.plan), shut_down: true)
     _ ->
@@ -176,6 +184,8 @@ def initialize(state: State, id: Json, params: Json) -> State
     "capabilities": capabilities,
     "serverInfo": JSON.object({"name": JSON.from("agc-lsp")}),
   }))
+  Logs.attach_editor(state.options, state.events, JSON.get(params, "initializationOptions").unwrap_or(JSON.null()))
+  Logger.info("initialized", {"encoding": encoding})
   return state.with(encoding: encoding, initialized: true)
 end
 
@@ -211,7 +221,7 @@ def refresh(state: State, uri: String, checking: Bool) -> State
   case Uri.path_of(uri)
     ok(found) -> path = found
     error(message) ->
-      IO.warn("agc-lsp: #{message}")
+      Logger.warning(message)
       return state
   end
   if !path.ends_with?(AGENTICA_EXTENSION)
@@ -247,6 +257,16 @@ end
 def document_uri(params: Json) -> String
   document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
   return JSON.string(JSON.get(document, "uri").unwrap_or(JSON.null())).unwrap_or("")
+end
+
+def log_received(message: Json, method: String) -> Void
+  if !Logger.enabled?(LogLevel.Debug)
+    return
+  end
+  case JSON.get(message, "id")
+    ok(id) -> Logger.debug("received a message", {"method": method, "id": JSON.encode(id)})
+    error(_) -> Logger.debug("received a message", {"method": method})
+  end
 end
 
 def response?(message: Json) -> Bool

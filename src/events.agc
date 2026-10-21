@@ -1,4 +1,5 @@
 import Check from "check"
+import Logger from "std/logger"
 import Rpc from "rpc"
 
 SEND_TIMEOUT_MS = 10000
@@ -12,6 +13,7 @@ end
 export enum Event
   Input(Rpc.Incoming)
   Checked(Report)
+  Log(LogEvent)
 end
 
 export struct Job
@@ -35,7 +37,20 @@ export def read_input(events: Channel[Event]) -> Result[Void]
 end
 
 export def check(job: Job) -> Result[Void]
+  started = Time.now_ms()
+  if Logger.enabled?(LogLevel.Debug)
+    Logger.debug("check started", {"uri": job.uri, "generation": job.generation.to_s})
+  end
   outcome = Check.diagnostics(job.agentica, job.path, job.encoding)
+  if Logger.enabled?(LogLevel.Debug)
+    fields = {
+      "uri": job.uri,
+      "generation": job.generation.to_s,
+      "ms": (Time.now_ms() - started).to_s,
+      "ok": outcome.ok?.to_s,
+    }
+    Logger.debug("check finished", fields)
+  end
   deliver(job.events, Event.Checked(Report(uri: job.uri, generation: job.generation, outcome: outcome)))
   return ok()
 end

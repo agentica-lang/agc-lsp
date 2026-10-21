@@ -8,6 +8,8 @@ ASCII_LIMIT = 128
 MANIFEST = "agentica.toml"
 PUBLISH = "textDocument/publishDiagnostics"
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
+LOG_TYPES = {"error": 1, "warning": 2, "info": 3, "debug": 4}
+LOG_MESSAGE = "window/logMessage"
 ERROR_CODES = {
   "parse error": -32700,
   "invalid request": -32600,
@@ -21,6 +23,12 @@ struct Session
   sent: Map[String, Json]
   exit_code: Int
   stderr: String
+  log: String
+end
+
+struct Entry
+  level: String
+  text: String
 end
 
 struct Heard
@@ -33,6 +41,9 @@ def main() -> Void
     BDD.step("the language server has started", &started),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
+    BDD.step("the editor asks for the log level {string}", &asks_log_level),
+    BDD.step("the editor asks for the client log level {string}", &asks_client_log_level),
+    BDD.step("the server writes its log to {string}", &writes_log_to),
     BDD.step("the file {string} contains:", &file_contains),
     BDD.step("the files {string} contain:", &files_contain),
     BDD.step("the folder has the link {string} to itself", &links_to_itself),
@@ -69,6 +80,21 @@ def main() -> Void
     BDD.step("{string} gets nothing more", &gets_nothing_more),
     BDD.step("no diagnostics are published", &publishes_nothing),
     BDD.step("the server warns {string}", &warns),
+    BDD.step("the server logs a {string} line containing {string}", &logs_line),
+    BDD.step("the server logs an {string} line containing {string}", &logs_line),
+    BDD.step("the server logs no {string} lines", &logs_no_lines),
+    BDD.step("the server logs only JSON lines", &logs_only_json),
+    BDD.step("the server never logs {string}", &never_logs),
+    BDD.step("the editor gets a {string} log message containing {string}", &gets_log_message),
+    BDD.step("the editor gets an {string} log message containing {string}", &gets_log_message),
+    BDD.step("the editor gets no log messages", &gets_no_log_messages),
+    BDD.step("the editor gets no log message containing {string}", &gets_no_log_message_containing),
+    BDD.step("the answer to initialize comes before the log messages", &answers_before_logging),
+    BDD.step("the log file {string} has a {string} line containing {string}", &log_file_has_line),
+    BDD.step("the log file {string} has an {string} line containing {string}", &log_file_has_line),
+    BDD.step("the log file {string} has no {string} lines", &log_file_has_no_lines),
+    BDD.step("the log file {string} has only JSON lines", &log_file_only_json),
+    BDD.step("the log file {string} never contains {string}", &log_file_never_contains),
     BDD.step("the diagnostic of {string} has a help line", &has_help),
     BDD.step("the diagnostic of {string} points to {string}", &points_to),
     BDD.step("the diagnostic of {string} has no related location", &has_no_related),
@@ -90,6 +116,18 @@ end
 def started_with_arguments(ctx: BDD.Context, args: List[String]) -> BDD.Context
   words = args[0].split(" ").map do |word| JSON.from(word) end
   return initialize(BDD.set(ctx, "arguments", JSON.array(words)), JSON.object({}))
+end
+
+def asks_log_level(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return BDD.set(ctx, "asked log level", JSON.from(args[0]))
+end
+
+def asks_client_log_level(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return BDD.set(ctx, "asked client log level", JSON.from(args[0]))
+end
+
+def writes_log_to(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return BDD.set(with_folder(ctx), "log file", JSON.from(args[0]))
 end
 
 def file_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -324,6 +362,87 @@ def warns(ctx: BDD.Context, args: List[String]) -> BDD.Context
   end
 end
 
+def logs_line(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    found = has_line?(entries(stderr(done)), args[0], args[1])
+    BDD.assert(done, found, "no #{args[0]} line containing #{args[1].inspect} in #{stderr(done).inspect}")
+  end
+end
+
+def logs_no_lines(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    found = has_level?(entries(stderr(done)), args[0])
+    BDD.assert(done, !found, "unexpected #{args[0]} lines in #{stderr(done).inspect}")
+  end
+end
+
+def logs_only_json(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| only_json(done, stderr(done)) end
+end
+
+def never_logs(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    BDD.assert(done, !stderr(done).contains?(args[0]), "#{args[0].inspect} found in #{stderr(done).inspect}")
+  end
+end
+
+def gets_log_message(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    found = logged_to_editor?(done, args[0], args[1])
+    sent = JSON.array(log_messages(done))
+    BDD.assert(done, found, "no #{args[0]} log message containing #{args[1].inspect} in #{sent}")
+  end
+end
+
+def gets_no_log_messages(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    BDD.assert(done, log_messages(done).size == 0, "unexpected log messages #{JSON.array(log_messages(done))}")
+  end
+end
+
+def gets_no_log_message_containing(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    found = log_messages(done).filter do |message|
+      JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("").contains?(args[0])
+    end
+    BDD.assert(done, found.size == 0, "unexpected log messages #{JSON.array(found)}")
+  end
+end
+
+def answers_before_logging(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| answered_first(done) end
+end
+
+def answered_first(ctx: BDD.Context) -> BDD.Context
+  first = messages(ctx)[0]
+  answer = at(first, ["id"]).unwrap_or(JSON.null()).to_s == "1" and at(first, ["result"]).ok?
+  return BDD.assert(ctx, answer, "the first message is not the answer to initialize: #{first}")
+end
+
+def log_file_never_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    BDD.assert(done, !log_text(done).contains?(args[1]), "#{args[1].inspect} found in #{log_text(done).inspect}")
+  end
+end
+
+def log_file_has_line(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    found = has_line?(entries(log_text(done)), args[1], args[2])
+    BDD.assert(done, found, "no #{args[1]} line containing #{args[2].inspect} in #{log_text(done).inspect}")
+  end
+end
+
+def log_file_has_no_lines(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    found = has_level?(entries(log_text(done)), args[1])
+    BDD.assert(done, !found, "unexpected #{args[1]} lines in #{log_text(done).inspect}")
+  end
+end
+
+def log_file_only_json(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| only_json(done, log_text(done)) end
+end
+
 def has_help(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return last_message(ctx, args[0]) do |done, message|
     BDD.assert(done, message.contains?("\nhelp: "), "no help line in #{message.inspect}")
@@ -360,6 +479,64 @@ def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
     code = JSON.int(BDD.get(done, "exit").unwrap!).unwrap!
     BDD.assert(done, code == args[0].to_i!, "expected exit code #{args[0]}; actual #{code}; stderr #{stderr(done)}")
   end
+end
+
+def entries(text: String) -> List[Entry]
+  found: List[Entry] = []
+  for line in text.split("\n")
+    case entry_of(line)
+      ok(entry) -> found = found.push(entry)
+      error(_) -> next
+    end
+  end
+  return found
+end
+
+def entry_of(line: String) -> Result[Entry]
+  if line.starts_with?("{")
+    parsed = try JSON.parse(line)
+    level = try JSON.string(try JSON.get(parsed, "level"))
+    return ok(Entry(level: level, text: line))
+  end
+  words = line.split(" ")
+  if words.size < 3 or !LOG_TYPES.get(words[1].downcase).ok?
+    return error("not a log line")
+  end
+  return ok(Entry(level: words[1].downcase, text: line))
+end
+
+def has_line?(found: List[Entry], level: String, text: String) -> Bool
+  return found.filter do |entry| entry.level == level and entry.text.contains?(text) end.size > 0
+end
+
+def has_level?(found: List[Entry], level: String) -> Bool
+  return found.filter do |entry| entry.level == level end.size > 0
+end
+
+def only_json(ctx: BDD.Context, text: String) -> BDD.Context
+  lines = text.split("\n").filter do |line| line.strip.length > 0 end
+  for line in lines
+    if !JSON.parse(line).ok?
+      return BDD.assert(ctx, false, "not a JSON line: #{line.inspect}")
+    end
+  end
+  return BDD.assert(ctx, lines.size > 0, "no lines in #{text.inspect}")
+end
+
+def log_messages(ctx: BDD.Context) -> List[Json]
+  return messages(ctx).filter do |message|
+    at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(LOG_MESSAGE).to_s
+  end
+end
+
+def logged_to_editor?(ctx: BDD.Context, level: String, text: String) -> Bool
+  wanted = LOG_TYPES.get(level).unwrap!
+  matching = log_messages(ctx).filter do |message|
+    kind = JSON.int(at(message, ["params", "type"]).unwrap_or(JSON.null())).unwrap_or(0)
+    shown = JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("")
+    kind == wanted and shown.contains?(text)
+  end
+  return matching.size > 0
 end
 
 def related_is(ctx: BDD.Context, found: Json, expected: Json) -> BDD.Context
@@ -437,7 +614,18 @@ def reported(ctx: BDD.Context, name: String) -> BDD.Context
 end
 
 def initialize(ctx: BDD.Context, capabilities: Json) -> BDD.Context
-  return request(ctx, "initialize", JSON.object({"capabilities": capabilities}))
+  params: Map[String, Json] = {"capabilities": capabilities}
+  options: Map[String, Json] = {}
+  for pair in [["asked log level", "logLevel"], ["asked client log level", "clientLogLevel"]]
+    case BDD.get(ctx, pair[0])
+      ok(level) -> options = options.put(pair[1], level)
+      error(_) -> next
+    end
+  end
+  if options.size > 0
+    params = params.put("initializationOptions", JSON.object(options))
+  end
+  return request(ctx, "initialize", JSON.object(params))
 end
 
 def request(ctx: BDD.Context, method: String, params: Json) -> BDD.Context
@@ -492,7 +680,8 @@ def record(ctx: BDD.Context, ran: Result[Session]) -> BDD.Context
       with_arrivals = BDD.set(with_messages, "arrivals", JSON.array(done.arrivals.map do |ms| JSON.from(ms) end))
       with_sent = BDD.set(with_arrivals, "sent", JSON.object(done.sent))
       with_exit = BDD.set(with_sent, "exit", JSON.from(done.exit_code))
-      return BDD.set(with_exit, "stderr", JSON.from(done.stderr))
+      with_stderr = BDD.set(with_exit, "stderr", JSON.from(done.stderr))
+      return BDD.set(with_stderr, "log", JSON.from(done.log))
     error(message) -> return BDD.assert(ctx, false, message)
   end
 end
@@ -593,11 +782,23 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
   none: List[Json] = []
   extra = JSON.list(BDD.get(ctx, "arguments").unwrap_or(JSON.array(none))).unwrap!
   words = extra.map do |word| JSON.string(word).unwrap! end
+  log_path = ""
+  if BDD.get(ctx, "log file").ok?
+    log_path = file_path(ctx, JSON.string(BDD.get(ctx, "log file").unwrap!).unwrap!)
+    words = words.concat(["--log-file", log_path])
+  end
   ran = session(dir, ["--allow-run", SERVER].concat(words), actions)
+  log = ""
+  if log_path != ""
+    log = File.read_text(log_path, TIMEOUT_MS).unwrap_or("")
+  end
   if dir != ""
     _ = Path.remove(dir, TIMEOUT_MS)
   end
-  return ran
+  case ran
+    ok(done) -> return ok(done.with(log: log))
+    error(message) -> return error(message)
+  end
 end
 
 def session(dir: String, arguments: List[String], actions: List[Json]) -> Result[Session]
@@ -621,6 +822,7 @@ def session(dir: String, arguments: List[String], actions: List[Json]) -> Result
     sent: sent,
     exit_code: exit_code,
     stderr: output.stderr,
+    log: "",
   ))
 end
 
@@ -808,6 +1010,10 @@ end
 
 def messages(ctx: BDD.Context) -> List[Json]
   return JSON.list(BDD.get(ctx, "messages").unwrap!).unwrap!
+end
+
+def log_text(ctx: BDD.Context) -> String
+  return JSON.string(BDD.get(ctx, "log").unwrap_or(JSON.from(""))).unwrap!
 end
 
 def stderr(ctx: BDD.Context) -> String

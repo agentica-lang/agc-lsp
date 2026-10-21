@@ -1,3 +1,4 @@
+import Logger from "std/logger"
 import Uri from "uri"
 
 CHECK_TIMEOUT_MS = 10000
@@ -40,7 +41,7 @@ export def points_into(found: List[Json]) -> String
 end
 
 def failed(message: String) -> Result[List[Json]]
-  IO.warn("agc-lsp: #{message}")
+  Logger.warning(message)
   return error(message)
 end
 

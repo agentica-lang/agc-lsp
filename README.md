@@ -26,8 +26,8 @@ written in Agentica.
   moment); the other files wait in order. A newer `didOpen`, `didSave` or `didClose` of the same file
   cancels its older check, whose result is never published.
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
-  logs a warning on stderr, so the editor keeps the diagnostics it already shows. A crash of a check task is only
-  logged on stderr and also leaves the previous diagnostics.
+  logs a warning (see Logging), so the editor keeps the diagnostics it already shows. A crash of a check task is
+  logged as an error and also leaves the previous diagnostics.
 - An error in an imported file is published on the file that was opened, never on the imported file itself. Saving a
   file checks again only the open files whose current diagnostic points into it. A file that imports it and showed no
   error is not checked again until it is saved or reopened, and neither is a file whose first check is still running
@@ -40,11 +40,51 @@ written in Agentica.
 It needs `agentica` (0.5.0 or later) on `PATH`, and `--allow-run` to start it:
 
 ```sh
-agentica --allow-run src/main.agc [--stdio] [--agentica PATH]
+agentica --allow-run src/main.agc [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level LEVEL] \
+  [--log-format text|json] [--log-file PATH]
 ```
 
 `--agentica PATH` names the binary that checks the files (default: `agentica` from `PATH`). `--stdio` is accepted
-for clients that pass it; stdio is the only transport.
+for clients that pass it; stdio is the only transport. The logging options are described below.
+
+## Logging
+
+The server logs through `std/logger` to three destinations, each with its own level (`debug`, `info`, `warning` or
+`error`). Nothing below the level of a destination reaches it.
+
+| Destination | Default level | Set with |
+| --- | --- | --- |
+| stderr (what editors show in their LSP log) | `warning` | `--log-level`, `logLevel` |
+| the editor, as `window/logMessage` notifications | `error` | `--client-log-level`, `clientLogLevel` |
+| a file of JSON lines, one event per line | the level of stderr | `--log-file PATH`, with `--log-level`, `logLevel` |
+
+- `--log-level LEVEL` sets the level of stderr and of the log file; the file has no level of its own.
+- `--client-log-level LEVEL` sets the level of the log messages sent to the editor. The types are 1 (error),
+  2 (warning), 3 (info) and 4 (log, for debug). The handler starts after the `initialize` request has been answered,
+  so the editor gets nothing before the answer.
+- `--log-format text|json` sets the format of stderr: `TIME LEVEL message key=value ...` (the default) or one JSON
+  object per line. The log file is always JSON lines, appended to if it exists. A file that cannot be written is warned
+  about and not used.
+- The editor can set the two levels in the `initializationOptions` of `initialize`, for example
+  `{"logLevel": "debug", "clientLogLevel": "info"}`. An option on the command line wins over the same setting from the
+  editor.
+- An invalid option (an unknown level or format, an option without a value, an unknown argument) is warned about and
+  ignored, as if it was not given. A level the editor sets in `initializationOptions` then applies, or else the
+  default. A level from the editor that is not valid is also warned about and ignored.
+
+What is logged:
+
+- `debug`: each message received and sent (the method and the id, never document text), and the start and the end of
+  each check with its URI, generation and duration in milliseconds.
+- `info`: the start (with the `agentica` binary used), the initialization (with the position encoding) and the
+  shutdown.
+- `warning`: a check that failed (timeout, the checker cannot run, status 1 without a diagnostic), a URI that is not
+  a local file, an ignored argument or a setting that is not valid.
+- `error`: a crashed check task or input reader, and a message without a `Content-Length` header, which ends the
+  session.
+
+stdout carries only the protocol: the log messages for the editor are written by the main task of the server, like
+the diagnostics.
 
 ## Development
 

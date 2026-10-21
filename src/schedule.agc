@@ -1,4 +1,5 @@
 import Events from "events"
+import Logger from "std/logger"
 
 MAX_CHECKS = 4
 REAP_MS = 1
@@ -100,7 +101,7 @@ def reap(plan: Plan) -> Plan
     case Task.await(task, REAP_MS)
       Await.Done(outcome) ->
         if !outcome.ok?
-          IO.warn("agc-lsp: the check of #{uri} crashed: #{outcome.message}")
+          Logger.err("the check of #{uri} crashed: #{outcome.message}")
         end
       Await.TimedOut -> alive = alive.put(uri, task)
     end

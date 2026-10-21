@@ -5,7 +5,9 @@ An LSP server for Agentica, written in Agentica. Plan: sonic182/agentica#346.
 ## Map
 
 ```text
-src/main.agc      entry point: options, then the server loop
+src/main.agc      entry point: options, logging, then the server loop
+src/options.agc   command-line options and their defaults
+src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
 src/server.agc    lifecycle and dispatch of requests and notifications; which open files point into which file
 src/events.agc    the reader and check tasks, and the events they send to the server loop
 src/schedule.agc  which checks run (at most 4), wait or are stale, per file
