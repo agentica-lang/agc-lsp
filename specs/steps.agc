@@ -42,6 +42,7 @@ def main() -> Void
     BDD.step("the language server has started", &started),
     BDD.step("the language server has started through the launcher", &started_through_launcher),
     BDD.step("the language server has started through a link to the launcher", &started_through_link),
+    BDD.step("the language server has started through a relative link to the launcher", &started_through_relative_link),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
     BDD.step("the editor asks for the log level {string}", &asks_log_level),
@@ -120,6 +121,20 @@ def started_through_link(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   linked = link(Path.real(LAUNCHER).unwrap!, path)
   if !linked.ok?
     return BDD.assert(ready, false, "cannot link the launcher: #{linked.message}")
+  end
+  return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
+end
+
+def started_through_relative_link(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  first = link(Path.real(LAUNCHER).unwrap!, file_path(ready, "launcher"))
+  if !first.ok?
+    return BDD.assert(ready, false, "cannot link the launcher: #{first.message}")
+  end
+  path = file_path(ready, "agc-lsp")
+  second = link("launcher", path)
+  if !second.ok?
+    return BDD.assert(ready, false, "cannot link the launcher: #{second.message}")
   end
   return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
 end

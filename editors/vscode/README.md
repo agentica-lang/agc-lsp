@@ -15,6 +15,9 @@ Syntax highlighting is not part of this extension; it will come from
    code --install-extension agentica-lsp-0.1.0.vsix
    ```
 
+   `vsce package` copies the repository `LICENSE` into this folder first (git ignores the copy), so it needs no
+   prompt.
+
    Or use "Extensions: Install from VSIX..." in VS Code.
 
 ## Settings
