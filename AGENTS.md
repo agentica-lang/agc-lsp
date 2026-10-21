@@ -9,7 +9,7 @@ src/main.agc      entry point: options, logging, then the server loop
 src/options.agc   command-line options and their defaults
 src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
 src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file; which open files point into which file; the builtin catalog it keeps
-src/events.agc    the reader, check and catalog tasks, and the events they send to the server loop
+src/events.agc    the reader, check, catalog and request (definition, hover, symbols) tasks, and the events they send to the server loop
 src/schedule.agc  which checks run (at most 4), wait or are stale, per file, each with the text to check and the time it is due (changes wait 200 ms)
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
 src/catalog.agc   the builtins from `agentica --json help`: loading, parsing, lookups by name, namespace and prefix
@@ -17,6 +17,12 @@ src/columns.agc   character indexes of a line to and from UTF-16 code units
 src/words.agc     the words of one line: the word at an index, the receiver before a dot, strings and comments
 src/cursor.agc    a request position as the line, its characters and the character index, in the negotiated encoding
 src/hover.agc     textDocument/hover of a builtin: qualified name, bare call or method call
+src/lookup.agc    textDocument/definition and the type hover: `type-at` for the declaration of the name and the type of the expression
+src/symbols.agc   textDocument/documentSymbol: the outline of a buffer as a hierarchy
+src/query.agc     `agentica --json type-at --stdin` and `outline` on a buffer or a file, parsed
+src/places.agc    spans printed by agentica to LSP positions and ranges (UTF-16 or code points)
+src/fields.agc    reads fields of JSON objects with a default
+src/proc.agc      runs `agentica` on a text (spawn, buffer on stdin, one deadline) for the check and the queries
 src/completion.agc textDocument/completion of builtins: after `Ns.` or at the start of a word
 src/check.agc     runs `agentica --json check --stdin` on a buffer and maps its diagnostic to LSP (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back

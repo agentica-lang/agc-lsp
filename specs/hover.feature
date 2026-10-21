@@ -56,7 +56,36 @@ Feature: Hover on builtins
       | Range.size |
     And the hover at 4:15 covers 4:14-4:18
 
-  Scenario: a call on a module or a type shows nothing even when a builtin has that name
+  Scenario: a call of a function of the code shows the type of the expression
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def greet(name: String) -> String
+        return "hello #{name}"
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Lib from "lib"
+
+      def double(n: Int) -> Int
+        return n * 2
+      end
+
+      def main() -> Void
+        puts(double(21))
+        puts(Lib.greet("Ana"))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 8:9
+    And the editor hovers over "app.agc" at 9:12
+    Then the hover at 8:9 shows the type "Int"
+    And the hover at 8:9 covers 8:8-8:18
+    And the hover at 9:12 shows the type "String"
+
+  Scenario: a name that is not a builtin shows its type and not the builtin of the same name
     Given the language server has loaded the builtin catalog
     And the file "parts.agc" contains:
       """
@@ -70,12 +99,16 @@ Feature: Hover on builtins
       import Parts from "parts"
 
       def main() -> Void
-        puts(Parts.split("a,b"))
+        text = "a,b"
+        puts(Parts.split(text))
       end
 
       """
-    And the editor hovers over "app.agc" at 4:16
-    Then there is no hover at 4:16
+    And the editor hovers over "app.agc" at 5:16
+    And the editor hovers over "app.agc" at 5:21
+    Then the hover at 5:16 shows the type "List[String]"
+    And the hover at 5:16 does not show "String.split"
+    And the hover at 5:21 shows the type "String"
 
   Scenario: names that are not builtins, comments and strings show nothing
     Given the language server has loaded the builtin catalog
@@ -125,6 +158,25 @@ Feature: Hover on builtins
     And the editor hovers over "app.agc" at 2:29
     Then the hover at 2:29 shows "String.upcase"
     And the hover at 2:29 covers 2:17-2:30
+
+  Scenario Outline: the range of a hover on a name counts in the encoding the editor asked for
+    Given the language server has started with the position encodings "<offered>"
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        text = "a,b"
+        puts("😀" + text)
+      end
+
+      """
+    And the editor hovers over "app.agc" at <asked>
+    Then the hover at <asked> shows the type "String"
+    And the hover at <asked> covers <covers>
+
+    Examples:
+      | offered        | asked | covers    |
+      | utf-16         | 3:16  | 3:15-3:19 |
+      | utf-16, utf-32 | 3:15  | 3:14-3:18 |
 
   Scenario: a document that was closed or never opened shows nothing
     Given the language server has loaded the builtin catalog

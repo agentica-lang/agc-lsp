@@ -15,6 +15,17 @@ RUNS_SUFFIX = ".runs"
 PUBLISH = "textDocument/publishDiagnostics"
 HOVER = "textDocument/hover"
 COMPLETION = "textDocument/completion"
+DEFINITION = "textDocument/definition"
+SYMBOLS = "textDocument/documentSymbol"
+SYMBOL_KINDS = {
+  "Function": 12,
+  "Struct": 23,
+  "Enum": 10,
+  "Constant": 14,
+  "TypeParameter": 26,
+  "Field": 8,
+  "EnumMember": 22,
+}
 COMPLETION_KINDS = {"Function": 3, "Module": 9}
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
 LOG_TYPES = {"error": 1, "warning": 2, "info": 3, "debug": 4}
@@ -85,6 +96,8 @@ def main() -> Void
     BDD.step("the editor types in {string} without waiting:", &types_in_without_waiting),
     BDD.step("the editor hovers over {string} at {int}:{int}", &hovers),
     BDD.step("the editor asks for completion in {string} at {int}:{int}", &asks_completion),
+    BDD.step("the editor asks for the definition in {string} at {int}:{int}", &asks_definition),
+    BDD.step("the editor asks for the symbols of {string}", &asks_symbols),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
     BDD.step("the editor waits {int} milliseconds", &waits),
@@ -135,8 +148,15 @@ def main() -> Void
     BDD.step("the checker ran {int} times for {string}", &checker_ran),
     BDD.step("the hover at {int}:{int} shows {string}", &hover_shows),
     BDD.step("the hover at {int}:{int} shows these builtins:", &hover_shows_these),
+    BDD.step("the hover at {int}:{int} shows the type {string}", &hover_shows_type),
+    BDD.step("the hover at {int}:{int} does not show {string}", &hover_does_not_show),
     BDD.step("the hover at {int}:{int} covers {int}:{int}-{int}:{int}", &hover_covers),
     BDD.step("there is no hover at {int}:{int}", &no_hover),
+    BDD.step("the definition at {int}:{int} is in {string} at {int}:{int}-{int}:{int}", &definition_is),
+    BDD.step("there is no definition at {int}:{int}", &no_definition),
+    BDD.step("the symbols of {string} are:", &symbols_are),
+    BDD.step("there are no symbols for {string}", &no_symbols),
+    BDD.step("the symbol {string} of {string} covers {int}:{int}-{int}:{int}", &symbol_covers),
     BDD.step("the completion at {int}:{int} offers:", &completion_offers),
     BDD.step("the completion at {int}:{int} does not offer {string}", &completion_does_not_offer),
     BDD.step("the completion at {int}:{int} offers nothing", &completion_offers_nothing),
@@ -384,15 +404,29 @@ def asks_completion(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return ask(ctx, "completion", COMPLETION, args)
 end
 
+def asks_definition(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask(ctx, "definition", DEFINITION, args)
+end
+
+def asks_symbols(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({"textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))})})
+  return answered(request(ready, SYMBOLS, params), SYMBOLS, "symbols #{args[0]}")
+end
+
 def ask(ctx: BDD.Context, key: String, method: String, args: List[String]) -> BDD.Context
   ready = with_folder(ctx)
   params = JSON.object({
     "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
     "position": position("#{args[1]}:#{args[2]}"),
   })
-  sent = request(ready, method, params)
+  return answered(request(ready, method, params), method, "#{key} #{args[1]}:#{args[2]}")
+end
+
+def answered(sent: BDD.Context, method: String, key: String) -> BDD.Context
   id = BDD.get(sent, "request #{method}").unwrap!
-  return BDD.set(sent, "#{key} #{args[1]}:#{args[2]}", id)
+  waiting = add(sent, JSON.object({"kind": JSON.from("reply"), "id": id}))
+  return BDD.set(waiting, key, id)
 end
 
 def closes(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -660,8 +694,37 @@ def hover_shows_these(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| hover_shown(done, args[0], args[1], names) end
 end
 
+def hover_shows_type(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_typed(done, args[0], args[1], args[2]) end
+end
+
+def hover_does_not_show(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| hover_lacks(done, args[0], args[1], args[2]) end
+end
+
 def hover_covers(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| hover_covered(done, args) end
+end
+
+def definition_is(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| definition_found(done, args) end
+end
+
+def no_definition(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| definition_absent(done, args[0], args[1]) end
+end
+
+def symbols_are(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  return finished(ctx) do |done| symbols_listed(done, args[0], rows) end
+end
+
+def no_symbols(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| symbols_absent(done, args[0]) end
+end
+
+def symbol_covers(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| symbol_covered(done, args) end
 end
 
 def no_hover(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -708,6 +771,150 @@ def hover_shown(ctx: BDD.Context, line: String, column: String, names: List[Stri
       return BDD.assert(ctx, shown, "the hover at #{line}:#{column} lacks #{missing.join(", ")} in #{result}")
     error(message) -> return BDD.assert(ctx, false, message)
   end
+end
+
+def hover_value(ctx: BDD.Context, line: String, column: String) -> Result[String]
+  result = try result_at(ctx, "hover", line, column)
+  if result.to_s == "null"
+    return error("no hover at #{line}:#{column}")
+  end
+  return JSON.string(at(result, ["contents", "value"]).unwrap_or(JSON.null()))
+end
+
+def hover_typed(ctx: BDD.Context, line: String, column: String, type: String) -> BDD.Context
+  case hover_value(ctx, line, column)
+    ok(value) ->
+      shown = value.contains?(": #{type}\n```")
+      message = "the hover at #{line}:#{column} does not show the type #{type} in #{value.inspect}"
+      return BDD.assert(ctx, shown, message)
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def hover_lacks(ctx: BDD.Context, line: String, column: String, name: String) -> BDD.Context
+  case hover_value(ctx, line, column)
+    ok(value) ->
+      found = value.contains?("```agc\n#{name}(")
+      return BDD.assert(ctx, !found, "the hover at #{line}:#{column} shows #{name} in #{value.inspect}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def definition_found(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  case result_at(ctx, "definition", args[0], args[1])
+    ok(result) ->
+      start = position("#{args[3]}:#{args[4]}")
+      stop = position("#{args[5]}:#{args[6]}")
+      range = JSON.object({"start": start, "end": stop})
+      wanted = canonical(JSON.encode(JSON.object({"uri": JSON.from(uri(ctx, args[2])), "range": range})))
+      actual = canonical(JSON.encode(result))
+      return BDD.assert(ctx, actual == wanted, "expected the location #{wanted}; actual #{actual}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def definition_absent(ctx: BDD.Context, line: String, column: String) -> BDD.Context
+  case result_at(ctx, "definition", line, column)
+    ok(result) ->
+      return BDD.assert(ctx, result.to_s == "null", "expected no definition at #{line}:#{column}; actual #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def symbols_listed(ctx: BDD.Context, name: String, rows: List[List[String]]) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "symbols #{name}").unwrap!).unwrap!
+  case reply(ctx, id, "result")
+    ok(result) ->
+      none: List[Json] = []
+      top = JSON.list(result).unwrap_or(none)
+      listed = flattened(top, "")
+      actual = JSON.encode(listed.map do |row| row.take(3) end)
+      wanted = JSON.encode(rows.map do |row| row.take(3) end)
+      misplaced = listed.filter do |row| row[3] != "" end
+      checked = BDD.assert(ctx, misplaced.size == 0, "a name is outside its range: #{misplaced}")
+      return BDD.assert(checked, actual == wanted, "expected the symbols #{wanted}; actual #{actual}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def symbol_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "symbols #{args[1]}").unwrap!).unwrap!
+  case reply(ctx, id, "result")
+    ok(result) ->
+      none: List[Json] = []
+      found = JSON.list(result).unwrap_or(none).filter do |symbol|
+        JSON.string(at(symbol, ["name"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
+      end
+      if found.size == 0
+        return BDD.assert(ctx, false, "no symbol #{args[0]} in #{result}")
+      end
+      actual = span_text(at(found[0], ["range"]).unwrap_or(JSON.null()))
+      wanted = "#{args[2]}:#{args[3]}-#{args[4]}:#{args[5]}"
+      return BDD.assert(ctx, actual == wanted, "expected the range #{wanted}; actual #{actual}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def symbols_absent(ctx: BDD.Context, name: String) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "symbols #{name}").unwrap!).unwrap!
+  case reply(ctx, id, "result")
+    ok(result) -> return BDD.assert(ctx, result.to_s == "null", "expected no symbols; actual #{result}")
+    error(message) -> return BDD.assert(ctx, false, message)
+  end
+end
+
+def flattened(symbols: List[Json], parent: String) -> List[List[String]]
+  rows: List[List[String]] = []
+  for symbol in symbols
+    name = JSON.string(at(symbol, ["name"]).unwrap_or(JSON.null())).unwrap_or("")
+    qualified = name
+    if parent != ""
+      qualified = "#{parent}.#{name}"
+    end
+    kind = JSON.int(at(symbol, ["kind"]).unwrap_or(JSON.null())).unwrap_or(0)
+    selection = at(symbol, ["selectionRange"]).unwrap_or(JSON.null())
+    outside = ""
+    if !inside?(at(symbol, ["range"]).unwrap_or(JSON.null()), selection)
+      outside = "outside"
+    end
+    rows = rows.push([qualified, kind_name(kind), span_text(selection), outside])
+    none: List[Json] = []
+    children = JSON.list(at(symbol, ["children"]).unwrap_or(JSON.null())).unwrap_or(none)
+    rows = rows.concat(flattened(children, qualified))
+  end
+  return rows
+end
+
+def kind_name(kind: Int) -> String
+  for name in SYMBOL_KINDS.keys
+    if SYMBOL_KINDS.get(name).unwrap_or(0) == kind
+      return name
+    end
+  end
+  return kind.to_s
+end
+
+def span_text(range: Json) -> String
+  return "#{edge_text(range, "start")}-#{edge_text(range, "end")}"
+end
+
+def edge_text(range: Json, edge: String) -> String
+  line = JSON.int(at(range, [edge, "line"]).unwrap_or(JSON.null())).unwrap_or(-1)
+  character = JSON.int(at(range, [edge, "character"]).unwrap_or(JSON.null())).unwrap_or(-1)
+  return "#{line + 1}:#{character + 1}"
+end
+
+def inside?(outer: Json, inner: Json) -> Bool
+  return (
+    edge_value(outer, "start") <= edge_value(inner, "start") and
+    edge_value(inner, "end") <= edge_value(outer, "end")
+  )
+end
+
+def edge_value(range: Json, edge: String) -> Int
+  line = JSON.int(at(range, [edge, "line"]).unwrap_or(JSON.null())).unwrap_or(-1)
+  character = JSON.int(at(range, [edge, "character"]).unwrap_or(JSON.null())).unwrap_or(-1)
+  return line * 1_000_000 + character
 end
 
 def hover_absent(ctx: BDD.Context, line: String, column: String) -> BDD.Context
@@ -1199,6 +1406,7 @@ def perform(server: Process, dir: String, action: Json) -> Result[Heard]
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), TIMEOUT_MS)
       return ok(nothing_heard())
     "await" -> return read_until_diagnostics(server)
+    "reply" -> return read_until_reply(server, try JSON.int(try JSON.get(action, "id")))
     "log" -> return read_until_log(server, try JSON.string(try JSON.get(action, "text")))
     "pause" ->
       Task.sleep(try JSON.int(try JSON.get(action, "ms")))
@@ -1223,6 +1431,21 @@ def read_until_diagnostics(server: Process) -> Result[Heard]
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
+      return ok(Heard(messages: received, arrivals: arrivals))
+    end
+  end
+  return ok(Heard(messages: received, arrivals: arrivals))
+end
+
+def read_until_reply(server: Process, id: Int) -> Result[Heard]
+  received: List[Json] = []
+  arrivals: List[Int] = []
+  while true
+    message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
+    received = received.push(message)
+    arrivals = arrivals.push(Time.now_ms())
+    answers = at(message, ["id"]).unwrap_or(JSON.null()).to_s == id.to_s
+    if answers and (at(message, ["result"]).ok? or at(message, ["error"]).ok?)
       return ok(Heard(messages: received, arrivals: arrivals))
     end
   end

@@ -8,7 +8,9 @@ import {UTF16, UTF32} from "columns"
 import Events from "events"
 import Hover from "hover"
 import Logs from "logs"
+import Lookup from "lookup"
 import Options from "options"
+import Query from "query"
 import Rpc from "rpc"
 import Schedule from "schedule"
 import Logger from "std/logger"
@@ -47,6 +49,8 @@ export struct State
   catalog: Catalog.Book
   ## Lists the catalog tasks that have not ended.
   loaders: List[Task[Result[Void]]]
+  ## Lists the tasks that answer definition, hover and document symbol requests and have not ended.
+  askers: List[Task[Result[Void]]]
 end
 
 enum Next
@@ -60,6 +64,7 @@ export def start(options: Options.Options) -> State
   pointing: Map[String, String] = {}
   documents: Map[String, String] = {}
   loaders: List[Task[Result[Void]]] = []
+  askers: List[Task[Result[Void]]] = []
   return State(
     options: options,
     encoding: UTF16,
@@ -71,6 +76,7 @@ export def start(options: Options.Options) -> State
     documents: documents,
     catalog: Catalog.empty(),
     loaders: loaders,
+    askers: askers,
   )
 end
 
@@ -104,20 +110,24 @@ def reader_crashed?(reader: Task[Result[Void]]) -> Bool
 end
 
 def watch(state: State) -> State
-  if state.loaders.size == 0
-    return state
-  end
-  running: List[Task[Result[Void]]] = []
-  for loader in state.loaders
-    case Task.await(loader, READER_CHECK_MS)
+  return state.with(
+    loaders: running(state.loaders, "the builtin catalog task"),
+    askers: running(state.askers, "a task that answers a request"),
+  )
+end
+
+def running(tasks: List[Task[Result[Void]]], name: String) -> List[Task[Result[Void]]]
+  alive: List[Task[Result[Void]]] = []
+  for task in tasks
+    case Task.await(task, READER_CHECK_MS)
       Await.Done(outcome) ->
         if !outcome.ok?
-          Logger.err("the builtin catalog task crashed: #{outcome.message}")
+          Logger.err("#{name} crashed: #{outcome.message}")
         end
-      Await.TimedOut -> running = running.push(loader)
+      Await.TimedOut -> alive = alive.push(task)
     end
   end
-  return state.with(loaders: running)
+  return alive
 end
 
 def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
@@ -125,13 +135,25 @@ def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
   for loader in state.loaders
     Task.cancel(loader)
   end
+  cancel_askers(state)
   Schedule.stop(state.plan)
   return status
+end
+
+def cancel_askers(state: State) -> Void
+  for asker in state.askers
+    Task.cancel(asker)
+  end
 end
 
 def dispatch(state: State, event: Events.Event) -> Next
   case event
     Events.Event.Checked(report) -> return Next.Continue(checked(state, report))
+    Events.Event.Answered(answer) ->
+      if !state.shut_down
+        Rpc.respond(answer.id, answer.result)
+      end
+      return Next.Continue(state)
     Events.Event.Cataloged(outcome) ->
       case outcome
         ok(book) -> return Next.Continue(state.with(catalog: book))
@@ -214,15 +236,16 @@ def request(state: State, id: Json, method: String, params: Json) -> State
   end
   case method
     "initialize" -> return initialize(state, id, params)
-    "textDocument/hover" ->
-      Rpc.respond(id, hover(state, params))
-      return state
+    "textDocument/hover" -> return hover(state, id, params)
+    "textDocument/definition" -> return definition(state, id, params)
+    "textDocument/documentSymbol" -> return symbols(state, id, params)
     "textDocument/completion" ->
       Rpc.respond(id, completion(state, params))
       return state
     "shutdown" ->
       Logger.info("shutting down")
       Rpc.respond(id, JSON.null())
+      cancel_askers(state)
       return state.with(plan: Schedule.stop(state.plan), shut_down: true)
     _ ->
       Rpc.fail(id, METHOD_NOT_FOUND, "unknown method #{method}")
@@ -248,6 +271,8 @@ def initialize(state: State, id: Json, params: Json) -> State
     "positionEncoding": JSON.from(encoding),
     "textDocumentSync": sync,
     "hoverProvider": JSON.from(true),
+    "definitionProvider": JSON.from(true),
+    "documentSymbolProvider": JSON.from(true),
     "completionProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from(".")])}),
   })
   Rpc.respond(id, JSON.object({
@@ -261,10 +286,46 @@ def initialize(state: State, id: Json, params: Json) -> State
   return state.with(encoding: encoding, initialized: true, loaders: [loader])
 end
 
-def hover(state: State, params: Json) -> Json
+def hover(state: State, id: Json, params: Json) -> State
   case Cursor.locate(state.documents, params, state.encoding)
-    ok(cursor) -> return Hover.answer(state.catalog, cursor)
-    error(_) -> return JSON.null()
+    ok(cursor) ->
+      if Hover.settled?(state.catalog, cursor)
+        Rpc.respond(id, Hover.answer(state.catalog, cursor))
+        return state
+      end
+      return ask_lookup(state, id, lookup_request(state, params, cursor), &Events.answer_hover)
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def definition(state: State, id: Json, params: Json) -> State
+  case Cursor.locate(state.documents, params, state.encoding)
+    ok(cursor) ->
+      return ask_lookup(state, id, lookup_request(state, params, cursor), &Events.answer_definition)
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def symbols(state: State, id: Json, params: Json) -> State
+  uri = document_uri(params)
+  case state.documents.get(uri)
+    ok(text) ->
+      buffer = Query.Buffer(path: Uri.path_of(uri).unwrap_or(""), text: text)
+      job = Events.SymbolsJob(
+        events: state.events,
+        id: id,
+        agentica: state.options.agentica,
+        buffer: buffer,
+        encoding: state.encoding,
+      )
+      return state.with(askers: state.askers.push(Task.spawn(&Events.answer_symbols, job)))
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
   end
 end
 
@@ -275,6 +336,22 @@ def completion(state: State, params: Json) -> Json
       none: List[Json] = []
       return JSON.array(none)
   end
+end
+
+def lookup_request(state: State, params: Json, cursor: Cursor.Cursor) -> Lookup.Request
+  uri = document_uri(params)
+  buffer = Query.Buffer(path: Uri.path_of(uri).unwrap_or(""), text: state.documents.get(uri).unwrap_or(""))
+  return Lookup.Request(agentica: state.options.agentica, buffer: buffer, cursor: cursor)
+end
+
+def ask_lookup(
+  state: State,
+  id: Json,
+  request: Lookup.Request,
+  answer: Fn[Events.LookupJob, Result[Void]],
+) -> State
+  job = Events.LookupJob(events: state.events, id: id, request: request)
+  return state.with(askers: state.askers.push(Task.spawn(answer, job)))
 end
 
 def notification(state: State, method: String, params: Json) -> State

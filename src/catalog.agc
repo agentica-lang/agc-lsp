@@ -1,7 +1,8 @@
 ## Loads the catalog of Agentica builtins that `agentica --json help` prints.
 
+import Proc from "proc"
+
 LOAD_TIMEOUT_MS = 10_000
-SHORTEST_WAIT_MS = 1
 
 ## Describes a builtin: its qualified name, its namespace and member, its signatures and its description.
 export struct Entry
@@ -101,21 +102,13 @@ export def namespaces_starting(book: Book, prefix: String) -> List[String]
 end
 
 def read(helper: Process, deadline: Int) -> Result[Book]
-  try Process.close_stdin(helper, remaining(deadline))
-  output = try Process.output(helper, remaining(deadline))
-  status = try Process.wait(helper, remaining(deadline))
+  try Process.close_stdin(helper, Proc.remaining(deadline))
+  output = try Process.output(helper, Proc.remaining(deadline))
+  status = try Process.wait(helper, Proc.remaining(deadline))
   if status != 0
     return error("agentica exited with status #{status}: #{output.stderr.strip}")
   end
   return parse(output.stdout)
-end
-
-def remaining(deadline: Int) -> Int
-  left = deadline - Time.now_ms()
-  if left < SHORTEST_WAIT_MS
-    return SHORTEST_WAIT_MS
-  end
-  return left
 end
 
 def entry_of(item: Json, name: String) -> Entry

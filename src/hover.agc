@@ -26,6 +26,14 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   end
 end
 
+## Returns true when the hover needs no question to the compiler: nothing is there, or a builtin is named.
+export def settled?(book: Catalog.Book, cursor: Cursor.Cursor) -> Bool
+  if !Words.code?(cursor.chars, cursor.index + 1) or !Words.at(cursor.chars, cursor.index).ok?
+    return true
+  end
+  return find(book, cursor).ok?
+end
+
 def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]
   chars = cursor.chars
   word = try Words.at(chars, cursor.index)
