@@ -6,6 +6,8 @@ TIMEOUT_MS = 20000
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789ABCDEF"
 ASCII_LIMIT = 128
+COMMENT_LINE = "# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+LINES_PER_KB = 10
 MANIFEST = "agentica.toml"
 PUBLISH = "textDocument/publishDiagnostics"
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
@@ -25,6 +27,7 @@ struct Session
   exit_code: Int
   stderr: String
   log: String
+  runs: Map[String, Json]
 end
 
 struct Entry
@@ -53,11 +56,18 @@ def main() -> Void
     BDD.step("the folder has the link {string} to itself", &links_to_itself),
     BDD.step("the editor opens {string}", &opens),
     BDD.step("the editor opens {string} without waiting", &opens_without_waiting),
+    BDD.step("the editor opens {string} with:", &opens_with),
+    BDD.step("the editor opens {string} with a buffer of {int} KB without waiting", &opens_with_large_buffer),
     BDD.step("the editor opens the files {string} without waiting", &opens_files_without_waiting),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
     BDD.step("the editor opens an untitled buffer", &opens_untitled),
     BDD.step("the editor saves {string} as:", &saves_as),
     BDD.step("the editor saves {string} without waiting as:", &saves_without_waiting),
+    BDD.step("the editor saves {string} without changes", &saves_without_changes),
+    BDD.step("the editor opens {string} without its text", &opens_without_text),
+    BDD.step("the editor changes {string} incrementally", &changes_incrementally),
+    BDD.step("the editor types in {string}:", &types_in),
+    BDD.step("the editor types in {string} without waiting:", &types_in_without_waiting),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
     BDD.step("the editor waits {int} milliseconds", &waits),
@@ -103,6 +113,8 @@ def main() -> Void
     BDD.step("the diagnostic of {string} points to {string}", &points_to),
     BDD.step("the diagnostic of {string} has no related location", &has_no_related),
     BDD.step("the diagnostic of {string} points into {string} at {int}:{int}-{int}:{int}", &points_into),
+    BDD.step("the checker ran {int} time for {string}", &checker_ran),
+    BDD.step("the checker ran {int} times for {string}", &checker_ran),
     BDD.step("the server exits with code {int}", &exits_with),
   ])
 end
@@ -202,6 +214,16 @@ def opens_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return open_through(ctx, args[0], "")
 end
 
+def opens_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  opened = open_text(with_folder(ctx), args[0], "", BDD.doc_string(ctx))
+  return awaiting(opened, args[0])
+end
+
+def opens_with_large_buffer(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  lines = (0...args[1].to_i! * LINES_PER_KB).to_a.map do |_| COMMENT_LINE end
+  return open_text(with_folder(ctx), args[0], "", lines.join("\n") + "\n")
+end
+
 def opens_files_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   opened = ctx
   for name in names(args[0])
@@ -226,7 +248,11 @@ end
 
 def open_through(ctx: BDD.Context, name: String, authority: String) -> BDD.Context
   ready = with_folder(ctx)
-  text = File.read_text(file_path(ready, name), TIMEOUT_MS).unwrap_or("")
+  return open_text(ready, name, authority, File.read_text(file_path(ready, name), TIMEOUT_MS).unwrap_or(""))
+end
+
+def open_text(ctx: BDD.Context, name: String, authority: String, text: String) -> BDD.Context
+  ready = BDD.set(ctx, "open #{name}", JSON.from(true))
   document = JSON.object({
     "uri": JSON.from(uri(ready, name, authority)),
     "languageId": JSON.from("agentica"),
@@ -246,19 +272,64 @@ end
 
 def save(ctx: BDD.Context, name: String) -> BDD.Context
   ready = with_folder(ctx)
+  if !BDD.get(ready, "open #{name}").ok?
+    ready = open_through(ready, name, "")
+  end
   text = BDD.doc_string(ready)
-  document = JSON.object({"uri": JSON.from(uri(ready, name)), "version": JSON.from(2)})
   written = add(ready, JSON.object({
     "kind": JSON.from("write"),
     "name": JSON.from(name),
     "text": JSON.from(text),
   }))
-  changed = notify(written, "textDocument/didChange", JSON.object({
+  return did_save(change(written, name, text), name)
+end
+
+def saves_without_changes(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(did_save(with_folder(ctx), args[0]), args[0])
+end
+
+def opens_without_text(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  document = JSON.object({
+    "uri": JSON.from(uri(ready, args[0])),
+    "languageId": JSON.from("agentica"),
+    "version": JSON.from(1),
+  })
+  return notify(ready, "textDocument/didOpen", JSON.object({"textDocument": document}))
+end
+
+def changes_incrementally(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  document = JSON.object({"uri": JSON.from(uri(ready, args[0])), "version": JSON.from(2)})
+  edit = JSON.object({
+    "range": JSON.object({"start": position("1:1"), "end": position("1:1")}),
+    "text": JSON.from("# "),
+  })
+  return notify(ready, "textDocument/didChange", JSON.object({
+    "textDocument": document,
+    "contentChanges": JSON.array([edit]),
+  }))
+end
+
+def did_save(ctx: BDD.Context, name: String) -> BDD.Context
+  saved = JSON.object({"uri": JSON.from(uri(ctx, name))})
+  return notify(ctx, "textDocument/didSave", JSON.object({"textDocument": saved}))
+end
+
+def types_in(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(change(with_folder(ctx), args[0], BDD.doc_string(ctx)), args[0])
+end
+
+def types_in_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return change(with_folder(ctx), args[0], BDD.doc_string(ctx))
+end
+
+def change(ctx: BDD.Context, name: String, text: String) -> BDD.Context
+  document = JSON.object({"uri": JSON.from(uri(ctx, name)), "version": JSON.from(2)})
+  return notify(ctx, "textDocument/didChange", JSON.object({
     "textDocument": document,
     "contentChanges": JSON.array([JSON.object({"text": JSON.from(text)})]),
   }))
-  saved = JSON.object({"uri": JSON.from(uri(ready, name))})
-  return notify(changed, "textDocument/didSave", JSON.object({"textDocument": saved}))
 end
 
 def closes(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -506,6 +577,13 @@ def points_into(ctx: BDD.Context, args: List[String]) -> BDD.Context
   end
 end
 
+def checker_ran(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    ran = JSON.int(at(BDD.get(done, "runs").unwrap!, [args[1]]).unwrap_or(JSON.from(0))).unwrap_or(0)
+    BDD.assert(done, ran == args[0].to_i!, "the checker ran #{ran} times for #{args[1]}; expected #{args[0]}")
+  end
+end
+
 def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
     code = JSON.int(BDD.get(done, "exit").unwrap!).unwrap!
@@ -713,7 +791,8 @@ def record(ctx: BDD.Context, ran: Result[Session]) -> BDD.Context
       with_sent = BDD.set(with_arrivals, "sent", JSON.object(done.sent))
       with_exit = BDD.set(with_sent, "exit", JSON.from(done.exit_code))
       with_stderr = BDD.set(with_exit, "stderr", JSON.from(done.stderr))
-      return BDD.set(with_stderr, "log", JSON.from(done.log))
+      with_log = BDD.set(with_stderr, "log", JSON.from(done.log))
+      return BDD.set(with_log, "runs", JSON.object(done.runs))
     error(message) -> return BDD.assert(ctx, false, message)
   end
 end
@@ -826,6 +905,7 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     arguments = words
   end
   ran = session(dir, command, arguments, actions)
+  counts = runs_in(dir)
   log = ""
   if log_path != ""
     log = File.read_text(log_path, TIMEOUT_MS).unwrap_or("")
@@ -834,9 +914,21 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     _ = Path.remove(dir, TIMEOUT_MS)
   end
   case ran
-    ok(done) -> return ok(done.with(log: log))
+    ok(done) -> return ok(done.with(log: log, runs: counts))
     error(message) -> return error(message)
   end
+end
+
+def runs_in(dir: String) -> Map[String, Json]
+  counts: Map[String, Json] = {}
+  none: List[String] = []
+  for entry in Dir.list(dir, TIMEOUT_MS).unwrap_or(none)
+    if entry.ends_with?(".runs")
+      lines = File.read_text(Path.join([dir, entry]).unwrap!, TIMEOUT_MS).unwrap_or("").split("\n")
+      counts = counts.put(entry.slice(0, entry.length - 5), JSON.from(lines.filter do |line| line.strip.length > 0 end.size))
+    end
+  end
+  return counts
 end
 
 def session(dir: String, command: String, arguments: List[String], actions: List[Json]) -> Result[Session]
@@ -861,6 +953,7 @@ def session(dir: String, command: String, arguments: List[String], actions: List
     exit_code: exit_code,
     stderr: output.stderr,
     log: "",
+    runs: {},
   ))
 end
 

@@ -1,7 +1,9 @@
 Feature: Diagnostics in the editor
-  On open and on save, the server checks the file on disk with
+  On open, on change and on save, the server checks the text of the buffer with
   `agentica check` and publishes its first diagnostic, or none. Positions are
   written as `agentica check` shows them: line:column, from 1, end exclusive.
+  These scenarios open files whose buffer is what is on disk; the ones where
+  the buffer differs are in buffers.feature.
 
   Scenario: a clean file publishes no diagnostics
     Given the language server has started
@@ -292,13 +294,6 @@ Feature: Diagnostics in the editor
       """
     When the editor opens "notes.txt"
     Then no diagnostics are published
-
-  Scenario: a file that is gone publishes nothing
-    Given the language server has started
-    When the editor opens "missing.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then no diagnostics are published
-    And the server exits with code 0
 
   Scenario: a check that hangs does not delay the answer to shutdown
     Given the language server has started with the arguments "--agentica specs/fixtures/hanging-agentica"

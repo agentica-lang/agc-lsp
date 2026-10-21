@@ -169,6 +169,53 @@ Feature: Errors that come from another file
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And the diagnostic of "app.agc" points into "lib.agc" at 3:10-3:13
 
+  Scenario: the importer is checked again from its unsaved buffer
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "app.agc"
+    And the editor types in "app.agc":
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        age: Int = Lib.answer()
+        puts(age)
+      end
+
+      """
+    And the editor saves "lib.agc" without waiting as:
+      """
+      export def answer() -> String
+        return "a"
+      end
+
+      """
+    And the editor waits for the diagnostics of 2 files
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And "app.agc" gets these diagnostics:
+      | at        | severity | code                |
+      | 4:14-4:26 | error    | CHECK-TYPE-MISMATCH |
+
   Scenario: saving the agentica.toml after fixing it clears the error of the open file
     Given the language server has started
     And the file "agentica.toml" contains:

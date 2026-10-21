@@ -3,14 +3,15 @@
 A Language Server Protocol (LSP) server for [Agentica](https://github.com/sonic182/agentica), a language for AI agents,
 written in Agentica.
 
-> **Status:** early stage. Diagnostics of the file on disk only.
+> **Status:** early stage. Diagnostics of the text in the editor's buffer.
 
 ## What it does
 
 - Speaks JSON-RPC over stdio with `Content-Length` framing: `initialize`, `shutdown`, `exit`.
-- On `textDocument/didOpen` and `textDocument/didSave` it runs `agentica --json check` on the file on disk and
-  publishes its first diagnostic, or an empty list. `textDocument/didClose` clears it. Unsaved changes are not
-  checked yet, so the server asks for no `didChange` notifications.
+- It asks for full document sync. On `textDocument/didOpen`, `textDocument/didChange` and `textDocument/didSave` it
+  runs `agentica --json check --stdin PATH` on the text of the buffer (sent on stdin, so a file that is not saved, or
+  not on disk, is checked as the editor shows it; its imports and `agentica.toml` resolve from its folder) and
+  publishes its first diagnostic, or an empty list. `textDocument/didClose` clears it.
 - An error in an imported file, or in the `agentica.toml` that `agentica check` finds above the file, is shown at the
   start of the opened file, with the imported file and position in the message and in `relatedInformation`, whose
   location points into that file (the start of the file for an error at a key of `agentica.toml`).
@@ -20,11 +21,16 @@ written in Agentica.
 
 ## Limitations
 
-- Only `.agc` files are checked, and only as they are on disk.
+- Only `.agc` files are checked. Only the text of the file itself comes from the buffer: an imported file is read from
+  disk, so an unsaved change in it is not seen by the files that import it.
 - Each check runs in its own task with a 10 s deadline, so a slow check never delays the next message. At most 4
   checks run at once (the cap counts check tasks, and a cancelled checker process may still be ending for a
-  moment); the other files wait in order. A newer `didOpen`, `didSave` or `didClose` of the same file
-  cancels its older check, whose result is never published.
+  moment); the other files wait, in the order in which they are due. A newer `didOpen`, `didChange`, `didSave` or
+  `didClose` of the same file cancels its older check, whose result is never published, so quick changes publish only the diagnostics
+  of the last text. A check requested by `didChange` waits 200 ms for the next change before it starts (a newer change
+  replaces its text and restarts the wait); `didOpen`, `didSave` and the re-check of the files that import a saved file
+  start at once. A `didSave` of a document that is not open checks nothing itself (it still re-checks the open files that
+  import it).
 - A check that fails (timeout, the checker cannot run, no diagnostic from a failing check) publishes nothing and
   logs a warning (see Logging), so the editor keeps the diagnostics it already shows. A crash of a check task is
   logged as an error and also leaves the previous diagnostics.
@@ -37,7 +43,7 @@ written in Agentica.
 
 ## Usage
 
-It needs `agentica` (0.5.0 or later) on `PATH`, and `--allow-run` to start it:
+It needs `agentica` (0.6.0 or later) on `PATH`, and `--allow-run` to start it:
 
 ```sh
 agentica --allow-run src/main.agc [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level LEVEL] \

@@ -3,10 +3,13 @@ import Logger from "std/logger"
 
 MAX_CHECKS = 4
 REAP_MS = 1
+OVERDUE_WAIT_MS = 1
 
 export struct Pending
   uri: String
   path: String
+  text: String
+  due: Int
 end
 
 export struct Plan
@@ -23,11 +26,14 @@ export def start(agentica: String, events: Channel[Events.Event]) -> Plan
   return Plan(agentica: agentica, events: events, generations: generations, queue: [], running: running)
 end
 
-export def request(plan: Plan, uri: String, path: String, encoding: String) -> Plan
+export def request(plan: Plan, uri: String, path: String, text: String, delay_ms: Int, encoding: String) -> Plan
   cancelled = cancel(plan, uri)
+  pending = Pending(uri: uri, path: path, text: text, due: Time.now_ms() + delay_ms)
   queue = cancelled.queue
-  if !waiting?(cancelled, uri)
-    queue = queue.push(Pending(uri: uri, path: path))
+  if waiting?(cancelled, uri)
+    queue = queue.map do |queued| newest(queued, pending) end
+  else
+    queue = queue.push(pending)
   end
   return fill(cancelled.with(queue: queue), encoding)
 end
@@ -49,6 +55,20 @@ export def tick(plan: Plan, encoding: String) -> Plan
   return fill(plan, encoding)
 end
 
+export def wait_ms(plan: Plan, limit: Int) -> Int
+  now = Time.now_ms()
+  wait = limit
+  for pending in plan.queue
+    left = pending.due - now
+    if left <= 0 and plan.running.size < MAX_CHECKS
+      return OVERDUE_WAIT_MS
+    elsif left > 0 and left < wait
+      wait = left
+    end
+  end
+  return wait
+end
+
 export def stop(plan: Plan) -> Plan
   for task in plan.running.values
     Task.cancel(task)
@@ -66,6 +86,13 @@ def cancel(plan: Plan, uri: String) -> Plan
   return plan.with(generations: plan.generations.put(uri, generation), running: plan.running.delete(uri))
 end
 
+def newest(queued: Pending, pending: Pending) -> Pending
+  if queued.uri == pending.uri
+    return pending
+  end
+  return queued
+end
+
 def waiting?(plan: Plan, uri: String) -> Bool
   return plan.queue.filter do |pending| pending.uri == uri end.size > 0
 end
@@ -75,9 +102,15 @@ def fill(plan: Plan, encoding: String) -> Plan
   if current.queue.size > 0 and current.running.size >= MAX_CHECKS
     current = reap(current)
   end
-  while current.queue.size > 0 and current.running.size < MAX_CHECKS
-    pending = current.queue[0]
-    current = launch(current.with(queue: current.queue.drop(1)), pending, encoding)
+  now = Time.now_ms()
+  while current.running.size < MAX_CHECKS
+    due = current.queue.filter do |pending| pending.due <= now end
+    if due.size == 0
+      break
+    end
+    pending = due[0]
+    remaining = current.queue.filter do |queued| queued.uri != pending.uri end
+    current = launch(current.with(queue: remaining), pending, encoding)
   end
   return current
 end
@@ -88,6 +121,7 @@ def launch(plan: Plan, pending: Pending, encoding: String) -> Plan
     agentica: plan.agentica,
     encoding: encoding,
     path: pending.path,
+    text: pending.text,
     uri: pending.uri,
     generation: plan.generations.get(pending.uri).unwrap_or(0),
   )
