@@ -1,5 +1,5 @@
 #!/bin/sh
-[ "$2" = help ] && exec agentica "$@"
+case "$2" in help|type-at|outline) exec agentica "$@";; esac
 for last; do :; done
 dir=$(dirname "$last")
 marker="$dir/running.$$"

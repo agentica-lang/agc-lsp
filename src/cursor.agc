@@ -42,6 +42,11 @@ export def locate(documents: Map[String, String], params: Json, encoding: String
   return ok(Cursor(line: line, text: text, chars: chars, index: index, encoding: encoding))
 end
 
+## Returns a cursor at the start of the first line, for requests about a whole document.
+export def start(encoding: String) -> Cursor
+  return Cursor(line: 0, text: "", chars: [], index: 0, encoding: encoding)
+end
+
 ## Returns the LSP range between two character indexes of the cursor line.
 export def range(cursor: Cursor, start: Int, stop: Int) -> Json
   return JSON.object({"start": position(cursor, start), "end": position(cursor, stop)})

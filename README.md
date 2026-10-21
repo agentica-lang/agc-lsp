@@ -3,7 +3,8 @@
 A Language Server Protocol (LSP) server for [Agentica](https://github.com/sonic182/agentica), a language for AI agents,
 written in Agentica.
 
-> **Status:** early stage. Diagnostics of the text in the editor's buffer, and hover and completion of builtins.
+> **Status:** early stage. Diagnostics of the text in the editor's buffer, hover, completion, go to definition and
+> document symbols.
 
 ## What it does
 
@@ -18,16 +19,27 @@ written in Agentica.
 - Saving a file checks again the other open files whose current diagnostic points into it, so fixing an imported file
   clears the error shown on the files that import it.
 - Hover and completion of the Agentica builtins come from the catalog that `agentica --json help` prints, loaded once
-  per session in a task (a hover or a completion before it arrives answers `null` or an empty list).
+  per session in a task (a hover before it arrives shows the type, a completion is an empty list).
   - Hover (markdown): on `String.split` (on either part of the name) the signature in an `agc` code block and the
     description; on a bare builtin call such as `puts(`; on a method call such as `xs.split(",")`, every builtin of
-    that name (`String.split`). The range is the whole qualified name, or the method name. Nothing in a string, in a
-    `#` comment or on a name that is not a builtin.
+    that name (`String.split`). The range is the whole qualified name, or the method name. Nothing in a string or in a
+    `#` comment.
+  - Hover on anything else asks `agentica --json type-at --stdin` and shows the source and the type of the expression
+    under the cursor, such as `text: String`, with its range. A program with an error has no type, so it shows
+    nothing there.
   - Completion (trigger character `.`): after `String.` and a partial name, the functions of that namespace; at the
     start of a word, the namespaces and the bare functions that start with it (at a blank position, every namespace and
     bare function); nothing after `x.` when `x` is not a namespace, in a string or in a comment. Each item has a
     `textEdit` that replaces the partial word before the cursor, so names ending in `?` or `!` complete correctly. A
     position past the end of a line means the end of the line.
+- Go to definition (`textDocument/definition`) asks `agentica --json type-at --stdin` about the position, in the text
+  of the buffer, and answers the location of the name of the declaration: a function, struct, enum, variant, field or
+  constant, in the same file or in an imported file (a `std/` module is not on disk, so it has no location). A
+  local, a builtin, a comment and a file that does not check have none (`null`).
+- Document symbols (`textDocument/documentSymbol`) are the `agentica --json outline --stdin` of the buffer, as a
+  hierarchy: constants, functions, structs with their fields, enums with their variants and type aliases. The range is
+  the declaration, the selection range its name and the detail its signature. `outline` only parses, so a file with a
+  type error is listed too; a file with a syntax error gets `null`.
 - Positions are UTF-16 by default, or code points when the client offers `utf-32`.
 
 ## Limitations
@@ -50,12 +62,31 @@ written in Agentica.
   function is checked. Until [agentica#516](https://github.com/sonic182/agentica/issues/516) adds a module mode, a file
   with that error is checked again with a stub `main` appended (inside the same 10 s deadline) and that result is
   published, so a module costs two checker runs. A `main` with a wrong signature is reported as is.
-- Hover and completion know the builtins only, not your own functions, structs or imports (nor the `std/` modules).
-  The type of a variable is not known, so `xs.size` shows every builtin named `size`, a struct field read such as
-  `entry.name` can show builtin members of that name too, and `xs.` completes nothing. A capitalized receiver that is
-  not a builtin namespace (a module alias or a type) shows nothing. Strings and comments are found with a scan of the
-  line, so a heredoc, a string that spans lines or code inside `#{}` is not recognised. A catalog that cannot be
-  loaded (see Logging) leaves hover and completion empty for the session.
+- Completion knows the builtins only, not your own functions, structs or imports (nor the `std/` modules), and
+  `xs.` completes nothing. The hover of a builtin does not know the type of a variable, so `xs.size` shows every
+  builtin named `size`, a struct field or method of your own named like a builtin method (`point.size`) shows the
+  builtin signatures and not its type until [agentica#527](https://github.com/sonic182/agentica/issues/527), and a
+  capitalized receiver that is not a builtin namespace (a module alias or a type) shows its type only. Strings and
+  comments are found with a scan of the line, so a heredoc, a string that spans lines or code inside `#{}` is not
+  recognised. A catalog that cannot be loaded (see Logging) leaves completion and the hover of builtins empty for the
+  session.
+- Definition, document symbols and the type in a hover cost a process each: every request starts `agentica` (`type-at`
+  or `outline`) in a task with a 10 s deadline, so the server loop never waits for it. At most 4 of these tasks run at
+  once; the other requests wait in the order they came. A newer hover, definition or symbols request for the same
+  document supersedes the older ones of the same kind, which are answered with `null` and their process is closed;
+  a hover or definition on a comment, a string, a keyword or a blank answers `null` without a process.
+  A `$/cancelRequest` answers the request with the error `-32800` (request cancelled). The answer is for the text
+  that the buffer had when the request came, even if it changed or was closed meanwhile. At `shutdown` the requests
+  still in flight are answered with `null` before the answer to `shutdown`. A query that fails (timeout, the binary
+  cannot run) answers `null` and logs a warning; a position or a program that `agentica` refuses (an error in the
+  program, no expression there) answers `null` and logs at debug level only.
+- `agentica` 0.7.0 gives no signature or `##` doc with a definition and does not identify a builtin in `type-at`, so
+  the hover shows the type only, not the doc of your own functions, and the builtins come from the catalog
+  ([agentica#527](https://github.com/sonic182/agentica/issues/527)). A local (a parameter, a binding, a loop variable
+  or a pattern name) has no definition ([agentica#506](https://github.com/sonic182/agentica/issues/506)). A `std/`
+  module is not a file on disk, so a name declared there has no location. A program with an error gives no
+  definition and no type (`type-at` needs a program that checks); document symbols still work, since `outline` only
+  parses.
 - An error in an imported file is published on the file that was opened, never on the imported file itself. Saving a
   file checks again only the open files whose current diagnostic points into it. A file that imports it and showed no
   error is not checked again until it is saved or reopened, and neither is a file whose first check is still running
@@ -65,15 +96,16 @@ written in Agentica.
 
 ## Usage
 
-It needs `agentica` (0.6.0 or later) on `PATH`, and `--allow-run` to start it:
+It needs `agentica` (0.7.0 or later; definition, hover on the code and symbols use `type-at` and `outline`, which
+earlier releases lack) on `PATH`, and `--allow-run` to start it:
 
 ```sh
 agentica --allow-run src/main.agc [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level LEVEL] \
   [--log-format text|json] [--log-file PATH]
 ```
 
-`--agentica PATH` names the binary that checks the files and prints the builtin catalog (default: `agentica` from
-`PATH`). `--stdio` is accepted for clients that pass it; stdio is the only transport. The logging options are described
+`--agentica PATH` names the binary that checks the files, answers the queries and prints the builtin catalog (default:
+`agentica` from `PATH`). `--stdio` is accepted for clients that pass it; stdio is the only transport. The logging options are described
 below.
 
 ## Editors
@@ -123,8 +155,8 @@ What is logged:
   each check with its URI, generation and duration in milliseconds.
 - `info`: the start (with the `agentica` binary used), the initialization (with the position encoding), the loading
   of the builtin catalog and the shutdown.
-- `warning`: a check that failed (timeout, the checker cannot run, status 1 without a diagnostic), a builtin catalog
-  that could not be loaded, a URI that is not a local file, an ignored argument or a setting that is not valid.
+- `warning`: a check that failed (timeout, the checker cannot run, status 1 without a diagnostic), a definition, hover
+  or symbols request whose query failed, a builtin catalog that could not be loaded, a URI that is not a local file, an ignored argument or a setting that is not valid.
 - `error`: a crashed check task or input reader, and a message without a `Content-Length` header, which ends the
   session.
 

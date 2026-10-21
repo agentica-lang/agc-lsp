@@ -7,6 +7,10 @@ UPPER_LAST = 90
 LOWER_FIRST = 97
 LOWER_LAST = 122
 UNDERSCORE = 95
+KEYWORDS = Set.new([
+  "def", "end", "if", "elsif", "else", "case", "for", "while", "return", "struct", "enum", "import", "export",
+  "from", "type", "do", "in", "next", "break", "try", "and", "or", "not",
+])
 
 ## Holds a word, the characters from start up to stop.
 export struct Word
@@ -81,6 +85,11 @@ export def called?(chars: List[String], stop: Int) -> Bool
   return stop < chars.size and chars[stop] == "("
 end
 
+## Returns true when the text is a keyword of the language, which names no expression.
+export def keyword?(text: String) -> Bool
+  return KEYWORDS.include?(text)
+end
+
 ## Returns true when the text starts with a capital letter.
 export def type_name?(text: String) -> Bool
   return text.length > 0 and String.code(text.at(0)) >= UPPER_FIRST and String.code(text.at(0)) <= UPPER_LAST
@@ -89,6 +98,17 @@ end
 ## Returns true when the index is right after the ? or ! that ends a name.
 export def after_suffix?(chars: List[String], index: Int) -> Bool
   return index > 1 and index <= chars.size and suffix?(chars[index - 1]) and word_char?(chars[index - 2])
+end
+
+## Returns true when a word that is not a keyword is at the index, in code and not in a string or a comment.
+export def name_at?(chars: List[String], index: Int) -> Bool
+  if !code?(chars, index + 1)
+    return false
+  end
+  case at(chars, index)
+    ok(word) -> return !keyword?(word.text)
+    error(_) -> return false
+  end
 end
 
 ## Returns true when the index of the line is neither in a string nor in a comment.

@@ -1,5 +1,6 @@
 ## Runs the lifecycle of the server and dispatches its requests and notifications.
 
+import Asks from "asks"
 import Catalog from "catalog"
 import Check from "check"
 import Completion from "completion"
@@ -8,14 +9,18 @@ import {UTF16, UTF32} from "columns"
 import Events from "events"
 import Hover from "hover"
 import Logs from "logs"
+import Lookup from "lookup"
 import Options from "options"
+import Query from "query"
 import Rpc from "rpc"
 import Schedule from "schedule"
 import Logger from "std/logger"
 import Uri from "uri"
+import Words from "words"
 
 PARSE_ERROR = -32_700
 INVALID_REQUEST = -32_600
+REQUEST_CANCELLED = -32_800
 METHOD_NOT_FOUND = -32_601
 SERVER_NOT_INITIALIZED = -32_002
 FULL_SYNC = 1
@@ -47,6 +52,8 @@ export struct State
   catalog: Catalog.Book
   ## Lists the catalog tasks that have not ended.
   loaders: List[Task[Result[Void]]]
+  ## Is the plan of the queries that answer definition, hover and document symbol requests.
+  asks: Asks.Plan
 end
 
 enum Next
@@ -71,6 +78,7 @@ export def start(options: Options.Options) -> State
     documents: documents,
     catalog: Catalog.empty(),
     loaders: loaders,
+    asks: Asks.start(),
   )
 end
 
@@ -104,20 +112,31 @@ def reader_crashed?(reader: Task[Result[Void]]) -> Bool
 end
 
 def watch(state: State) -> State
-  if state.loaders.size == 0
+  if state.loaders.size == 0 and state.asks.running.size == 0
     return state
   end
-  running: List[Task[Result[Void]]] = []
-  for loader in state.loaders
+  return dropped_answer(state.with(loaders: running(state.loaders)), Asks.reap(state.asks))
+end
+
+def running(loaders: List[Task[Result[Void]]]) -> List[Task[Result[Void]]]
+  alive: List[Task[Result[Void]]] = []
+  for loader in loaders
     case Task.await(loader, READER_CHECK_MS)
       Await.Done(outcome) ->
         if !outcome.ok?
           Logger.err("the builtin catalog task crashed: #{outcome.message}")
         end
-      Await.TimedOut -> running = running.push(loader)
+      Await.TimedOut -> alive = alive.push(loader)
     end
   end
-  return state.with(loaders: running)
+  return alive
+end
+
+def dropped_answer(state: State, change: Asks.Change) -> State
+  for id in change.dropped
+    Rpc.respond(id, JSON.null())
+  end
+  return state.with(asks: change.plan)
 end
 
 def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
@@ -125,6 +144,7 @@ def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
   for loader in state.loaders
     Task.cancel(loader)
   end
+  Asks.stop(state.asks)
   Schedule.stop(state.plan)
   return status
 end
@@ -132,6 +152,13 @@ end
 def dispatch(state: State, event: Events.Event) -> Next
   case event
     Events.Event.Checked(report) -> return Next.Continue(checked(state, report))
+    Events.Event.Answered(answer) ->
+      case Asks.settle(state.asks, answer.id)
+        ok(plan) ->
+          Rpc.respond(answer.id, answer.result)
+          return Next.Continue(state.with(asks: plan))
+        error(_) -> return Next.Continue(state)
+      end
     Events.Event.Cataloged(outcome) ->
       case outcome
         ok(book) -> return Next.Continue(state.with(catalog: book))
@@ -214,16 +241,17 @@ def request(state: State, id: Json, method: String, params: Json) -> State
   end
   case method
     "initialize" -> return initialize(state, id, params)
-    "textDocument/hover" ->
-      Rpc.respond(id, hover(state, params))
-      return state
+    "textDocument/hover" -> return hover(state, id, params)
+    "textDocument/definition" -> return definition(state, id, params)
+    "textDocument/documentSymbol" -> return symbols(state, id, params)
     "textDocument/completion" ->
       Rpc.respond(id, completion(state, params))
       return state
     "shutdown" ->
       Logger.info("shutting down")
+      released = dropped_answer(state, Asks.abandon(state.asks))
       Rpc.respond(id, JSON.null())
-      return state.with(plan: Schedule.stop(state.plan), shut_down: true)
+      return released.with(plan: Schedule.stop(state.plan), shut_down: true)
     _ ->
       Rpc.fail(id, METHOD_NOT_FOUND, "unknown method #{method}")
       return state
@@ -248,6 +276,8 @@ def initialize(state: State, id: Json, params: Json) -> State
     "positionEncoding": JSON.from(encoding),
     "textDocumentSync": sync,
     "hoverProvider": JSON.from(true),
+    "definitionProvider": JSON.from(true),
+    "documentSymbolProvider": JSON.from(true),
     "completionProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from(".")])}),
   })
   Rpc.respond(id, JSON.object({
@@ -261,11 +291,39 @@ def initialize(state: State, id: Json, params: Json) -> State
   return state.with(encoding: encoding, initialized: true, loaders: [loader])
 end
 
-def hover(state: State, params: Json) -> Json
+def hover(state: State, id: Json, params: Json) -> State
   case Cursor.locate(state.documents, params, state.encoding)
-    ok(cursor) -> return Hover.answer(state.catalog, cursor)
-    error(_) -> return JSON.null()
+    ok(cursor) ->
+      if Hover.settled?(state.catalog, cursor)
+        Rpc.respond(id, Hover.answer(state.catalog, cursor))
+        return state
+      end
+      return ask(state, id, "textDocument/hover", params, cursor)
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
   end
+end
+
+def definition(state: State, id: Json, params: Json) -> State
+  case Cursor.locate(state.documents, params, state.encoding)
+    ok(cursor) if Words.name_at?(cursor.chars, cursor.index) ->
+      return ask(state, id, "textDocument/definition", params, cursor)
+    ok(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def symbols(state: State, id: Json, params: Json) -> State
+  if !state.documents.get(document_uri(params)).ok?
+    Rpc.respond(id, JSON.null())
+    return state
+  end
+  return ask(state, id, "textDocument/documentSymbol", params, Cursor.start(state.encoding))
 end
 
 def completion(state: State, params: Json) -> Json
@@ -275,6 +333,28 @@ def completion(state: State, params: Json) -> Json
       none: List[Json] = []
       return JSON.array(none)
   end
+end
+
+def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cursor) -> State
+  uri = document_uri(params)
+  case Uri.path_of(uri)
+    ok(path) ->
+      buffer = Query.Buffer(path: path, text: state.documents.get(uri).unwrap_or(""))
+      request = Lookup.Request(agentica: state.options.agentica, uri: uri, buffer: buffer, cursor: cursor)
+      job = Events.QueryJob(events: state.events, id: id, method: method, request: request)
+      return dropped_answer(state, Asks.submit(state.asks, job))
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def cancelled(state: State, params: Json) -> State
+  change = Asks.cancel(state.asks, JSON.get(params, "id").unwrap_or(JSON.null()))
+  for id in change.dropped
+    Rpc.fail(id, REQUEST_CANCELLED, "request cancelled")
+  end
+  return state.with(asks: change.plan)
 end
 
 def notification(state: State, method: String, params: Json) -> State
@@ -292,6 +372,7 @@ def notification(state: State, method: String, params: Json) -> State
       end
     "textDocument/didSave" -> return saved(state, document_uri(params))
     "textDocument/didClose" -> return closed(state, document_uri(params))
+    "$/cancelRequest" -> return cancelled(state, params)
     _ -> return state
   end
 end
