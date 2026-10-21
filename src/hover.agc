@@ -1,3 +1,5 @@
+## Answers hover requests with the builtin under the cursor.
+
 import Catalog from "catalog"
 import Cursor from "cursor"
 import Words from "words"
@@ -8,6 +10,7 @@ struct Found
   stop: Int
 end
 
+## Returns the hover of the builtin under the cursor, or null when there is none.
 export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   if !Words.code?(cursor.chars, cursor.index + 1)
     return JSON.null()
@@ -33,20 +36,24 @@ def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]
     return qualified(book, word.text, try Words.member(chars, word.stop), word.start)
   end
   if !Words.called?(chars, word.stop)
-    return error("not a call")
+    return error("not a call: #{word.text}")
   end
   entry = try Catalog.find(book, word.text)
   return ok(Found(entries: [entry], start: word.start, stop: word.stop))
 end
 
 def after_dot(book: Catalog.Book, chars: List[String], word: Words.Word) -> Result[Found]
-  receiver = Words.receiver(chars, word.start)
-  if receiver.ok? and Catalog.namespace?(book, receiver.unwrap!.text)
-    return qualified(book, receiver.unwrap!.text, word, receiver.unwrap!.start)
+  case Words.receiver(chars, word.start)
+    ok(receiver) if Catalog.namespace?(book, receiver.text) ->
+      return qualified(book, receiver.text, word, receiver.start)
+    ok(receiver) if Words.type_name?(receiver.text) ->
+      return error("a capitalized receiver is not a value: #{receiver.text}")
+    ok(_) -> return methods(book, word)
+    error(_) -> return methods(book, word)
   end
-  if receiver.ok? and Words.type_name?(receiver.unwrap!.text)
-    return error("a capitalized receiver is not a value")
-  end
+end
+
+def methods(book: Catalog.Book, word: Words.Word) -> Result[Found]
   entries = Catalog.methods_named(book, word.text)
   if entries.size == 0
     return error("no builtin method #{word.text}")

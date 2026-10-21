@@ -1,41 +1,49 @@
+## Reads and writes the JSON-RPC messages of the editor on stdio, with Content-Length framing.
+
 import Logger from "std/logger"
 
 CHUNK_BYTES = 1_048_576
 LENGTH_HEADER = "content-length:"
 LOG_METHOD = "window/logMessage"
+JSONRPC_VERSION = "2.0"
 
+## Names what the input holds next: a message, bytes that are not JSON, a lost framing or the end.
 export enum Incoming
+  ## Is a parsed JSON message.
   Message(Json)
+  ## Is a framed body that is not JSON, with the reason.
   Malformed(String)
+  ## Is a lost framing, with the reason.
   Unframed(String)
+  ## Is the end of the input.
   End
 end
 
-export struct Response
+struct Response
   jsonrpc: String
   id: Json
   result: Json
 end
 
-export struct Notification
+struct Notification
   jsonrpc: String
   method: String
   params: Json
 end
 
+## Returns the next incoming item, waiting for it on standard input.
 export def read() -> Incoming
   length = -1
   while true
-    line = IO.gets()
-    if !line.ok?
-      return Incoming.End
-    end
-    header = line.unwrap!
-    if header == ""
-      break
-    end
-    if header.downcase.starts_with?(LENGTH_HEADER)
-      length = header.slice(LENGTH_HEADER.length, header.length - LENGTH_HEADER.length).strip.to_i.unwrap_or(-1)
+    case IO.gets()
+      ok(header) ->
+        if header == ""
+          break
+        end
+        if header.downcase.starts_with?(LENGTH_HEADER)
+          length = header.slice(LENGTH_HEADER.length, header.length - LENGTH_HEADER.length).strip.to_i.unwrap_or(-1)
+        end
+      error(_) -> return Incoming.End
     end
   end
   if length < 0
@@ -51,16 +59,18 @@ export def read() -> Incoming
   end
 end
 
+## Sends the result as the response to the request id.
 export def respond(id: Json, result: Json) -> Void
-  send(JSON.encode(Response(jsonrpc: "2.0", id: id, result: result)))
+  send(JSON.encode(Response(jsonrpc: JSONRPC_VERSION, id: id, result: result)))
   if Logger.enabled?(LogLevel.Debug)
     Logger.debug("sent a response", {"id": JSON.encode(id)})
   end
 end
 
+## Sends an error response with the code and the message to the request id.
 export def fail(id: Json, code: Int, message: String) -> Void
   failure: Map[String, Json] = {
-    "jsonrpc": JSON.from("2.0"),
+    "jsonrpc": JSON.from(JSONRPC_VERSION),
     "id": id,
     "error": JSON.object({"code": JSON.from(code), "message": JSON.from(message)}),
   }
@@ -70,14 +80,16 @@ export def fail(id: Json, code: Int, message: String) -> Void
   end
 end
 
+## Sends a notification to the editor.
 export def notify(method: String, params: Json) -> Void
-  send(JSON.encode(Notification(jsonrpc: "2.0", method: method, params: params)))
+  send(JSON.encode(Notification(jsonrpc: JSONRPC_VERSION, method: method, params: params)))
   Logger.debug("sent a notification", {"method": method})
 end
 
+## Sends a window/logMessage notification with the message type and text.
 export def log_message(kind: Int, message: String) -> Void
   params = JSON.object({"type": JSON.from(kind), "message": JSON.from(message)})
-  send(JSON.encode(Notification(jsonrpc: "2.0", method: LOG_METHOD, params: params)))
+  send(JSON.encode(Notification(jsonrpc: JSONRPC_VERSION, method: LOG_METHOD, params: params)))
 end
 
 def body(length: Int) -> Result[String]

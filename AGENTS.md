@@ -35,6 +35,8 @@ specs/            BDD features and their step program (steps.agc)
 
 - Behavior changes start with a failing scenario in `specs/`.
 - Before writing `.agc` or `.feature` files, load the `agentica-programming` skill (`.agents/skills/`).
+- Before writing or reviewing `.agc` code, load the `agentica-code-guidelines` skill too (`.agents/skills/`) and follow
+  `site/content/style.md` of Agentica.
 - This repo has no `agentica.toml` on purpose: `agentica check` reads the first one it finds in the folders above a
   file, so a manifest here would reach the scenarios. Scenario folders live outside the repo (under `TMPDIR` or
   `/tmp`), and `with_folder` in `specs/steps.agc` fails if an `agentica.toml` exists in any folder above them.

@@ -1,3 +1,5 @@
+## Decides which checks run, wait or are stale, per file.
+
 import Events from "events"
 import Logger from "std/logger"
 
@@ -5,30 +7,48 @@ MAX_CHECKS = 4
 REAP_MS = 1
 OVERDUE_WAIT_MS = 1
 
+## Holds a check that waits for its due time.
 export struct Pending
+  ## Is the URI of the file.
   uri: String
+  ## Is the path of the file.
   path: String
+  ## Is the text to check.
   text: String
+  ## Is the time in milliseconds when the check may start.
   due: Int
 end
 
+## Holds the queue of waiting checks, the running tasks and the generation of each file.
 export struct Plan
+  ## Is the executable that runs the checks.
   agentica: String
+  ## Is the channel that receives the reports.
   events: Channel[Events.Event]
+  ## Maps each URI to the generation of its latest check.
   generations: Map[String, Int]
+  ## Lists the checks that wait to start.
   queue: List[Pending]
+  ## Maps each URI to its running check.
   running: Map[String, Task[Result[Void]]]
 end
 
+## Returns a plan without checks.
 export def start(agentica: String, events: Channel[Events.Event]) -> Plan
   generations: Map[String, Int] = {}
   running: Map[String, Task[Result[Void]]] = {}
   return Plan(agentica: agentica, events: events, generations: generations, queue: [], running: running)
 end
 
-export def request(plan: Plan, uri: String, path: String, text: String, delay_ms: Int, encoding: String) -> Plan
+## Returns a check of the text that is due after the delay.
+export def delayed(uri: String, path: String, text: String, delay_ms: Int) -> Pending
+  return Pending(uri: uri, path: path, text: text, due: Time.now_ms() + delay_ms)
+end
+
+## Returns the plan with the check queued in place of any older check of the same file.
+export def request(plan: Plan, pending: Pending, encoding: String) -> Plan
+  uri = pending.uri
   cancelled = cancel(plan, uri)
-  pending = Pending(uri: uri, path: path, text: text, due: Time.now_ms() + delay_ms)
   queue = cancelled.queue
   if waiting?(cancelled, uri)
     queue = queue.map do |queued| newest(queued, pending) end
@@ -38,23 +58,28 @@ export def request(plan: Plan, uri: String, path: String, text: String, delay_ms
   return fill(cancelled.with(queue: queue), encoding)
 end
 
+## Returns the plan without the checks of the file.
 export def forget(plan: Plan, uri: String, encoding: String) -> Plan
   cancelled = cancel(plan, uri)
   return fill(cancelled.with(queue: cancelled.queue.filter do |pending| pending.uri != uri end), encoding)
 end
 
+## Returns true when the report comes from the latest check of its file.
 export def current?(plan: Plan, report: Events.Report) -> Bool
   return plan.generations.get(report.uri).unwrap_or(0) == report.generation
 end
 
+## Returns the plan once the check of the file has been reported.
 export def settle(plan: Plan, uri: String, encoding: String) -> Plan
   return fill(plan.with(running: plan.running.delete(uri)), encoding)
 end
 
+## Returns the plan with the checks that are due started.
 export def tick(plan: Plan, encoding: String) -> Plan
   return fill(plan, encoding)
 end
 
+## Returns how many milliseconds to wait for an event before the next check is due, at most the limit.
 export def wait_ms(plan: Plan, limit: Int) -> Int
   now = Time.now_ms()
   wait = limit
@@ -69,6 +94,7 @@ export def wait_ms(plan: Plan, limit: Int) -> Int
   return wait
 end
 
+## Returns the plan after cancelling every running check.
 export def stop(plan: Plan) -> Plan
   for task in plan.running.values
     Task.cancel(task)
@@ -131,13 +157,16 @@ end
 def reap(plan: Plan) -> Plan
   alive: Map[String, Task[Result[Void]]] = {}
   for uri in plan.running.keys
-    task = plan.running.get(uri).unwrap!
-    case Task.await(task, REAP_MS)
-      Await.Done(outcome) ->
-        if !outcome.ok?
-          Logger.err("the check of #{uri} crashed: #{outcome.message}")
+    case plan.running.get(uri)
+      ok(task) ->
+        case Task.await(task, REAP_MS)
+          Await.Done(outcome) ->
+            if !outcome.ok?
+              Logger.err("the check of #{uri} crashed: #{outcome.message}")
+            end
+          Await.TimedOut -> alive = alive.put(uri, task)
         end
-      Await.TimedOut -> alive = alive.put(uri, task)
+      error(_) -> next
     end
   end
   return plan.with(running: alive)

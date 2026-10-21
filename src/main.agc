@@ -1,3 +1,5 @@
+## Starts the language server on stdio.
+
 import Logs from "logs"
 import Options from "options"
 import Server from "server"

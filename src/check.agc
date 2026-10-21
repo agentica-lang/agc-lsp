@@ -1,13 +1,15 @@
-import Columns from "columns"
+## Runs `agentica --json check` on the text of a buffer and maps its diagnostic to LSP.
+
+import {UTF16, utf16_width} from "columns"
 import Logger from "std/logger"
 import Uri from "uri"
 
-CHECK_TIMEOUT_MS = 10000
+CHECK_TIMEOUT_MS = 10_000
 SHORTEST_WAIT_MS = 1
-READ_TIMEOUT_MS = 10000
+READ_TIMEOUT_MS = 10_000
 SEVERITY_ERROR = 1
-CHUNK_BYTES = 1048576
-SINGLE_SEND_CHARS = 262144
+CHUNK_BYTES = 1_048_576
+SINGLE_SEND_CHARS = 262_144
 RELATED_MESSAGE = "the error is here"
 NO_MAIN_MESSAGE = "a program must declare exactly one main"
 STUB_MAIN = "\n\ndef main() -> Void\nend\n"
@@ -17,6 +19,7 @@ struct Place
   column: Int
 end
 
+## Returns the first diagnostic of the text as LSP diagnostics, or an empty list when the check passes.
 export def diagnostics(agentica: String, path: String, text: String, encoding: String) -> Result[List[Json]]
   deadline = Time.now_ms() + CHECK_TIMEOUT_MS
   first = try problems(agentica, path, text, deadline)
@@ -26,7 +29,7 @@ export def diagnostics(agentica: String, path: String, text: String, encoding: S
   if !without_main?(first[0], path)
     return ok([diagnostic(first[0], path, text, encoding)])
   end
-  second = try problems(agentica, path, text + STUB_MAIN, deadline)
+  second = try problems(agentica, path, "#{text}#{STUB_MAIN}", deadline)
   if second.size == 0
     return ok([])
   end
@@ -36,6 +39,7 @@ export def diagnostics(agentica: String, path: String, text: String, encoding: S
   return ok([diagnostic(second[0], path, text, encoding)])
 end
 
+## Returns the URI that the related location of the first diagnostic points into, or an empty text.
 export def points_into(found: List[Json]) -> String
   if found.size == 0
     return ""
@@ -166,13 +170,17 @@ def diagnostic(found: Json, path: String, source: String, encoding: String) -> J
     message = "#{where(file, key_path, start)}: #{message}"
     fields = fields.put("range", JSON.object({"start": origin(), "end": origin()}))
     if file.starts_with?("/")
-      fields = fields.put("relatedInformation", JSON.array([related(file, key_path, start, stop, encoding)]))
+      fields = fields.put("relatedInformation", JSON.array([related(found, encoding)]))
     end
   end
   return JSON.object(fields.put("message", JSON.from(message)))
 end
 
-def related(file: String, key_path: String, start: Place, stop: Place, encoding: String) -> Json
+def related(found: Json, encoding: String) -> Json
+  file = text(found, "file")
+  key_path = text(found, "key_path")
+  start = place(found, "start")
+  stop = place(found, "end")
   range = JSON.object({"start": origin(), "end": origin()})
   if key_path == "" and start.line > 0
     range = span(source_lines(file), start, stop, encoding)
@@ -197,8 +205,8 @@ end
 def position(at: Place, lines: List[String], encoding: String) -> Json
   line = not_negative(at.line - 1)
   character = not_negative(at.column - 1)
-  if encoding == "utf-16" and line < lines.size
-    character = Columns.utf16_width(lines[line], character)
+  if encoding == UTF16 and line < lines.size
+    character = utf16_width(lines[line], character)
   end
   return JSON.object({"line": JSON.from(line), "character": JSON.from(character)})
 end

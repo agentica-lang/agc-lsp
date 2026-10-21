@@ -1,3 +1,5 @@
+## Parses the command-line options of the server and holds their defaults.
+
 export DEFAULT_AGENTICA = "agentica"
 export DEFAULT_LEVEL = "warning"
 export DEFAULT_CLIENT_LEVEL = "error"
@@ -6,36 +8,45 @@ LEVELS = Set.new(["debug", "info", "warning", "error"])
 FORMATS = Set.new(["text", "json"])
 VALUE_OPTIONS = Set.new(["--agentica", "--log-level", "--client-log-level", "--log-format", "--log-file"])
 
+## Holds the options given on the command line, with the problems found while reading them.
 export struct Options
+  ## Is the executable that runs the checks.
   agentica: String
+  ## Is the log level of stderr and the log file, or empty for the default.
   level: String
+  ## Is the log level of the editor, or empty for the default.
   client_level: String
+  ## Is the format of the stderr lines, or empty for the default.
   format: String
+  ## Is the path of the log file, or empty for none.
   file: String
+  ## Lists what was wrong with the arguments.
   problems: List[String]
 end
 
+## Returns the options of the arguments, with a problem for each argument that is ignored or rejected.
 export def parse(args: List[String]) -> Options
   options = Options(agentica: DEFAULT_AGENTICA, level: "", client_level: "", format: "", file: "", problems: [])
   index = 0
   while index < args.size
     word = args[index]
-    if !takes_value?(word)
-      if word != "--stdio"
-        options = options.with(problems: options.problems.push("ignoring the argument #{word}"))
-      end
-      index += 1
-    elsif index + 1 >= args.size
-      options = options.with(problems: options.problems.push("the option #{word} needs a value"))
-      index += 1
-    else
+    if takes_value?(word) and index + 1 < args.size
       options = set(options, word, args[index + 1])
       index += 2
+    elsif takes_value?(word)
+      options = options.with(problems: options.problems.push("the option #{word} needs a value"))
+      index += 1
+    elsif word != "--stdio"
+      options = options.with(problems: options.problems.push("ignoring the argument #{word}"))
+      index += 1
+    else
+      index += 1
     end
   end
   return options
 end
 
+## Returns true when the name is a log level.
 export def level?(name: String) -> Bool
   return LEVELS.include?(name)
 end

@@ -1,14 +1,17 @@
+## Runs the BDD scenarios against the server: its steps drive it through stdio like an editor.
+
 import BDD from "std/bdd"
 
 SERVER = "src/main.agc"
 LAUNCHER = "bin/agc-lsp"
-TIMEOUT_MS = 20000
+TIMEOUT_MS = 20_000
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789ABCDEF"
 ASCII_LIMIT = 128
 COMMENT_LINE = "# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 LINES_PER_KB = 10
 MANIFEST = "agentica.toml"
+RUNS_SUFFIX = ".runs"
 PUBLISH = "textDocument/publishDiagnostics"
 HOVER = "textDocument/hover"
 COMPLETION = "textDocument/completion"
@@ -17,10 +20,10 @@ SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
 LOG_TYPES = {"error": 1, "warning": 2, "info": 3, "debug": 4}
 LOG_MESSAGE = "window/logMessage"
 ERROR_CODES = {
-  "parse error": -32700,
-  "invalid request": -32600,
-  "method not found": -32601,
-  "server not initialized": -32002,
+  "parse error": -32_700,
+  "invalid request": -32_600,
+  "method not found": -32_601,
+  "server not initialized": -32_002,
 }
 
 struct Session
@@ -48,7 +51,10 @@ def main() -> Void
     BDD.step("the language server has started", &started),
     BDD.step("the language server has started through the launcher", &started_through_launcher),
     BDD.step("the language server has started through a link to the launcher", &started_through_link),
-    BDD.step("the language server has started through a relative link to the launcher", &started_through_relative_link),
+    BDD.step(
+      "the language server has started through a relative link to the launcher",
+      &started_through_relative_link,
+    ),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
     BDD.step("the language server has loaded the builtin catalog", &started_with_catalog),
@@ -259,7 +265,7 @@ end
 
 def opens_with_large_buffer(ctx: BDD.Context, args: List[String]) -> BDD.Context
   lines = (0...args[1].to_i! * LINES_PER_KB).to_a.map do |_| COMMENT_LINE end
-  return open_text(with_folder(ctx), args[0], "", lines.join("\n") + "\n")
+  return open_text(with_folder(ctx), args[0], "", "#{lines.join("\n")}\n")
 end
 
 def opens_files_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -921,8 +927,12 @@ end
 
 def reported(ctx: BDD.Context, name: String) -> BDD.Context
   for message in messages(ctx)
-    if at(message, ["id"]).unwrap_or(JSON.from(0)).to_s == "null" and at(message, ["error"]).ok?
-      return expect_error(ctx, at(message, ["error"]).unwrap!, name)
+    case at(message, ["error"])
+      ok(found) ->
+        if at(message, ["id"]).unwrap_or(JSON.from(0)).to_s == "null"
+          return expect_error(ctx, found, name)
+        end
+      error(_) -> next
     end
   end
   return BDD.assert(ctx, false, "no error without an id among #{JSON.array(messages(ctx))}")
@@ -1099,14 +1109,16 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
   extra = JSON.list(BDD.get(ctx, "arguments").unwrap_or(JSON.array(none))).unwrap!
   words = extra.map do |word| JSON.string(word).unwrap! end
   log_path = ""
-  if BDD.get(ctx, "log file").ok?
-    log_path = file_path(ctx, JSON.string(BDD.get(ctx, "log file").unwrap!).unwrap!)
+  log_file = JSON.string(BDD.get(ctx, "log file").unwrap_or(JSON.from(""))).unwrap_or("")
+  if log_file != ""
+    log_path = file_path(ctx, log_file)
     words = words.concat(["--log-file", log_path])
   end
   command = "agentica"
   arguments = ["--allow-run", SERVER].concat(words)
-  if BDD.get(ctx, "launcher").ok?
-    command = JSON.string(BDD.get(ctx, "launcher").unwrap!).unwrap!
+  launcher = JSON.string(BDD.get(ctx, "launcher").unwrap_or(JSON.from(""))).unwrap_or("")
+  if launcher != ""
+    command = launcher
     arguments = words
   end
   ran = session(dir, command, arguments, actions)
@@ -1128,9 +1140,11 @@ def runs_in(dir: String) -> Map[String, Json]
   counts: Map[String, Json] = {}
   none: List[String] = []
   for entry in Dir.list(dir, TIMEOUT_MS).unwrap_or(none)
-    if entry.ends_with?(".runs")
+    if entry.ends_with?(RUNS_SUFFIX)
       lines = File.read_text(Path.join([dir, entry]).unwrap!, TIMEOUT_MS).unwrap_or("").split("\n")
-      counts = counts.put(entry.slice(0, entry.length - 5), JSON.from(lines.filter do |line| line.strip.length > 0 end.size))
+      name = entry.slice(0, entry.length - RUNS_SUFFIX.length)
+      written = lines.filter do |line| line.strip.length > 0 end.size
+      counts = counts.put(name, JSON.from(written))
     end
   end
   return counts
@@ -1306,7 +1320,11 @@ def with_folder(ctx: BDD.Context) -> BDD.Context
   stray = manifest_above(real)
   if stray != ""
     _ = Path.remove(real, TIMEOUT_MS)
-    return BDD.assert(ctx, false, "#{stray} exists above the scenario folder #{real}: agentica reads it for every file there; remove it to run the specs")
+    message = (
+      "#{stray} exists above the scenario folder #{real}: " +
+      "agentica reads it for every file there; remove it to run the specs"
+    )
+    return BDD.assert(ctx, false, message)
   end
   return BDD.set(ctx, "dir", JSON.from(real))
 end
