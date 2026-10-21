@@ -1,0 +1,27 @@
+# Agentica for VS Code
+
+Shows the diagnostics of the [agc-lsp](https://github.com/agentica-lang/agc-lsp) language server on `.agc` files.
+Syntax highlighting is not part of this extension; it will come from
+[agentica-lang/agc-tmlanguage](https://github.com/agentica-lang/agc-tmlanguage).
+
+## Install locally
+
+1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.5.0 or later.
+2. From this folder:
+
+   ```sh
+   npm install
+   npx @vscode/vsce package
+   code --install-extension agentica-lsp-0.1.0.vsix
+   ```
+
+   Or use "Extensions: Install from VSIX..." in VS Code.
+
+## Settings
+
+- `agentica.server.path` (default `agc-lsp`): the command that starts the server, for example the full path of
+  `bin/agc-lsp`.
+- `agentica.server.logLevel` (default `warning`): level of the server log in the Agentica output channel.
+- `agentica.server.clientLogLevel` (default `error`): level of the log messages the server sends to the editor.
+
+Changing a setting restarts the server.

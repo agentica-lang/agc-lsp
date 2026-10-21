@@ -31,3 +31,5 @@ jobs:
       - run: agentica --version
 
       - run: make test
+
+      - run: node --check editors/vscode/extension.js
