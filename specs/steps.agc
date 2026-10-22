@@ -156,6 +156,7 @@ def main() -> Void
     BDD.step("{string} through a localhost URI gets these diagnostics:", &gets_diagnostics_through_localhost),
     BDD.step("{string} gets no diagnostics", &gets_none),
     BDD.step("{string} gets nothing more", &gets_nothing_more),
+    BDD.step("the diagnostics of {string} are published before those of {string}", &published_before),
     BDD.step("no diagnostics are published", &publishes_nothing),
     BDD.step("the server warns {string}", &warns),
     BDD.step("the server logs a {string} line containing {string}", &logs_line),
@@ -791,6 +792,31 @@ end
 
 def gets_nothing_more(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| nothing_more(done, uri(done, args[0])) end
+end
+
+def published_before(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| ordered(done, uri(done, args[0]), uri(done, args[1])) end
+end
+
+def ordered(ctx: BDD.Context, earlier: String, later: String) -> BDD.Context
+  first = last_publish(ctx, earlier)
+  second = last_publish(ctx, later)
+  message = "the last publish of #{earlier} is at #{first}, of #{later} at #{second}"
+  return BDD.assert(ctx, first >= 0 and first < second, message)
+end
+
+def last_publish(ctx: BDD.Context, target: String) -> Int
+  found = -1
+  index = 0
+  wanted = JSON.from(target).to_s
+  for message in messages(ctx)
+    method = at(message, ["method"]).unwrap_or(JSON.null()).to_s
+    if method == JSON.from(PUBLISH).to_s and at(message, ["params", "uri"]).unwrap_or(JSON.null()).to_s == wanted
+      found = index
+    end
+    index += 1
+  end
+  return found
 end
 
 def answers_within(ctx: BDD.Context, args: List[String]) -> BDD.Context

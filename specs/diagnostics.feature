@@ -375,6 +375,45 @@ Feature: Diagnostics in the editor
     And "quick.agc" gets no diagnostics
     And "quick.agc" gets nothing more
 
+  Scenario: the file being typed in is checked before the check that its typing cancelled
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
+    And the file "slow.agc" contains:
+      """
+      import Heavy from "heavy"
+
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    And the file "quick.agc" contains:
+      """
+      def main() -> Void
+        puts("fine")
+      end
+
+      """
+    When the editor opens "quick.agc"
+    And the editor opens "slow.agc" without waiting
+    And the editor waits 300 milliseconds
+    And the editor types in "quick.agc" without waiting:
+      """
+      def main() -> Void
+        puts(typed)
+      end
+
+      """
+    And the editor waits for the diagnostics of 2 files
+    Then "quick.agc" gets no diagnostics
+    And "quick.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:13 | error    | CHECK-UNKNOWN-NAME |
+    And "slow.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 4:8-4:12 | error    | CHECK-UNKNOWN-NAME |
+    And the diagnostics of "quick.agc" are published before those of "slow.agc"
+
   Scenario: a module without main that is fine publishes no diagnostics
     Given the language server has started
     And the file "helpers.agc" contains:

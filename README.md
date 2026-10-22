@@ -79,15 +79,20 @@ written in Agentica.
 - Only `.agc` files are checked.
 - Checks run one at a time, in the order in which they are due, because two refreshes of one session give two caches
   and keeping one drops the work of the other. A check refreshes the session for its file (`Analysis.refresh`, which
-  links and checks the program once and keeps it in the cache of the session) and then checks it. The refreshed
-  session is stored only when no document changed while the check ran; otherwise it is dropped, nothing is published
-  and the check runs again. A newer `didOpen`, `didChange`, `didSave` or `didClose` of the same file cancels its
-  older check, whose result is never published, so quick changes publish only the diagnostics of the last text. A
-  change in any open file cancels the running check of another file and puts it back in the queue. A check requested
-  by `didChange` waits 200 ms for the next change before it starts (a newer change replaces its text and restarts the
-  wait), and so does the re-check of the files that point into the changed file; `didOpen` and `didSave` start at once.
-  A `didSave` of a document that is not open checks nothing itself (it still re-checks the open files that point into
-  it).
+  links and checks the program once and keeps it in the cache of the session) and then checks it. The refreshed session
+  is stored only when no document changed while the check ran; otherwise it is dropped. A newer `didOpen`, `didChange`,
+  `didSave` or `didClose` of the same file cancels its older check, whose result is never published, so quick changes
+  publish only the diagnostics of the last text. A change in any open file cancels the running check of another file
+  and puts it back in the queue, behind the check of the file that changed. A check requested by `didChange` waits 200
+  ms for the next change before it starts (a newer change replaces its text and restarts the wait), and so does the re-
+  check of the files that point into the changed file; `didOpen` and `didSave` start at once. A `didSave` of a document
+  that is not open checks nothing itself (it still re-checks the open files that point into it).
+- Questions (hover, definition, references, symbols) run on the session as it was when they arrived, which can be one
+  that no check has refreshed yet while the user types, so they can answer from an older program until the next check
+  ends. Typing never waits for longer than the check that runs.
+- Two URIs for one path (for example a `localhost` authority or a double slash) share one open text and one entry of
+  the session: the last text written under either is the one every check sees. Each URI is still checked and published
+  on its own.
 - A crash of a check task is logged as an error and leaves the previous diagnostics; a crash of the catalog task is
   logged as an error and leaves hover and completion empty.
 - Completion knows the builtins only, not your own functions, structs or imports (nor the `std/` modules), and

@@ -212,11 +212,7 @@ def checked(state: State, report: Events.Report) -> State
   if !Schedule.current?(held.plan, report)
     return held
   end
-  settled = held.with(plan: Schedule.settle(held.plan, report.uri))
-  if report.revision != settled.revision
-    return recheck_after(settled, report.uri, CHANGE_DELAY_MS)
-  end
-  return published(settled, report)
+  return published(held.with(plan: Schedule.settle(held.plan, report.uri)), report)
 end
 
 def adopted(state: State, report: Events.Report) -> State
@@ -497,14 +493,14 @@ def keep(state: State, uri: String, text: String, delay_ms: Int) -> State
   if path == ""
     return state
   end
-  return check(buffered(state, path, text), Schedule.delayed(uri, path, delay_ms))
+  return revised(check(buffered(state, path, text), Schedule.delayed(uri, path, delay_ms)))
 end
 
 def buffered(state: State, path: String, text: String) -> State
-  return revised(state.with(
+  return state.with(
     documents: state.documents.put(path, text),
     session: Analysis.update(state.session, path, text),
-  ))
+  )
 end
 
 def revised(state: State) -> State

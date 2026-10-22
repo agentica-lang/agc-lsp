@@ -173,10 +173,10 @@ def reap(plan: Plan) -> Plan
   for running in plan.running
     case Task.await(running.task, REAP_MS)
       Await.Done(outcome) ->
-        if !outcome.ok?
-          Logger.err("the check of #{running.uri} crashed: #{outcome.message}")
-        else
+        if outcome.ok?
           alive = alive.push(running)
+        else
+          Logger.err("the check of #{running.uri} crashed: #{outcome.message}")
         end
       Await.TimedOut -> alive = alive.push(running)
     end

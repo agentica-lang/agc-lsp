@@ -22,10 +22,12 @@ digest() {
   fi
 }
 
+version=$("$agentica" --version) || { echo "agc-lsp: cannot run '$agentica --version'" >&2; exit 1; }
+
 key=$(
   export LC_ALL=C
   {
-    "$agentica" --version
+    printf '%s\n' "$version"
     for source in "$root"/src/*.agc; do
       cat "$source"
     done
@@ -35,12 +37,15 @@ program=$cache/$key.agcb
 
 mkdir -p "$cache"
 if [ ! -f "$program" ]; then
+  find "$cache" -name 'compiling.*' -mmin +60 -delete 2> /dev/null || true
   partial=$(mktemp "$cache/compiling.XXXXXX")
+  trap 'rm -f "$partial"' EXIT
+  trap 'exit 1' HUP INT TERM
   if ! "$agentica" compile "$root/src/main.agc" -o "$partial" >&2; then
-    rm -f "$partial"
     exit 1
   fi
   mv "$partial" "$program"
+  trap - EXIT HUP INT TERM
   find "$cache" -name '*.agcb' -mtime "+$keep_days" -delete 2> /dev/null || true
 fi
 touch "$program" 2> /dev/null || true
