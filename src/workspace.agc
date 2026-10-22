@@ -41,7 +41,7 @@ export def root_of(params: Json) -> String
     end
   end
   path = Fields.text(params, "rootPath")
-  if path.starts_with?("/")
+  if Uri.absolute?(path)
     return Uri.trimmed(path)
   end
   return ""
