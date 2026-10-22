@@ -12,9 +12,9 @@ import Hover from "hover"
 import Logs from "logs"
 import Lookup from "lookup"
 import Options from "options"
-import Query from "query"
 import Rpc from "rpc"
 import Schedule from "schedule"
+import Analysis from "std/analysis"
 import Logger from "std/logger"
 import Uri from "uri"
 import Words from "words"
@@ -32,7 +32,8 @@ WAIT_MS = 1000
 READER_CHECK_MS = 1
 CHANGE_DELAY_MS = 200
 
-## Holds the state of the server: its options, the open documents, the plan of the checks and the catalog.
+## Holds the state of the server: its options, the open documents and the session that holds their text, the plan of
+## the checks and the catalog.
 export struct State
   ## Holds the command-line options.
   options: Options.Options
@@ -48,8 +49,16 @@ export struct State
   plan: Schedule.Plan
   ## Maps each URI to the file that its diagnostic points into.
   pointing: Map[String, String]
-  ## Maps each open URI to its text.
+  ## Maps each open URI to its path.
+  open: Map[String, String]
+  ## Maps the path of each open document to its text.
   documents: Map[String, String]
+  ## Is the session of std/analysis with the text of every open document and the checks refreshed into its cache.
+  session: Analysis.Session
+  ## Counts the changes to the open documents that the session holds.
+  revision: Int
+  ## Is the working folder, from which std/analysis writes the names of files below it.
+  folder: String
   ## Is the catalog of builtins, empty until it loads.
   catalog: Catalog.Book
   ## Lists the catalog tasks that have not ended.
@@ -70,6 +79,7 @@ end
 export def start(options: Options.Options) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
   pointing: Map[String, String] = {}
+  open: Map[String, String] = {}
   documents: Map[String, String] = {}
   loaders: List[Task[Result[Void]]] = []
   return State(
@@ -78,9 +88,13 @@ export def start(options: Options.Options) -> State
     initialized: false,
     shut_down: false,
     events: events,
-    plan: Schedule.start(options.agentica, events),
+    plan: Schedule.start(events),
     pointing: pointing,
+    open: open,
     documents: documents,
+    session: Analysis.open(Analysis.workspace()),
+    revision: 0,
+    folder: Uri.trimmed(Path.cwd().unwrap_or("/")),
     catalog: Catalog.empty(),
     loaders: loaders,
     asks: Asks.start(),
@@ -96,7 +110,7 @@ export def serve(state: State) -> Int
     case current.events.recv(Schedule.wait_ms(current.plan, WAIT_MS))
       ok(event) ->
         case dispatch(current, event)
-          Next.Continue(next) -> current = watch(next.with(plan: Schedule.tick(next.plan, next.encoding)))
+          Next.Continue(next) -> current = watch(next.with(plan: Schedule.tick(next.plan, basis(next))))
           Next.Exit(status) -> return finish(current, reader, status)
         end
       error(_) ->
@@ -104,10 +118,14 @@ export def serve(state: State) -> Int
           Logger.err("the reader of the input crashed")
           return finish(current, reader, 1)
         end
-        current = watch(current.with(plan: Schedule.tick(current.plan, current.encoding)))
+        current = watch(current.with(plan: Schedule.tick(current.plan, basis(current))))
     end
   end
   return finish(current, reader, exit_status(current))
+end
+
+def basis(state: State) -> Schedule.Basis
+  return Schedule.Basis(session: state.session, revision: state.revision)
 end
 
 def reader_crashed?(reader: Task[Result[Void]]) -> Bool
@@ -191,20 +209,29 @@ def input(state: State, incoming: Rpc.Incoming) -> Next
 end
 
 def checked(state: State, report: Events.Report) -> State
-  if state.shut_down or !Schedule.current?(state.plan, report)
+  if state.shut_down
     return state
   end
-  pointing = published(state, report)
-  return state.with(plan: Schedule.settle(state.plan, report.uri, state.encoding), pointing: pointing)
+  held = adopted(state, report)
+  if !Schedule.current?(held.plan, report)
+    return held
+  end
+  return published(held.with(plan: Schedule.settle(held.plan, report.uri)), report)
 end
 
-def published(state: State, report: Events.Report) -> Map[String, String]
-  case report.outcome
-    ok(found) ->
-      publish(report.uri, found)
-      return point(state.pointing, report.uri, Check.points_into(found))
-    error(_) -> return state.pointing
+def adopted(state: State, report: Events.Report) -> State
+  if report.revision != state.revision
+    return state
   end
+  return state.with(session: report.session)
+end
+
+def published(state: State, report: Events.Report) -> State
+  path = Uri.path_of(report.uri).unwrap_or("")
+  placing = Check.Placing(path: path, documents: state.documents, folder: state.folder, encoding: state.encoding)
+  found = Check.diagnostics(report.checked, placing)
+  publish(report.uri, found)
+  return state.with(pointing: point(state.pointing, report.uri, Check.points_into(found)))
 end
 
 def point(pointing: Map[String, String], uri: String, target: String) -> Map[String, String]
@@ -329,7 +356,7 @@ def definition(state: State, id: Json, params: Json) -> State
 end
 
 def symbols(state: State, id: Json, params: Json) -> State
-  if !state.documents.get(document_uri(params)).ok?
+  if !state.documents.get(agentica_path(document_uri(params))).ok?
     Rpc.respond(id, JSON.null())
     return state
   end
@@ -357,8 +384,10 @@ def workspace_symbols(state: State, id: Json, params: Json) -> State
     return state
   end
   request = Workspace.Request(
-    agentica: state.options.agentica,
+    session: state.session,
+    documents: state.documents,
     root: state.root,
+    folder: state.folder,
     name: name,
     encoding: state.encoding,
   )
@@ -385,11 +414,12 @@ def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cur
   uri = document_uri(params)
   case Uri.path_of(uri)
     ok(path) ->
-      buffer = Query.Buffer(path: path, text: state.documents.get(uri).unwrap_or(""))
       request = Lookup.Request(
-        agentica: state.options.agentica,
+        session: state.session,
         uri: uri,
-        buffer: buffer,
+        path: path,
+        documents: state.documents,
+        folder: state.folder,
         cursor: cursor,
         book: state.catalog,
       )
@@ -435,7 +465,7 @@ def notification(state: State, method: String, params: Json) -> State
     "textDocument/didOpen" -> return opened(state, document_uri(params), params)
     "textDocument/didChange" ->
       case changed_text(params)
-        ok(text) -> return keep(state, document_uri(params), text, CHANGE_DELAY_MS)
+        ok(text) -> return edited(state, document_uri(params), text)
         error(message) ->
           Logger.warning(message)
           return state
@@ -467,24 +497,48 @@ def keep(state: State, uri: String, text: String, delay_ms: Int) -> State
   if path == ""
     return state
   end
-  return check(state.with(documents: state.documents.put(uri, text)), Schedule.delayed(uri, path, text, delay_ms))
+  return revised(check(buffered(state, uri, path, text), Schedule.delayed(uri, path, delay_ms)))
+end
+
+def buffered(state: State, uri: String, path: String, text: String) -> State
+  return state.with(
+    open: state.open.put(uri, path),
+    documents: state.documents.put(path, text),
+    session: Analysis.update(state.session, path, text),
+  )
+end
+
+def revised(state: State) -> State
+  return state.with(revision: state.revision + 1, plan: Schedule.supersede(state.plan, CHANGE_DELAY_MS))
 end
 
 def check(state: State, pending: Schedule.Pending) -> State
-  return state.with(plan: Schedule.request(state.plan, pending, state.encoding))
+  return state.with(plan: Schedule.request(state.plan, pending))
+end
+
+def edited(state: State, uri: String, text: String) -> State
+  path = agentica_path(uri)
+  if path == ""
+    return state
+  end
+  return dependents(keep(state, uri, text, CHANGE_DELAY_MS), uri, path, CHANGE_DELAY_MS)
 end
 
 def saved(state: State, uri: String) -> State
-  refreshed = recheck(state, uri)
   path = Uri.path_of(uri).unwrap_or("")
+  return dependents(recheck_after(state, uri, 0), uri, path, 0)
+end
+
+def dependents(state: State, uri: String, path: String, delay_ms: Int) -> State
   if path == ""
-    return refreshed
+    return state
   end
-  for document in refreshed.pointing.keys
-    case refreshed.pointing.get(document)
+  refreshed = state
+  for document in state.pointing.keys
+    case state.pointing.get(document)
       ok(target) ->
         if document != uri and Uri.same_path?(target, path)
-          refreshed = recheck(refreshed, document)
+          refreshed = recheck_after(refreshed, document, delay_ms)
         end
       error(_) -> next
     end
@@ -492,11 +546,12 @@ def saved(state: State, uri: String) -> State
   return refreshed
 end
 
-def recheck(state: State, uri: String) -> State
-  case state.documents.get(uri)
-    ok(text) -> return check(state, Schedule.delayed(uri, Uri.path_of(uri).unwrap_or(""), text, 0))
-    error(_) -> return state
+def recheck_after(state: State, uri: String, delay_ms: Int) -> State
+  path = Uri.path_of(uri).unwrap_or("")
+  if state.documents.get(path).ok?
+    return check(state, Schedule.delayed(uri, path, delay_ms))
   end
+  return state
 end
 
 def closed(state: State, uri: String) -> State
@@ -512,11 +567,19 @@ def closed(state: State, uri: String) -> State
   end
   none: List[Json] = []
   publish(uri, none)
-  return state.with(
-    plan: Schedule.forget(state.plan, uri, state.encoding),
+  remaining = state.open.delete(uri)
+  dropped = state.with(
+    plan: Schedule.forget(state.plan, uri),
     pointing: state.pointing.delete(uri),
-    documents: state.documents.delete(uri),
+    open: remaining,
   )
+  if remaining.keys.any? do |other| remaining.get(other).unwrap_or("") == path end
+    return dropped
+  end
+  return dependents(revised(dropped.with(
+    documents: dropped.documents.delete(path),
+    session: Analysis.close(dropped.session, path),
+  )), uri, path, 0)
 end
 
 def agentica_path(uri: String) -> String

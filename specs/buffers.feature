@@ -87,9 +87,12 @@ Feature: Unsaved buffers
       | 2:18-2:22 | error    | CHECK-UNKNOWN-NAME |
 
   Scenario: several quick changes publish only the diagnostics of the last text
-    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
     And the file "draft.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts("hi")
       end
@@ -98,6 +101,8 @@ Feature: Unsaved buffers
     When the editor opens "draft.agc" without waiting
     And the editor types in "draft.agc" without waiting:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(oops)
       end
@@ -105,6 +110,8 @@ Feature: Unsaved buffers
       """
     And the editor types in "draft.agc" without waiting:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(nothing)
       end
@@ -112,6 +119,8 @@ Feature: Unsaved buffers
       """
     And the editor types in "draft.agc" without waiting:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(x)
       end
@@ -121,7 +130,7 @@ Feature: Unsaved buffers
     And the editor waits 1500 milliseconds
     Then "draft.agc" gets these diagnostics:
       | at      | severity | code               |
-      | 2:8-2:9 | error    | CHECK-UNKNOWN-NAME |
+      | 4:8-4:9 | error    | CHECK-UNKNOWN-NAME |
     And "draft.agc" gets nothing more
 
   Scenario: an unsaved file imports from its own folder
@@ -147,15 +156,8 @@ Feature: Unsaved buffers
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And the diagnostic of "app/main.agc" points into "app/lib.agc" at 2:10-2:13
 
-  Scenario: a checker that fails without reading a large buffer is still reported
-    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
-    When the editor opens "big.agc" with a buffer of 400 KB without waiting
-    And the editor waits 1500 milliseconds
-    Then no diagnostics are published
-    And the server warns "agentica exited with status 2"
-
   Scenario: quick changes start one check, not one per change
-    Given the language server has started with the arguments "--agentica specs/fixtures/counting-agentica"
+    Given the language server has started with the arguments "--log-level debug"
     And the file "draft.agc" contains:
       """
       def main() -> Void
@@ -191,7 +193,7 @@ Feature: Unsaved buffers
     Then "draft.agc" gets no diagnostics
     And "draft.agc" gets no diagnostics
     And "draft.agc" gets nothing more
-    And the checker ran 2 times for "draft.agc"
+    And the server started 2 checks of "draft.agc"
 
   Scenario: an open without the text of the buffer checks nothing
     Given the language server has started

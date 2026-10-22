@@ -1,3 +1,0 @@
-#!/bin/sh
-case "$2" in help|type-at|outline) exec agentica "$@";; esac
-exec sleep 60

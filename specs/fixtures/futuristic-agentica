@@ -1,4 +1,0 @@
-#!/bin/sh
-[ "$2" = outline ] || exec agentica "$@"
-cat >/dev/null
-echo '{"command":"outline","doc":null,"file":"app.agc","imports":[],"items":[{"doc":null,"exported":false,"kind":"macro","name":"shout","name_span":{"file":"app.agc","range":{"end":{"column":12,"line":1},"start":{"column":7,"line":1}}},"signature":"macro shout","span":{"file":"app.agc","range":{"end":{"column":1,"line":2},"start":{"column":1,"line":1}}},"summary":null}],"version":1}'

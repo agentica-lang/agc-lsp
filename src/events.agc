@@ -1,9 +1,9 @@
 ## Defines the events of the server loop and the tasks that send them.
 
 import Catalog from "catalog"
-import Check from "check"
 import Lookup from "lookup"
 import Rpc from "rpc"
+import Analysis from "std/analysis"
 import Logger from "std/logger"
 import Symbols from "symbols"
 import Workspace from "workspace"
@@ -16,8 +16,12 @@ export struct Report
   uri: String
   ## Is the generation of the check, to tell newer checks from older.
   generation: Int
-  ## Is the diagnostics, or the reason the check failed.
-  outcome: Result[List[Json]]
+  ## Is the revision of the session that the check started with.
+  revision: Int
+  ## Is that session with the checked file linked and checked in its cache.
+  session: Analysis.Session
+  ## Is the answer of the check.
+  checked: Analysis.Checked
 end
 
 ## Holds the answer to a request that needed a query, for the request with that id.
@@ -42,18 +46,16 @@ export enum Event
   Log(LogEvent)
 end
 
-## Holds what a check task needs: the file, its text and the channel for the result.
+## Holds what a check task needs: the session, the file and the channel for the result.
 export struct Job
   ## Is the channel that receives the report.
   events: Channel[Event]
-  ## Is the executable that runs the check.
-  agentica: String
-  ## Is the position encoding of the diagnostics.
-  encoding: String
+  ## Is the session with the text of every open document.
+  session: Analysis.Session
+  ## Is the revision of the session.
+  revision: Int
   ## Is the path of the file.
   path: String
-  ## Is the text of the buffer.
-  text: String
   ## Is the URI of the file.
   uri: String
   ## Is the generation of the check.
@@ -104,23 +106,31 @@ export def read_input(events: Channel[Event]) -> Result[Void]
   return ok()
 end
 
-## Checks the file of the job and sends the report to the channel, returning ok.
+## Refreshes the session for the file of the job, checks it and sends the report to the channel, returning ok.
 export def check(job: Job) -> Result[Void]
   started = Time.now_ms()
   if Logger.enabled?(LogLevel.Debug)
     Logger.debug("check started", {"uri": job.uri, "generation": job.generation.to_s})
   end
-  outcome = Check.diagnostics(job.agentica, job.path, job.text, job.encoding)
+  refreshed = Analysis.refresh(job.session, job.path)
+  checked = Analysis.check(refreshed, job.path)
   if Logger.enabled?(LogLevel.Debug)
     fields = {
       "uri": job.uri,
       "generation": job.generation.to_s,
       "ms": (Time.now_ms() - started).to_s,
-      "ok": outcome.ok?.to_s,
+      "passed": checked.passed.to_s,
     }
     Logger.debug("check finished", fields)
   end
-  deliver(job.events, Event.Checked(Report(uri: job.uri, generation: job.generation, outcome: outcome)))
+  report = Report(
+    uri: job.uri,
+    generation: job.generation,
+    revision: job.revision,
+    session: refreshed,
+    checked: checked,
+  )
+  deliver(job.events, Event.Checked(report))
   return ok()
 end
 
@@ -151,8 +161,7 @@ def answer_document(job: QueryJob, request: Lookup.Request) -> Result[Void]
     "textDocument/definition" -> return settle(job.events, job.id, "definition", Lookup.definition(request))
     "textDocument/hover" -> return settle(job.events, job.id, "hover", Lookup.hover(request))
     _ ->
-      outcome = Symbols.answer(request.agentica, request.buffer, request.cursor.encoding)
-      return settle(job.events, job.id, "document symbols", outcome)
+      return settle(job.events, job.id, "document symbols", Symbols.answer(request))
   end
 end
 

@@ -1,6 +1,7 @@
 ## Locates a position of the client in an open document.
 
 import {UTF16, characters_in, utf16_width} from "columns"
+import Uri from "uri"
 
 ## Holds the line of a position, its characters and the character index the position falls on.
 export struct Cursor
@@ -16,14 +17,15 @@ export struct Cursor
   encoding: String
 end
 
-## Returns the cursor of the position in the params, or an error when the document or the position is unknown.
+## Returns the cursor of the position in the params, or an error when the document or the position is unknown. The
+## documents map the path of each open document to its text.
 export def locate(documents: Map[String, String], params: Json, encoding: String) -> Result[Cursor]
   document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
-  uri = try JSON.string(try JSON.get(document, "uri"))
+  path = try Uri.path_of(try JSON.string(try JSON.get(document, "uri")))
   at = JSON.get(params, "position").unwrap_or(JSON.null())
   line = try JSON.int(try JSON.get(at, "line"))
   character = try JSON.int(try JSON.get(at, "character"))
-  lines = (try documents.get(uri)).split("\n")
+  lines = (try documents.get(path)).split("\n")
   if line < 0 or line >= lines.size or character < 0
     return error("no such position #{line}:#{character}")
   end

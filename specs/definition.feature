@@ -62,6 +62,27 @@ Feature: Go to definition
     And the editor asks for the definition in "app.agc" at 4:8
     Then the definition at 4:8 is in "shared/names.agc" at 1:12-1:17
 
+  Scenario: the files below the folder where the server started are found at their place
+    Given the language server has started in the folder of the project
+    And the file "shared/names.agc" contains:
+      """
+      export def shout(name: String) -> String
+        return name.upcase
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {shout} from "shared/names"
+
+      def main() -> Void
+        puts(shout("ana"))
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 4:8
+    Then the definition at 4:8 is in "shared/names.agc" at 1:12-1:17
+
   Scenario: a function of a std module has no definition
     Given the language server has started
     When the editor opens "app.agc" with:
@@ -76,6 +97,39 @@ Feature: Go to definition
       """
     And the editor asks for the definition in "app.agc" at 4:18
     Then there is no definition at 4:18
+
+  Scenario: a type name in a signature is found where the type is declared
+    Given the language server has started
+    And the file "models.agc" contains:
+      """
+      export struct User
+        name: String
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Models from "models"
+
+      struct Cell
+        value: Int
+      end
+
+      def make(cell: Cell, user: Models.User) -> Cell
+        return cell
+      end
+
+      def main() -> Void
+        puts(make(Cell(value: 1), Models.User(name: "Ana")).value)
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 7:17
+    And the editor asks for the definition in "app.agc" at 7:36
+    And the editor asks for the definition in "app.agc" at 7:45
+    Then the definition at 7:17 is in "app.agc" at 3:8-3:12
+    And the definition at 7:36 is in "models.agc" at 1:15-1:19
+    And the definition at 7:45 is in "app.agc" at 3:8-3:12
 
   Scenario: a folder of the project named std is found like any other
     Given the language server has started
@@ -231,21 +285,3 @@ Feature: Go to definition
       | offered        | asked |
       | utf-16         | 6:17  |
       | utf-16, utf-32 | 6:16  |
-
-  Scenario: an agentica that cannot run leaves the definition empty and warns
-    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
-    And the file "app.agc" contains:
-      """
-      def double(n: Int) -> Int
-        return n * 2
-      end
-
-      def main() -> Void
-        puts(double(21))
-      end
-
-      """
-    When the editor opens "app.agc" without waiting
-    And the editor asks for the definition in "app.agc" at 6:9
-    Then there is no definition at 6:9
-    And the server warns "cannot answer the request for the definition"

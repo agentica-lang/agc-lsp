@@ -191,6 +191,46 @@ Feature: Hover on builtins
     And the hover at 17:14 shows the declaration "Line(Int)"
     And the hover at 17:14 shows the documentation "Draws a line of a width."
 
+  Scenario: a type name in a signature shows its declaration and its doc
+    Given the language server has started
+    And the file "models.agc" contains:
+      """
+      ## Holds a user.
+      export struct User
+        name: String
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Models from "models"
+
+      ## Holds a cell of a grid.
+      struct Cell
+        value: Int
+      end
+
+      def make(cell: Cell, user: Models.User) -> Cell
+        return cell
+      end
+
+      def main() -> Void
+        puts(make(Cell(value: 1), Models.User(name: "Ana")).value)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 8:17
+    And the editor hovers over "app.agc" at 8:36
+    And the editor hovers over "app.agc" at 8:45
+    Then the hover at 8:17 shows the declaration "struct Cell"
+    And the hover at 8:17 shows the documentation "Holds a cell of a grid."
+    And the hover at 8:17 covers 8:16-8:20
+    And the hover at 8:36 shows the declaration "struct User"
+    And the hover at 8:36 shows the documentation "Holds a user."
+    And the hover at 8:36 covers 8:28-8:39
+    And the hover at 8:45 shows the declaration "struct Cell"
+    And the hover at 8:45 covers 8:44-8:48
+
   Scenario: a local, a parameter and a loop name show their type only
     Given the language server has started
     When the editor opens "app.agc" with:
@@ -411,23 +451,30 @@ Feature: Hover on builtins
     And the server warns "cannot load the builtin catalog"
 
   Scenario: a newer hover on a document supersedes the older ones, which are answered with null
-    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
-    When the editor opens "app.agc" with:
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
+    And the file "app.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         count = 21
         puts(count)
       end
 
       """
-    And the editor hovers over "app.agc" at 3:8 three times in a row
+    When the editor opens "app.agc" without waiting
+    And the editor hovers over "app.agc" at 5:8 three times in a row
     Then the earlier hovers in a row are answered with null
-    And the hover at 3:8 shows the type "Int"
+    And the hover at 5:8 shows the type "Int"
 
-  Scenario: at most four queries run at a time and the others wait their turn
-    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
+  Scenario: more hovers than the limit of queries at once are all answered in turn
+    Given the language server has started
+    And the file "heavy.agc" is a module of 1500 functions
     And the files "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" contain:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         count = 21
         puts(count)
@@ -435,36 +482,43 @@ Feature: Hover on builtins
 
       """
     When the editor opens the files "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" without waiting
-    And the editor waits for the diagnostics of 6 files
-    And the editor hovers over each of "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" at 3:8
-    Then the hovers of "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" at 3:8 show the type "Int"
+    And the editor hovers over each of "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" at 5:8
+    Then the hovers of "a.agc, b.agc, c.agc, d.agc, e.agc, f.agc" at 5:8 show the type "Int"
 
   Scenario: a hover that the editor cancels is answered as cancelled
-    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
-    When the editor opens "app.agc" with:
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
+    And the file "app.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         count = 21
         puts(count)
       end
 
       """
-    And the editor hovers over "app.agc" at 3:8 and cancels the request
-    Then the hover at 3:8 is answered as cancelled
+    When the editor opens "app.agc" without waiting
+    And the editor hovers over "app.agc" at 5:8 and cancels the request
+    Then the hover at 5:8 is answered as cancelled
 
   Scenario: a hover still running at shutdown is answered with null before the shutdown
-    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
-    When the editor opens "app.agc" with:
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
+    And the file "app.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         count = 21
         puts(count)
       end
 
       """
-    And the editor hovers over "app.agc" at 3:8 without waiting
-    Then there is no hover at 3:8
-    And the hover at 3:8 is answered before the shutdown
+    When the editor opens "app.agc" without waiting
+    And the editor hovers over "app.agc" at 5:8 without waiting
+    Then there is no hover at 5:8
+    And the hover at 5:8 is answered before the shutdown
 
   Scenario: the code of a hover is fenced with more backticks than its text has
     Given the language server has started
@@ -484,7 +538,7 @@ Feature: Hover on builtins
     And the hover at 6:9 is fenced with 4 backticks
 
   Scenario: a keyword, a comment and a blank need no query
-    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
+    Given the language server has started with the arguments "--log-level debug"
     And the file "app.agc" contains:
       """
       def main() -> Void
@@ -504,4 +558,4 @@ Feature: Hover on builtins
     And there is no hover at 2:1
     And there is no definition at 2:6
     And there is no definition at 4:2
-    And the server never logs "cannot answer the request"
+    And the server never logs "the query was refused"

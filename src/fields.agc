@@ -5,11 +5,6 @@ export def text(found: Json, key: String) -> String
   return JSON.string(JSON.get(found, key).unwrap_or(JSON.null())).unwrap_or("")
 end
 
-## Returns the whole number of the field, or the fallback.
-export def number(found: Json, key: String, fallback: Int) -> Int
-  return JSON.int(JSON.get(found, key).unwrap_or(JSON.null())).unwrap_or(fallback)
-end
-
 ## Returns the items of the list field, or an empty list.
 export def items(found: Json, key: String) -> List[Json]
   none: List[Json] = []

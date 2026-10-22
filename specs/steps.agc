@@ -2,8 +2,10 @@
 
 import BDD from "std/bdd"
 
-SERVER = "src/main.agc"
 LAUNCHER = "bin/agc-lsp"
+SPECS_CACHE = "agc-lsp-specs-cache"
+COPY = "copy"
+COMPILED_SUFFIX = ".agcb"
 TIMEOUT_MS = 20_000
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789ABCDEF"
@@ -11,7 +13,6 @@ ASCII_LIMIT = 128
 COMMENT_LINE = "# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 LINES_PER_KB = 10
 MANIFEST = "agentica.toml"
-RUNS_SUFFIX = ".runs"
 PUBLISH = "textDocument/publishDiagnostics"
 HOVER = "textDocument/hover"
 COMPLETION = "textDocument/completion"
@@ -48,7 +49,6 @@ struct Session
   exit_code: Int
   stderr: String
   log: String
-  runs: Map[String, Json]
 end
 
 struct Entry
@@ -64,14 +64,22 @@ end
 def main() -> Void
   BDD.run([
     BDD.step("the language server has started", &started),
-    BDD.step("the language server has started through the launcher", &started_through_launcher),
     BDD.step("the language server has started through a link to the launcher", &started_through_link),
     BDD.step(
       "the language server has started through a relative link to the launcher",
       &started_through_relative_link,
     ),
+    BDD.step("the language server has started in the folder of the project", &started_in_folder),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
+    BDD.step("a copy of the launcher with the server source:", &copies_launcher),
+    BDD.step("the server source changes to:", &changes_server_source),
+    BDD.step("the launcher runs", &launcher_runs),
+    BDD.step("the launcher exits with code {int}", &launcher_exits_with),
+    BDD.step("the launcher printed {string}", &launcher_printed),
+    BDD.step("the launcher reported {string}", &launcher_reported),
+    BDD.step("the cache holds {int} compiled servers", &cache_holds),
+    BDD.step("the cache holds {int} compiled server", &cache_holds),
     BDD.step("the editor offers the workspace as {string}", &offers_workspace),
     BDD.step("the language server has loaded the builtin catalog", &started_with_catalog),
     BDD.step(
@@ -83,6 +91,7 @@ def main() -> Void
     BDD.step("the server writes its log to {string}", &writes_log_to),
     BDD.step("the file {string} contains:", &file_contains),
     BDD.step("the files {string} contain:", &files_contain),
+    BDD.step("the file {string} is a module of {int} functions", &module_of_functions),
     BDD.step("the folder has the link {string} to itself", &links_to_itself),
     BDD.step("the editor opens {string}", &opens),
     BDD.step("the editor opens {string} without waiting", &opens_without_waiting),
@@ -124,6 +133,7 @@ def main() -> Void
     BDD.step("the editor searches the workspace for {string} three times in a row", &searches_workspace_in_a_row),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
+    BDD.step("the editor closes {string} through a localhost URI", &closes_through_localhost),
     BDD.step("the editor waits {int} milliseconds", &waits),
     BDD.step("the editor waits for diagnostics", &waits_for_diagnostics),
     BDD.step("the editor waits for a log message containing {string}", &waits_for_log),
@@ -147,6 +157,7 @@ def main() -> Void
     BDD.step("{string} through a localhost URI gets these diagnostics:", &gets_diagnostics_through_localhost),
     BDD.step("{string} gets no diagnostics", &gets_none),
     BDD.step("{string} gets nothing more", &gets_nothing_more),
+    BDD.step("the diagnostics of {string} are published before those of {string}", &published_before),
     BDD.step("no diagnostics are published", &publishes_nothing),
     BDD.step("the server warns {string}", &warns),
     BDD.step("the server logs a {string} line containing {string}", &logs_line),
@@ -168,8 +179,8 @@ def main() -> Void
     BDD.step("the diagnostic of {string} points to {string}", &points_to),
     BDD.step("the diagnostic of {string} has no related location", &has_no_related),
     BDD.step("the diagnostic of {string} points into {string} at {int}:{int}-{int}:{int}", &points_into),
-    BDD.step("the checker ran {int} time for {string}", &checker_ran),
-    BDD.step("the checker ran {int} times for {string}", &checker_ran),
+    BDD.step("the server started {int} check of {string}", &checks_started),
+    BDD.step("the server started {int} checks of {string}", &checks_started),
     BDD.step("the hover at {int}:{int} shows {string}", &hover_shows),
     BDD.step("the hover at {int}:{int} shows these builtins:", &hover_shows_these),
     BDD.step("the hover at {int}:{int} shows the type {string}", &hover_shows_type),
@@ -211,10 +222,6 @@ def started(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return initialize(ctx, JSON.object({}))
 end
 
-def started_through_launcher(ctx: BDD.Context, _args: List[String]) -> BDD.Context
-  return initialize(BDD.set(ctx, "launcher", JSON.from(Path.real(LAUNCHER).unwrap!)), JSON.object({}))
-end
-
 def started_through_link(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   ready = with_folder(ctx)
   path = file_path(ready, "agc-lsp")
@@ -237,6 +244,80 @@ def started_through_relative_link(ctx: BDD.Context, _args: List[String]) -> BDD.
     return BDD.assert(ready, false, "cannot link the launcher: #{second.message}")
   end
   return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
+end
+
+def copies_launcher(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  script = File.read_text(Path.real(LAUNCHER).unwrap!, TIMEOUT_MS).unwrap_or("")
+  placed = write_copy(ready, "bin/agc-lsp", script)
+  return write_copy(placed, "src/main.agc", BDD.doc_string(ctx))
+end
+
+def changes_server_source(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return write_copy(ctx, "src/main.agc", BDD.doc_string(ctx))
+end
+
+def write_copy(ctx: BDD.Context, name: String, text: String) -> BDD.Context
+  path = file_path(ctx, "#{COPY}/#{name}")
+  made = Dir.mkdir(parent_of(path), TIMEOUT_MS)
+  if !made.ok?
+    return BDD.assert(ctx, false, "cannot make the folder of #{path}: #{made.message}")
+  end
+  written = File.write_text(path, text, TIMEOUT_MS)
+  return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
+end
+
+def launcher_runs(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  script = file_path(ctx, "#{COPY}/bin/agc-lsp")
+  arguments = ["XDG_CACHE_HOME=#{file_path(ctx, "cache")}", "bash", script]
+  case launched(arguments)
+    ok(done) -> return BDD.set(ctx, "launch", done)
+    error(message) -> return BDD.assert(ctx, false, "cannot run the launcher: #{message}")
+  end
+end
+
+def launched(arguments: List[String]) -> Result[Json]
+  child = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
+  try Process.close_stdin(child, TIMEOUT_MS)
+  output = try Process.output(child, TIMEOUT_MS)
+  status = try Process.wait(child, TIMEOUT_MS)
+  Process.close(child)
+  return ok(JSON.object({
+    "status": JSON.from(status),
+    "stdout": JSON.from(output.stdout),
+    "stderr": JSON.from(output.stderr),
+  }))
+end
+
+def launcher_exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  status = JSON.int(launch_field(ctx, "status")).unwrap_or(-1)
+  return BDD.assert(ctx, status == args[0].to_i!, "the launcher exited with #{status}; expected #{args[0]}")
+end
+
+def launcher_printed(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  stdout = JSON.string(launch_field(ctx, "stdout")).unwrap_or("")
+  return BDD.assert(ctx, stdout.contains?(args[0]), "#{args[0].inspect} is not in the output #{stdout.inspect}")
+end
+
+def launcher_reported(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  stderr = JSON.string(launch_field(ctx, "stderr")).unwrap_or("")
+  return BDD.assert(ctx, stderr.contains?(args[0]), "#{args[0].inspect} is not in the errors #{stderr.inspect}")
+end
+
+def launch_field(ctx: BDD.Context, name: String) -> Json
+  return at(BDD.get(ctx, "launch").unwrap_or(JSON.null()), [name]).unwrap_or(JSON.null())
+end
+
+def cache_holds(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  none: List[String] = []
+  names = Dir.list(file_path(ctx, "cache/agc-lsp"), TIMEOUT_MS).unwrap_or(none).filter do |name|
+    name.ends_with?(COMPILED_SUFFIX)
+  end
+  return BDD.assert(ctx, names.size == args[0].to_i!, "the cache holds #{names.size} compiled servers: #{names}")
+end
+
+def started_in_folder(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return initialize(BDD.set(with_folder(ctx), "start in", JSON.from(true)), JSON.object({}))
 end
 
 def started_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -291,13 +372,34 @@ def files_contain(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return written
 end
 
+def module_of_functions(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  functions = (0...args[1].to_i!).to_a.map do |n| function_source(n) end
+  return write_text(with_folder(ctx), args[0], "#{functions.join("\n")}\n")
+end
+
+def function_source(n: Int) -> String
+  return <<~TEXT
+    export def slow#{n}(n: Int) -> Int
+      total = n * 2
+      for x in [1, 2, 3]
+        total += x + total
+      end
+      return total
+    end
+  TEXT
+end
+
 def write_file(ctx: BDD.Context, name: String) -> BDD.Context
+  return write_text(ctx, name, BDD.doc_string(ctx))
+end
+
+def write_text(ctx: BDD.Context, name: String, text: String) -> BDD.Context
   path = file_path(ctx, name)
   parents = Dir.mkdir(parent_of(path), TIMEOUT_MS)
   if !parents.ok?
     return BDD.assert(ctx, false, "cannot make the folder of #{path}: #{parents.message}")
   end
-  written = File.write_text(path, BDD.doc_string(ctx), TIMEOUT_MS)
+  written = File.write_text(path, text, TIMEOUT_MS)
   return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
 end
 
@@ -583,8 +685,12 @@ def closes_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return close_document(ctx, args[0])
 end
 
-def close_document(ctx: BDD.Context, name: String) -> BDD.Context
-  document = JSON.object({"uri": JSON.from(uri(ctx, name))})
+def closes_through_localhost(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(close_document(ctx, args[0], LOCALHOST), args[0])
+end
+
+def close_document(ctx: BDD.Context, name: String, authority: String = "") -> BDD.Context
+  document = JSON.object({"uri": JSON.from(uri(ctx, name, authority))})
   return notify(ctx, "textDocument/didClose", JSON.object({"textDocument": document}))
 end
 
@@ -691,6 +797,31 @@ end
 
 def gets_nothing_more(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| nothing_more(done, uri(done, args[0])) end
+end
+
+def published_before(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| ordered(done, uri(done, args[0]), uri(done, args[1])) end
+end
+
+def ordered(ctx: BDD.Context, earlier: String, later: String) -> BDD.Context
+  first = last_publish(ctx, earlier)
+  second = last_publish(ctx, later)
+  message = "the last publish of #{earlier} is at #{first}, of #{later} at #{second}"
+  return BDD.assert(ctx, first >= 0 and first < second, message)
+end
+
+def last_publish(ctx: BDD.Context, target: String) -> Int
+  found = -1
+  index = 0
+  wanted = JSON.from(target).to_s
+  for message in messages(ctx)
+    method = at(message, ["method"]).unwrap_or(JSON.null()).to_s
+    if method == JSON.from(PUBLISH).to_s and at(message, ["params", "uri"]).unwrap_or(JSON.null()).to_s == wanted
+      found = index
+    end
+    index += 1
+  end
+  return found
 end
 
 def answers_within(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -824,10 +955,13 @@ def points_into(ctx: BDD.Context, args: List[String]) -> BDD.Context
   end
 end
 
-def checker_ran(ctx: BDD.Context, args: List[String]) -> BDD.Context
+def checks_started(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
-    ran = JSON.int(at(BDD.get(done, "runs").unwrap!, [args[1]]).unwrap_or(JSON.from(0))).unwrap_or(0)
-    BDD.assert(done, ran == args[0].to_i!, "the checker ran #{ran} times for #{args[1]}; expected #{args[0]}")
+    started = entries(stderr(done)).filter do |entry|
+      entry.text.contains?("check started") and entry.text.contains?("/#{args[1]} ")
+    end
+    message = "the server started #{started.size} checks of #{args[1]}; expected #{args[0]}"
+    BDD.assert(done, started.size == args[0].to_i!, message)
   end
 end
 
@@ -1044,7 +1178,7 @@ end
 def hover_documented(ctx: BDD.Context, line: String, column: String, doc: String) -> BDD.Context
   case hover_value(ctx, line, column)
     ok(value) ->
-      shown = value.contains?("\n\n#{doc}\n\n")
+      shown = value.contains?("\n\n#{doc}\n\n") or value.ends_with?("\n\n#{doc}")
       message = "the hover at #{line}:#{column} does not show the documentation #{doc} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1600,8 +1734,7 @@ def record(ctx: BDD.Context, ran: Result[Session]) -> BDD.Context
       with_sent = BDD.set(with_arrivals, "sent", JSON.object(done.sent))
       with_exit = BDD.set(with_sent, "exit", JSON.from(done.exit_code))
       with_stderr = BDD.set(with_exit, "stderr", JSON.from(done.stderr))
-      with_log = BDD.set(with_stderr, "log", JSON.from(done.log))
-      return BDD.set(with_log, "runs", JSON.object(done.runs))
+      return BDD.set(with_stderr, "log", JSON.from(done.log))
     error(message) -> return BDD.assert(ctx, false, message)
   end
 end
@@ -1708,15 +1841,12 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     log_path = file_path(ctx, log_file)
     words = words.concat(["--log-file", log_path])
   end
-  command = "agentica"
-  arguments = ["--allow-run", SERVER].concat(words)
-  launcher = JSON.string(BDD.get(ctx, "launcher").unwrap_or(JSON.from(""))).unwrap_or("")
-  if launcher != ""
-    command = launcher
-    arguments = words
+  arguments = ["XDG_CACHE_HOME=#{specs_cache()}", launcher_of(ctx)].concat(words)
+  start_in = "."
+  if BDD.get(ctx, "start in").ok?
+    start_in = dir
   end
-  ran = session(dir, command, arguments, actions)
-  counts = runs_in(dir)
+  ran = session(dir, start_in, "env", arguments, actions)
   log = ""
   if log_path != ""
     log = File.read_text(log_path, TIMEOUT_MS).unwrap_or("")
@@ -1725,27 +1855,32 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     _ = Path.remove(dir, TIMEOUT_MS)
   end
   case ran
-    ok(done) -> return ok(done.with(log: log, runs: counts))
+    ok(done) -> return ok(done.with(log: log))
     error(message) -> return error(message)
   end
 end
 
-def runs_in(dir: String) -> Map[String, Json]
-  counts: Map[String, Json] = {}
-  none: List[String] = []
-  for entry in Dir.list(dir, TIMEOUT_MS).unwrap_or(none)
-    if entry.ends_with?(RUNS_SUFFIX)
-      lines = File.read_text(Path.join([dir, entry]).unwrap!, TIMEOUT_MS).unwrap_or("").split("\n")
-      name = entry.slice(0, entry.length - RUNS_SUFFIX.length)
-      written = lines.filter do |line| line.strip.length > 0 end.size
-      counts = counts.put(name, JSON.from(written))
-    end
+def launcher_of(ctx: BDD.Context) -> String
+  chosen = JSON.string(BDD.get(ctx, "launcher").unwrap_or(JSON.from(""))).unwrap_or("")
+  if chosen != ""
+    return chosen
   end
-  return counts
+  return Path.real(LAUNCHER).unwrap!
 end
 
-def session(dir: String, command: String, arguments: List[String], actions: List[Json]) -> Result[Session]
-  server = try Process.spawn_captured(command, arguments, ".", TIMEOUT_MS)
+def specs_cache() -> String
+  base = System.env("TMPDIR").unwrap_or("/tmp")
+  return Path.join([base, SPECS_CACHE]).unwrap!
+end
+
+def session(
+  dir: String,
+  start_in: String,
+  command: String,
+  arguments: List[String],
+  actions: List[Json],
+) -> Result[Session]
+  server = try Process.spawn_captured(command, arguments, start_in, TIMEOUT_MS)
   received: List[Json] = []
   arrivals: List[Int] = []
   sent: Map[String, Json] = {}
@@ -1766,7 +1901,6 @@ def session(dir: String, command: String, arguments: List[String], actions: List
     exit_code: exit_code,
     stderr: output.stderr,
     log: "",
-    runs: {},
   ))
 end
 

@@ -3,35 +3,19 @@ Feature: Logging
   show in their LSP log; default warning), the editor as log messages (default
   error) and an optional JSON lines file (the level of stderr).
 
-  Scenario: a failed check warns on stderr and stays out of the editor by default
-    Given the language server has started with the arguments "--agentica specs/fixtures/silent-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then the server logs a "warning" line containing "no diagnostic"
+  Scenario: a catalog that cannot be loaded warns on stderr and stays out of the editor by default
+    Given the language server has started with the arguments "--agentica specs/fixtures/nohelp-agentica"
+    When the editor waits 1500 milliseconds
+    Then the server logs a "warning" line containing "cannot load the builtin catalog"
     And the editor gets no log messages
     And the server logs no "info" lines
     And the server logs no "debug" lines
 
   Scenario: the editor can ask for the warnings of the server
-    Given the language server has started with the arguments "--client-log-level warning --agentica specs/fixtures/silent-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then the editor gets a "warning" log message containing "no diagnostic"
-    And the server logs a "warning" line containing "no diagnostic"
+    Given the language server has started with the arguments "--client-log-level warning --agentica specs/fixtures/nohelp-agentica"
+    When the editor waits for a log message containing "cannot load the builtin catalog"
+    Then the editor gets a "warning" log message containing "cannot load the builtin catalog"
+    And the server logs a "warning" line containing "cannot load the builtin catalog"
 
   Scenario: the start and the end of a check are logged at debug level
     Given the server writes its log to "server.log"
@@ -53,9 +37,9 @@ Feature: Logging
     And the log file "server.log" never contains "hidden-text"
 
   Scenario: the starting, the initialization and the shutdown are logged at info level
-    Given the language server has started with the arguments "--log-level info --agentica specs/fixtures/noisy-agentica"
+    Given the language server has started with the arguments "--log-level info --agentica specs/fixtures/nohelp-agentica"
     Then the server logs an "info" line containing "starting"
-    And the server logs an "info" line containing "specs/fixtures/noisy-agentica"
+    And the server logs an "info" line containing "specs/fixtures/nohelp-agentica"
     And the server logs an "info" line containing "initialized"
     And the server logs an "info" line containing "shutting down"
     And the server logs no "debug" lines
@@ -82,16 +66,8 @@ Feature: Logging
   Scenario: a level on the command line wins over the one of the editor
     Given the editor asks for the log level "debug"
     And the editor asks for the client log level "debug"
-    And the language server has started with the arguments "--log-level error --client-log-level error --agentica specs/fixtures/silent-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
+    And the language server has started with the arguments "--log-level error --client-log-level error --agentica specs/fixtures/nohelp-agentica"
+    When the editor waits 1500 milliseconds
     Then the server logs no "debug" lines
     And the server logs no "warning" lines
     And the editor gets no log messages
@@ -132,33 +108,17 @@ Feature: Logging
 
   Scenario: a log file gets JSON lines
     Given the server writes its log to "server.log"
-    And the language server has started with the arguments "--log-level info --agentica specs/fixtures/silent-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then the log file "server.log" has a "warning" line containing "no diagnostic"
+    And the language server has started with the arguments "--log-level info --agentica specs/fixtures/nohelp-agentica"
+    When the editor waits 1500 milliseconds
+    Then the log file "server.log" has a "warning" line containing "cannot load the builtin catalog"
     And the log file "server.log" has an "info" line containing "starting"
     And the log file "server.log" has only JSON lines
 
   Scenario: the log file does not get what is below the level
     Given the server writes its log to "server.log"
-    And the language server has started with the arguments "--agentica specs/fixtures/silent-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then the log file "server.log" has a "warning" line containing "no diagnostic"
+    And the language server has started with the arguments "--agentica specs/fixtures/nohelp-agentica"
+    When the editor waits 1500 milliseconds
+    Then the log file "server.log" has a "warning" line containing "cannot load the builtin catalog"
     And the log file "server.log" has no "info" lines
 
   Scenario: stderr can be written as JSON lines
@@ -186,6 +146,13 @@ Feature: Logging
     Given the language server has started with the arguments "--log-level"
     Then the server warns "needs a value"
 
+  Scenario: the binary named after --stdio is the one that prints the catalog
+    Given the editor asks for the client log level "warning"
+    And the language server has started with the arguments "--stdio --agentica specs/fixtures/missing-agentica"
+    When the editor waits for a log message containing "cannot load the builtin catalog"
+    Then the server warns "cannot load the builtin catalog from specs/fixtures/missing-agentica"
+    And the server never logs "ignoring the argument"
+
   Scenario Outline: an unknown level from the editor is warned about and the default is kept
     Given the editor asks for the log level "<level>"
     And the language server has started
@@ -205,7 +172,7 @@ Feature: Logging
     And the answer to initialize comes before the log messages
 
   Scenario: logging to the editor and to stderr does not slow down many checks
-    Given the language server has started with the arguments "--log-level debug --client-log-level debug --agentica specs/fixtures/crowded-agentica"
+    Given the language server has started with the arguments "--log-level debug --client-log-level debug"
     And the files "one.agc, two.agc, three.agc, four.agc, five.agc, six.agc" contain:
       """
       def main() -> Void

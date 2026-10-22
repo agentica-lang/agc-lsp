@@ -1,7 +1,7 @@
 Feature: Find references
   The editor lists where a name is used: in the file, in the files it imports and in the files they use. The text of
-  the buffer counts for the file itself; the other files are read from disk. The declaration is part of the list
-  unless the editor leaves it out.
+  the buffer counts for the file itself and for the other open files; the rest are read from disk. The declaration
+  is part of the list unless the editor leaves it out.
 
   Scenario: the uses of a function are listed with its declaration
     Given the language server has started
@@ -118,7 +118,7 @@ Feature: Find references
       | app.agc | 10:8-10:14 |
 
   Scenario: a keyword, a comment, a blank and a document that is not open need no query
-    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
+    Given the language server has started with the arguments "--log-level debug"
     And the file "app.agc" contains:
       """
       def main() -> Void
@@ -136,7 +136,7 @@ Feature: Find references
     And there are no references at 4:2
     And there are no references at 2:6
     And there are no references at 1:1
-    And the server never logs "cannot answer the request"
+    And the server never logs "the query was refused"
 
   Scenario: a name that agentica finds no expression at has no references and no warning
     Given the language server has started
@@ -150,24 +150,6 @@ Feature: Find references
     And the editor asks for the references in "app.agc" at 1:15
     Then there are no references at 1:15
     And the server never logs "cannot answer the request"
-
-  Scenario: an agentica that cannot run leaves the references empty and warns
-    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
-    And the file "app.agc" contains:
-      """
-      def double(n: Int) -> Int
-        return n * 2
-      end
-
-      def main() -> Void
-        puts(double(21))
-      end
-
-      """
-    When the editor opens "app.agc" without waiting
-    And the editor asks for the references in "app.agc" at 6:9
-    Then there are no references at 6:9
-    And the server warns "cannot answer the request for the references"
 
   Scenario Outline: the position of the editor and the locations count in the encoding it asked for
     Given the language server has started with the position encodings "<offered>"
@@ -194,18 +176,22 @@ Feature: Find references
       | utf-16, utf-32 | 6:16  | 6:14-6:20 |
 
   Scenario: a newer references request on a document supersedes the older ones, which are answered with null
-    Given the language server has started with the arguments "--agentica specs/fixtures/lagging-agentica"
-    When the editor opens "app.agc" with:
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
+    And the file "app.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         count = 21
         puts(count)
       end
 
       """
-    And the editor asks for the references in "app.agc" at 3:8 three times in a row
+    When the editor opens "app.agc" without waiting
+    And the editor asks for the references in "app.agc" at 5:8 three times in a row
     Then the earlier requests in a row are answered with null
-    And the references at 3:8 are:
+    And the references at 5:8 are:
       | file    | at       |
-      | app.agc | 2:3-2:8  |
-      | app.agc | 3:8-3:13 |
+      | app.agc | 4:3-4:8  |
+      | app.agc | 5:8-5:13 |

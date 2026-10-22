@@ -50,15 +50,6 @@ export def same_path?(a: String, b: String) -> Bool
   end
 end
 
-## Returns the folder of a path, or the root when the path is directly below it.
-export def folder_of(path: String) -> String
-  parts = path.split("/")
-  if parts.size <= 2
-    return "/"
-  end
-  return parts.take(parts.size - 1).join("/")
-end
-
 ## Returns the absolute path of a file that agentica names relative to a folder (without a leading ./), or as it is.
 export def resolve(folder: String, file: String) -> String
   if file.starts_with?("/")
@@ -72,6 +63,15 @@ export def resolve(folder: String, file: String) -> String
     return "/#{relative}"
   end
   return "#{folder}/#{relative}"
+end
+
+## Returns the path without the slashes at its end, except the root.
+export def trimmed(path: String) -> String
+  shorter = path
+  while shorter.length > 1 and shorter.ends_with?("/")
+    shorter = shorter.slice(0, shorter.length - 1)
+  end
+  return shorter
 end
 
 def before(text: String, mark: String) -> String

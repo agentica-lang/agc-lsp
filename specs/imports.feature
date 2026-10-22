@@ -1,8 +1,9 @@
 Feature: Errors that come from another file
   An error in an imported file, or in the agentica.toml of the project, is
   shown at the start of the opened file, with a related location that points
-  into the file where the error is. Saving that file checks again the open
-  files that were pointing into it.
+  into the file where the error is. The text of an open imported file is the
+  one of its buffer, saved or not, and typing in it or saving it checks again
+  the open files that were pointing into it.
 
   Scenario Outline: the location in the imported file counts in the encoding the editor asked for
     Given the language server has started with the position encodings "<offered>"
@@ -168,6 +169,147 @@ Feature: Errors that come from another file
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And the diagnostic of "app.agc" points into "lib.agc" at 3:10-3:13
+
+  Scenario: an imported file that is open is seen with its unsaved text
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "lib.agc" with:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the editor opens "app.agc"
+    Then "lib.agc" gets these diagnostics:
+      | at        | severity | code                |
+      | 2:10-2:13 | error    | CHECK-TYPE-MISMATCH |
+    And "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And the diagnostic of "app.agc" points into "lib.agc" at 2:10-2:13
+
+  Scenario: typing in the imported file updates the error of the file that imports it
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "lib.agc"
+    And the editor opens "app.agc"
+    And the editor types in "lib.agc" without waiting:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    And the editor waits for the diagnostics of 2 files
+    Then "lib.agc" gets these diagnostics:
+      | at        | severity | code                |
+      | 2:10-2:13 | error    | CHECK-TYPE-MISMATCH |
+    And "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And "lib.agc" gets no diagnostics
+    And "app.agc" gets no diagnostics
+    And "app.agc" gets nothing more
+
+  Scenario: closing an imported file with unsaved text re-checks the importer
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "lib.agc" with:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the editor opens "app.agc"
+    And the editor closes "lib.agc" without waiting
+    And the editor waits for the diagnostics of 2 files
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And "app.agc" gets no diagnostics
+    And "app.agc" gets nothing more
+
+  Scenario: closing one of two URIs of an imported file keeps its unsaved text
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "lib.agc" through a localhost URI
+    And the editor opens "lib.agc" with:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the editor opens "app.agc"
+    And the editor closes "lib.agc" through a localhost URI
+    And the editor waits 1500 milliseconds
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And the diagnostic of "app.agc" points into "lib.agc" at 2:10-2:13
+    And "app.agc" gets nothing more
 
   Scenario: the importer is checked again from its unsaved buffer
     Given the language server has started
@@ -424,24 +566,6 @@ Feature: Errors that come from another file
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
     And "app.agc" gets no diagnostics
-
-  Scenario: an error in a library module is shown without a related location
-    Given the language server has started with the arguments "--agentica specs/fixtures/library-agentica"
-    And the file "app.agc" contains:
-      """
-      import Queue from "std/queue"
-
-      def main() -> Void
-        puts("hi")
-      end
-
-      """
-    When the editor opens "app.agc"
-    Then "app.agc" gets these diagnostics:
-      | at      | severity | code                |
-      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
-    And the diagnostic of "app.agc" points to "queue.agc:2:10"
-    And the diagnostic of "app.agc" has no related location
 
   Scenario: a module without main that imports a file with an error shows the error of the import
     Given the language server has started

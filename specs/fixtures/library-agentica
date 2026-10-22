@@ -1,5 +1,0 @@
-#!/bin/sh
-case "$2" in help|type-at|outline) exec agentica "$@";; esac
-cat >/dev/null
-echo '{"code":"CHECK-TYPE-MISMATCH","file":"std/queue.agc","message":"expected Int, found String","range":{"end":{"column":13,"line":2},"start":{"column":10,"line":2}}}' >&2
-exit 1
