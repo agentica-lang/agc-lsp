@@ -30,6 +30,8 @@ src/uri.agc       file:// URIs to paths and back
 bin/prepare.agc   cache key (agentica binary, version, src/*.agc), cache folder (AGC_LSP_CACHE, else per OS), compile once with an atomic rename (an error that suggests AGC_LSP_CACHE if the file system has none), prune; prints the path of the compiled server
 bin/agc-lsp       the launcher for Linux and macOS: finds the repo through symlinks, asks prepare.agc for the program, then `exec agentica run --allow-run -- PROGRAM "$@"`
 bin/agc-lsp.bat   the same launcher for Windows (cmd.exe, `%~dp0`)
+compose.yaml      Docker Compose service `wine`: the Windows build of agentica under Wine, the repo mounted read-only
+docker/wine/      its Dockerfile (agentica.exe of `AGENTICA_VERSION`, verified against SHA256SUMS) and `smoke.sh`
 editors/nvim/     Neovim 0.11+ config (agentica.lua)
 editors/vscode/   minimal VS Code extension (language client over stdio)
 specs/            BDD features and their step program (steps.agc); smoke.agc is the session that `make smoke` and the Windows CI run; every scenario starts the server through the shell launcher bin/agc-lsp (Git Bash on Windows), with AGC_LSP_CACHE set to its own cache; bin/agc-lsp.bat is covered by smoke.agc only; specs/unix/ holds the features that need env, bash, ln or a folder called c: (the Windows CI skips them)
@@ -45,6 +47,12 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
   smoke` uses the same folder.
 - On Windows CI runs `bin\agc-lsp.bat` in `cmd` with `specs/smoke.agc`, then `agentica test specs/*.feature`, which
   leaves out `specs/unix/`.
+- `make wine`: `wine-check` and `wine-smoke`, the Windows build of agentica under Wine in Docker (`compose.yaml`,
+  `docker/wine/`; the version is `AGENTICA_VERSION` of the CI file). `wine-check` runs `agentica.exe check` on the
+  sources and the step program; `wine-smoke` prepares the program like `bin\agc-lsp.bat` does (Windows paths, a cache
+  in a Docker volume) and runs the smoke session on it. It does not run `bin\agc-lsp.bat` (Wine's `cmd` differs; real
+  Windows CI is its authority) nor `agentica test` (`Dir.mkdir_private` fails under Wine). `make test` does not use
+  Docker.
 - CI (`.github/workflows/ci.yml`) runs `make test` on the release binary named by `AGENTICA_VERSION`.
 
 ## Rules

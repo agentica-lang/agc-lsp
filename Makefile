@@ -1,6 +1,10 @@
 AGENTICA ?= agentica
+AGENTICA_VERSION := $(shell sed -n 's/^  AGENTICA_VERSION: "\(.*\)"$$/\1/p' .github/workflows/ci.yml)
+WINE = docker compose run --rm wine
 
-.PHONY: check smoke test
+export AGENTICA_VERSION
+
+.PHONY: check smoke test wine wine-check wine-smoke
 
 check:
 	$(AGENTICA) check src/main.agc
@@ -16,3 +20,11 @@ smoke:
 
 test: check smoke
 	$(AGENTICA) test specs --steps specs/steps.agc
+
+wine: wine-check wine-smoke
+
+wine-check:
+	$(WINE) sh -c 'for file in src/main.agc bin/prepare.agc specs/smoke.agc specs/steps.agc; do agentica check $$file || exit 1; done'
+
+wine-smoke:
+	$(WINE) sh docker/wine/smoke.sh

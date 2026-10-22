@@ -295,6 +295,26 @@ followed by the features in `specs/` that are not in `specs/unix/`. The features
 and `ln` (the launcher and the links) or folders called `c:` (Windows paths read on Unix), so the Windows CI skips
 them. The slow checks and queries of the scenarios come from a module of thousands of functions that the file imports.
 
+### Windows under Wine
+
+```sh
+make wine         # wine-check, then wine-smoke
+make wine-check   # agentica.exe check of src/main.agc, bin/prepare.agc, specs/smoke.agc and specs/steps.agc
+make wine-smoke   # prepare the server with Windows paths, run the smoke session on it, verify the replies
+```
+
+These run the `windows-x86_64` release of agentica, the version of `AGENTICA_VERSION` in `.github/workflows/ci.yml`,
+under Wine in Docker (`compose.yaml`, `docker/wine/Dockerfile`), so Windows problems show up in seconds instead of
+after a CI round trip. The first run builds the image (about a minute: it downloads Wine and agentica.exe and fails if
+the zip does not match `SHA256SUMS`); later runs take 2 to 4 s for `wine-check` and under 1 s for `wine-smoke`. The
+repo is mounted read-only in the container, and the compiled server is cached in the Docker volume `agc-lsp_cache`
+(`docker volume rm agc-lsp_cache` to start cold).
+
+The Wine targets do not cover `bin\agc-lsp.bat`: Wine's `cmd` cannot run its `for /f` line, so `wine-smoke` calls
+`bin/prepare.agc` and `agentica run` itself, and only real Windows CI exercises the `.bat`. They do not run
+`agentica test` either: its run folder needs `Dir.mkdir_private`, which fails under Wine, so the features run only on
+Linux and on Windows CI.
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
