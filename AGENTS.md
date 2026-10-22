@@ -62,6 +62,14 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
 - Before writing `.agc` or `.feature` files, load the `agentica-programming` skill (`.agents/skills/`).
 - Before writing or reviewing `.agc` code, load the `agentica-code-guidelines` skill too (`.agents/skills/`) and follow
   `site/content/style.md` of Agentica.
+- Checks run one at a time: two refreshes of one session give two caches, and keeping one drops the work of the other.
+  A check stores its refreshed session only when no document changed while it ran.
+- Two URIs for one path (a `localhost` authority, a double slash) share one open text and one session entry, the last
+  text written wins; each URI is still checked and published on its own, and the text stays until the last is closed.
+- Queries answer for the text the buffer had when they arrived, even if it changed or was closed meanwhile; a refusal
+  of the analysis (an error in the program, no expression there) answers `null` and logs at debug level only.
+- The compiled server is moved into the cache with `Path.rename` (atomic, never replaces a file), so two starts may
+  both compile and no lock is needed. `KEY.agcb.used` stamps the use because agentica cannot set a modification time.
 - This repo has no `agentica.toml` on purpose: `agentica check` reads the first one it finds in the folders above a
   file, so a manifest here would reach the scenarios. Scenario folders live outside the repo (under `TMPDIR` or
   `/tmp`), and `with_folder` in `specs/steps.agc` fails if an `agentica.toml` exists in any folder above them.
