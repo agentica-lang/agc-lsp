@@ -2,8 +2,10 @@
 
 import BDD from "std/bdd"
 
-SERVER = "src/main.agc"
 LAUNCHER = "bin/agc-lsp"
+SPECS_CACHE = "agc-lsp-specs-cache"
+COPY = "copy"
+COMPILED_SUFFIX = ".agcb"
 TIMEOUT_MS = 20_000
 LOCALHOST = "localhost"
 HEX_DIGITS = "0123456789ABCDEF"
@@ -64,7 +66,6 @@ end
 def main() -> Void
   BDD.run([
     BDD.step("the language server has started", &started),
-    BDD.step("the language server has started through the launcher", &started_through_launcher),
     BDD.step("the language server has started through a link to the launcher", &started_through_link),
     BDD.step(
       "the language server has started through a relative link to the launcher",
@@ -72,6 +73,14 @@ def main() -> Void
     ),
     BDD.step("the language server has started with the position encodings {string}", &started_with),
     BDD.step("the language server has started with the arguments {string}", &started_with_arguments),
+    BDD.step("a copy of the launcher with the server source:", &copies_launcher),
+    BDD.step("the server source changes to:", &changes_server_source),
+    BDD.step("the launcher runs", &launcher_runs),
+    BDD.step("the launcher exits with code {int}", &launcher_exits_with),
+    BDD.step("the launcher printed {string}", &launcher_printed),
+    BDD.step("the launcher reported {string}", &launcher_reported),
+    BDD.step("the cache holds {int} compiled servers", &cache_holds),
+    BDD.step("the cache holds {int} compiled server", &cache_holds),
     BDD.step("the editor offers the workspace as {string}", &offers_workspace),
     BDD.step("the language server has loaded the builtin catalog", &started_with_catalog),
     BDD.step(
@@ -211,10 +220,6 @@ def started(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return initialize(ctx, JSON.object({}))
 end
 
-def started_through_launcher(ctx: BDD.Context, _args: List[String]) -> BDD.Context
-  return initialize(BDD.set(ctx, "launcher", JSON.from(Path.real(LAUNCHER).unwrap!)), JSON.object({}))
-end
-
 def started_through_link(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   ready = with_folder(ctx)
   path = file_path(ready, "agc-lsp")
@@ -237,6 +242,76 @@ def started_through_relative_link(ctx: BDD.Context, _args: List[String]) -> BDD.
     return BDD.assert(ready, false, "cannot link the launcher: #{second.message}")
   end
   return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
+end
+
+def copies_launcher(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  script = File.read_text(Path.real(LAUNCHER).unwrap!, TIMEOUT_MS).unwrap_or("")
+  placed = write_copy(ready, "bin/agc-lsp", script)
+  return write_copy(placed, "src/main.agc", BDD.doc_string(ctx))
+end
+
+def changes_server_source(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return write_copy(ctx, "src/main.agc", BDD.doc_string(ctx))
+end
+
+def write_copy(ctx: BDD.Context, name: String, text: String) -> BDD.Context
+  path = file_path(ctx, "#{COPY}/#{name}")
+  made = Dir.mkdir(parent_of(path), TIMEOUT_MS)
+  if !made.ok?
+    return BDD.assert(ctx, false, "cannot make the folder of #{path}: #{made.message}")
+  end
+  written = File.write_text(path, text, TIMEOUT_MS)
+  return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
+end
+
+def launcher_runs(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  script = file_path(ctx, "#{COPY}/bin/agc-lsp")
+  arguments = ["XDG_CACHE_HOME=#{file_path(ctx, "cache")}", "bash", script]
+  case launched(arguments)
+    ok(done) -> return BDD.set(ctx, "launch", done)
+    error(message) -> return BDD.assert(ctx, false, "cannot run the launcher: #{message}")
+  end
+end
+
+def launched(arguments: List[String]) -> Result[Json]
+  child = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
+  try Process.close_stdin(child, TIMEOUT_MS)
+  output = try Process.output(child, TIMEOUT_MS)
+  status = try Process.wait(child, TIMEOUT_MS)
+  Process.close(child)
+  return ok(JSON.object({
+    "status": JSON.from(status),
+    "stdout": JSON.from(output.stdout),
+    "stderr": JSON.from(output.stderr),
+  }))
+end
+
+def launcher_exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  status = JSON.int(launch_field(ctx, "status")).unwrap_or(-1)
+  return BDD.assert(ctx, status == args[0].to_i!, "the launcher exited with #{status}; expected #{args[0]}")
+end
+
+def launcher_printed(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  stdout = JSON.string(launch_field(ctx, "stdout")).unwrap_or("")
+  return BDD.assert(ctx, stdout.contains?(args[0]), "#{args[0].inspect} is not in the output #{stdout.inspect}")
+end
+
+def launcher_reported(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  stderr = JSON.string(launch_field(ctx, "stderr")).unwrap_or("")
+  return BDD.assert(ctx, stderr.contains?(args[0]), "#{args[0].inspect} is not in the errors #{stderr.inspect}")
+end
+
+def launch_field(ctx: BDD.Context, name: String) -> Json
+  return at(BDD.get(ctx, "launch").unwrap_or(JSON.null()), [name]).unwrap_or(JSON.null())
+end
+
+def cache_holds(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  none: List[String] = []
+  names = Dir.list(file_path(ctx, "cache/agc-lsp"), TIMEOUT_MS).unwrap_or(none).filter do |name|
+    name.ends_with?(COMPILED_SUFFIX)
+  end
+  return BDD.assert(ctx, names.size == args[0].to_i!, "the cache holds #{names.size} compiled servers: #{names}")
 end
 
 def started_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1708,14 +1783,8 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     log_path = file_path(ctx, log_file)
     words = words.concat(["--log-file", log_path])
   end
-  command = "agentica"
-  arguments = ["--allow-run", SERVER].concat(words)
-  launcher = JSON.string(BDD.get(ctx, "launcher").unwrap_or(JSON.from(""))).unwrap_or("")
-  if launcher != ""
-    command = launcher
-    arguments = words
-  end
-  ran = session(dir, command, arguments, actions)
+  arguments = ["XDG_CACHE_HOME=#{specs_cache()}", launcher_of(ctx)].concat(words)
+  ran = session(dir, "env", arguments, actions)
   counts = runs_in(dir)
   log = ""
   if log_path != ""
@@ -1728,6 +1797,19 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     ok(done) -> return ok(done.with(log: log, runs: counts))
     error(message) -> return error(message)
   end
+end
+
+def launcher_of(ctx: BDD.Context) -> String
+  chosen = JSON.string(BDD.get(ctx, "launcher").unwrap_or(JSON.from(""))).unwrap_or("")
+  if chosen != ""
+    return chosen
+  end
+  return Path.real(LAUNCHER).unwrap!
+end
+
+def specs_cache() -> String
+  base = System.env("TMPDIR").unwrap_or("/tmp")
+  return Path.join([base, SPECS_CACHE]).unwrap!
 end
 
 def runs_in(dir: String) -> Map[String, Json]
