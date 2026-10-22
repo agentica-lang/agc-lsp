@@ -6,7 +6,9 @@ Syntax highlighting is not part of this extension; it will come from
 
 ## Install locally
 
-1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.8.1 or later.
+1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.8.1 or later. On
+   Windows, put the `bin` folder of the repository on `PATH`: the extension starts the command through `cmd.exe`, so
+   `agc-lsp` finds `agc-lsp.bat`.
 2. From this folder:
 
    ```sh
@@ -23,7 +25,8 @@ Syntax highlighting is not part of this extension; it will come from
 ## Settings
 
 - `agentica.server.path` (default `agc-lsp`): the command that starts the server, for example the full path of
-  `bin/agc-lsp`.
+  `bin/agc-lsp` (`bin\agc-lsp.bat` on Windows, where the extension runs the command through `cmd.exe`; a path with
+  spaces is quoted for you).
 - `agentica.server.logLevel` (default `warning`): level of the server log in the Agentica output channel.
 - `agentica.server.clientLogLevel` (default `error`): level of the log messages the server sends to the editor.
 

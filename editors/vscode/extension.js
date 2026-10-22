@@ -4,10 +4,18 @@ const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
 let client;
 let pending = Promise.resolve();
 
+function launcher(command, args) {
+  if (process.platform !== "win32") {
+    return { command, args };
+  }
+  const quoted = /\s/.test(command) && !command.startsWith('"') ? `"${command}"` : command;
+  return { command: [quoted, ...args].join(" "), args: [], options: { shell: true } };
+}
+
 function start() {
   const settings = vscode.workspace.getConfiguration("agentica.server");
   const command = settings.get("path", "agc-lsp");
-  const server = { command, args: ["--stdio"], transport: TransportKind.stdio };
+  const server = { ...launcher(command, ["--stdio"]), transport: TransportKind.stdio };
 
   client = new LanguageClient(
     "agentica",

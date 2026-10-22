@@ -29,7 +29,7 @@
         "agentica.server.path": {
           "type": "string",
           "default": "agc-lsp",
-          "description": "Command that starts the language server (the bin/agc-lsp launcher of agc-lsp)."
+          "description": "Command that starts the language server: the bin/agc-lsp launcher of agc-lsp, or bin\\agc-lsp.bat on Windows (agc-lsp finds it when bin is on PATH)."
         },
         "agentica.server.logLevel": {
           "type": "string",
