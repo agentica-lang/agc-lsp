@@ -1,6 +1,8 @@
 -- Agentica language server for Neovim 0.11+.
 -- Put agc-lsp on your PATH (see the README), then source this file from your
 -- config, for example: dofile(vim.fn.expand("~/path/to/agc-lsp/editors/nvim/agentica.lua"))
+-- On Windows, put the bin folder of agc-lsp on PATH, or use its full path in cmd:
+-- cmd = { "C:\\path\\to\\agc-lsp\\bin\\agc-lsp.bat" } (Neovim runs the .bat through cmd.exe).
 
 vim.filetype.add({ extension = { agc = "agentica" } })
 

@@ -60,7 +60,7 @@ def diagnostic(found: Analysis.Diagnostic, placing: Placing) -> Json
     message = "#{where(found)}: #{message}"
     fields = fields.put("range", JSON.object({"start": Places.origin(), "end": Places.origin()}))
     file = Uri.resolve(placing.folder, found.file)
-    if file.starts_with?("/") and Places.known?(placing.documents, file)
+    if Uri.absolute?(file) and Places.known?(placing.documents, file)
       fields = fields.put("relatedInformation", JSON.array([related(found, file, placing)]))
     end
   end

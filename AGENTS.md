@@ -27,17 +27,24 @@ src/fields.agc    reads fields of JSON objects with a default
 src/completion.agc textDocument/completion of builtins: after `Ns.` or at the start of a word
 src/check.agc     maps the first problem of `Analysis.check` to an LSP diagnostic (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
-bin/agc-lsp       the launcher editors run: finds the repo through symlinks, compiles src/main.agc once into a cache named by the agentica version and the text of src/*.agc, then `exec agentica run --allow-run -- CACHE.agcb "$@"`
+bin/prepare.agc   cache key (agentica binary, version, src/*.agc), cache folder (AGC_LSP_CACHE, else per OS), compile once with an atomic rename (an error that suggests AGC_LSP_CACHE if the file system has none), prune; prints the path of the compiled server
+bin/agc-lsp       the launcher for Linux and macOS: finds the repo through symlinks, asks prepare.agc for the program, then `exec agentica run --allow-run -- PROGRAM "$@"`
+bin/agc-lsp.bat   the same launcher for Windows (cmd.exe, `%~dp0`)
 editors/nvim/     Neovim 0.11+ config (agentica.lua)
 editors/vscode/   minimal VS Code extension (language client over stdio)
-specs/            BDD features and their step program (steps.agc); every scenario starts the server through bin/agc-lsp
+specs/            BDD features and their step program (steps.agc); smoke.agc is the session that `make smoke` and the Windows CI run; every scenario starts the server through the shell launcher bin/agc-lsp (Git Bash on Windows), with AGC_LSP_CACHE set to its own cache; bin/agc-lsp.bat is covered by smoke.agc only; specs/unix/ holds the features that need env, bash, ln or a folder called c: (the Windows CI skips them)
 VERSION           the release version; CHANGELOG.md lists what each release changed
 ```
 
 ## Commands
 
-- `make test`: `agentica check` of the sources and the step program, then `agentica test specs --steps specs/steps.agc`.
-  The first scenario compiles the server (about 3 s) into `$TMPDIR/agc-lsp-specs-cache`; the others reuse it.
+- `make test`: `agentica check` of the sources, `bin/prepare.agc`, `specs/smoke.agc` and the step program, then `make
+  smoke` (a whole session through `bin/agc-lsp`), then `agentica test specs --steps specs/steps.agc`. The first
+  scenario compiles the server (about 3 s) into `AGC_LSP_CACHE`, which the steps set to
+  `$TMPDIR/agc-lsp-specs-cache` (`TEMP` or `TMP` when `TMPDIR` is not set, `/tmp` last); the others reuse it. `make
+  smoke` uses the same folder.
+- On Windows CI runs `bin\agc-lsp.bat` in `cmd` with `specs/smoke.agc`, then `agentica test specs/*.feature`, which
+  leaves out `specs/unix/`.
 - CI (`.github/workflows/ci.yml`) runs `make test` on the release binary named by `AGENTICA_VERSION`.
 
 ## Rules

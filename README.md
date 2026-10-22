@@ -132,6 +132,14 @@ written in Agentica.
 - The files of the disk are read relative to the working folder of the server, and the analysis names the files below
   it relative to that folder; the server makes them absolute, so any folder works.
 - The VS Code extension has not been tested in VS Code.
+- Windows: CI starts the server through `bin\agc-lsp.bat` (smoke test only) and runs the other specs that need no `ln`
+  or `c:` folders through the shell launcher, with the `windows-x86_64` release of agentica. A file URI with a drive
+  letter (`file:///c%3A/dir/a.agc` or `file:///C:/dir/a.agc`) is read as the path `c:/dir/a.agc` (lower case drive
+  letter, `/` for `\`), and the locations that the server writes use that form. Neither editor extension has been tried
+  on Windows, and the features in `specs/unix/` (the launcher and links) are not run there. A UNC path or a `\\?\` path
+  is not handled. The VS Code client starts `agc-lsp.bat` through `cmd.exe`, so killing the editor hard can leave the
+  server running as an orphan. When the server compares paths (for example to find the unsaved text of a file), only
+  the drive letter is folded to lower case; the rest of the path must match in case, as the server sees it.
 - An error in an imported file is published on the file that was opened, never on the imported file itself. Typing in
   or saving a file checks again only the open files whose current diagnostic points into it. A file that imports it
   and showed no error is not checked again until it is changed, saved or reopened, so a new error that you type in an
@@ -141,38 +149,66 @@ written in Agentica.
 
 ## Usage
 
-It needs `bash` and `agentica` 0.8.1 or later on `PATH` (the server imports `std/analysis`, and its type names,
-`type_at_partial` and `refs_partial` come with 0.8.1). The programs that import `std/analysis` take about 3 s to start
-from source, because they compile the compiler, so `bin/agc-lsp` compiles the server once and keeps the program:
+It needs `agentica` 0.8.1 or later on `PATH`, and `bash` on Linux and macOS or `cmd.exe` on Windows (the server imports
+`std/analysis`, and its type names, `type_at_partial` and `refs_partial` come with 0.8.1). The programs that import
+`std/analysis` take about 3 s to start from source, because they compile the compiler, so the launcher compiles the
+server once and keeps the program:
 
 ```sh
 bin/agc-lsp [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level LEVEL] \
   [--log-format text|json] [--log-file PATH]
 ```
 
-The launcher keeps the compiled program in `${XDG_CACHE_HOME:-$HOME/.cache}/agc-lsp/KEY.agcb`, where KEY is a SHA-256
-of the resolved path of the `agentica` binary, the output of `agentica --version` and the names and text of
-`src/*.agc`, so another `agentica` or a change of the sources compiles again (about 3 s, with agentica's error on
-stderr and a non-zero status if it does not compile) and anything else starts in about 0.03 s. The program is compiled
-into a temporary file of the same folder and moved into place, so two editors that start at once never see a half file.
-Compiled programs that were not used for 30 days are removed when a new one is compiled, except the one that is about
-to run. The server runs with `agentica run --allow-run`, which it needs to print the catalog.
+On Windows the launcher is `bin\agc-lsp.bat`, with the same options.
 
-`--agentica PATH` names the binary that prints the builtin catalog (default: `agentica` from `PATH`); the checks and the
-queries are the ones of the binary that compiled the server. `--stdio` is accepted for clients that pass it; stdio is
-the only transport. The logging options are described below.
+Both launchers are thin: they find the folder of the repository, ask `bin/prepare.agc` (an Agentica program that does
+not import `std/analysis`, so it starts in a few tens of milliseconds) for the path of the compiled server, and run it
+with `agentica run --allow-run`. `bin/prepare.agc` keeps the compiled program in the `agc-lsp` folder of the user cache
+of the system:
+
+| System | Cache folder |
+| --- | --- |
+| Linux, macOS | `$XDG_CACHE_HOME/agc-lsp`, else `$HOME/.cache/agc-lsp` |
+| Windows | `%LOCALAPPDATA%\agc-lsp` |
+
+`AGC_LSP_CACHE` names the cache folder itself, on every system, and wins over the table (the specs and `make smoke` set
+it so that they never write to your cache).
+
+The program is `KEY.agcb`, where KEY is a SHA-256 of the resolved path of the `agentica` binary, the output of
+`agentica --version` and the names and text of `src/*.agc`, so another `agentica` or a change of the sources compiles
+again (about 3 s, with the error of agentica on stderr and a non-zero status if it does not compile) and anything else
+starts in about 0.03 s. The program is compiled into a temporary file of the same folder and moved into place with
+`Path.rename`, which is atomic and never replaces an existing file: a program that exists is complete, two editors that
+start at once may both compile, one move wins and the other start uses the winner and removes its temporary file, and
+no lock is needed. A file system that cannot do that kind of rename (some network homes answer `EINVAL`) makes the
+launcher exit with status 1 and an error that names the cache folder: set `AGC_LSP_CACHE` (or `XDG_CACHE_HOME`) to a
+folder on a local disk. The cache folder is made private to you (`Dir.mkdir_private`). Each start writes the time to
+`KEY.agcb.used`, because agentica has no way to set the modification time of a file; when a new program is compiled,
+the programs whose stamp (or file, without a stamp) is older than 30 days are removed, except the one that is about to
+run, and so are temporary files older than an hour (also the `compiling.*` files of the first version of the launcher).
+The server runs with `agentica run --allow-run`, which it needs to print the catalog.
+
+`--agentica PATH` names the binary that prints the builtin catalog (default: `agentica` from `PATH`); the checks and
+the queries are the ones of the binary that compiled the server. `--stdio` is accepted for clients that pass it; stdio
+is the only transport. The logging options are described below.
 
 ## Editors
 
-`bin/agc-lsp` starts the server from wherever the script lives (a symlink to it works too) and passes its arguments on.
-It uses the `agentica` on `PATH`, or the binary named by the `AGENTICA` environment variable, to compile and to run the
-server. To have `agc-lsp` on `PATH`:
+`bin/agc-lsp` (`bin\agc-lsp.bat` on Windows) starts the server from wherever the script lives (on Linux and macOS a
+symlink to it works too) and passes its arguments on. It uses the `agentica` on `PATH`, or the binary named by the
+`AGENTICA` environment variable, to compile and to run the server. To have `agc-lsp` on `PATH`:
 
 ```sh
 ln -s "$PWD/bin/agc-lsp" ~/.local/bin/agc-lsp
 ```
 
-- Neovim 0.11+: [editors/nvim/agentica.lua](editors/nvim/agentica.lua) (a note for 0.10 is in the file).
+On Windows, add the `bin` folder of the repository to `PATH` (then `agc-lsp` finds `agc-lsp.bat`), or give the full
+path of `bin\agc-lsp.bat` to the editor. Install `agentica` from the `windows-x86_64` archive of its release and put
+its `bin` folder on `PATH` too. `AGENTICA` on Windows must name the `agentica.exe` itself, not a `.cmd` shim, because
+the launcher hands it to `agentica` programs that start it as a process, which only runs `.exe` files.
+
+- Neovim 0.11+: [editors/nvim/agentica.lua](editors/nvim/agentica.lua) (a note for 0.10 and for Windows is in the
+  file).
 - VS Code: [editors/vscode](editors/vscode), a minimal extension to install from a `.vsix` (see its README).
 
 Syntax highlighting is not part of this repository; it will come from
@@ -250,9 +286,14 @@ the diagnostics.
 make test   # agentica check, then the BDD specs in specs/ (agentica test)
 ```
 
-Every scenario starts the server through `bin/agc-lsp`; the program is compiled once into
-`$TMPDIR/agc-lsp-specs-cache` (about 3 s) and the next runs reuse it until the sources or `agentica` change. The slow
-checks and queries of the scenarios come from a module of thousands of functions that the file imports.
+Every scenario starts the server through the shell launcher `bin/agc-lsp` (with `env`, so on Windows through the `bash`
+of Git for Windows); the program is compiled once into `$TMPDIR/agc-lsp-specs-cache` (`%TEMP%` on Windows; about 3 s)
+and the next runs reuse it until the sources or `agentica` change. `make smoke` (part of `make test`) runs a whole
+session (initialize, shutdown, exit) through the launcher with `specs/smoke.agc`, in the same cache folder.
+`bin\agc-lsp.bat` is covered only by that smoke test, which CI runs from `cmd` on Windows (with its own cache folder),
+followed by the features in `specs/` that are not in `specs/unix/`. The features in `specs/unix/` need `env`, `bash`
+and `ln` (the launcher and the links) or folders called `c:` (Windows paths read on Unix), so the Windows CI skips
+them. The slow checks and queries of the scenarios come from a module of thousands of functions that the file imports.
 
 ## License
 

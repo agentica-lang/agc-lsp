@@ -12,6 +12,15 @@ Needs Agentica 0.8.1 or later.
 
 ### Added
 
+- Windows: `bin\agc-lsp.bat` starts the server with `cmd.exe`, and the VS Code extension runs the command through
+  `cmd.exe` there. CI runs a whole session (initialize, shutdown, exit) through the `.bat` on `windows-latest` with the
+  `windows-x86_64` release of agentica.
+- File URIs and root paths with a drive letter (`file:///c%3A/dir/a.agc`, `C:\dir`) are read as the path
+  `c:/dir/a.agc` (lower case drive letter, `/` for `\`) and written back that way, so imports and `agentica.toml`
+  resolve on Windows.
+- `AGC_LSP_CACHE` names the cache folder of the launcher on every system.
+- `bin/prepare.agc`, an Agentica program that holds the launch logic of both launchers: the cache key, the cache
+  folder of each system (`%LOCALAPPDATA%\agc-lsp` on Windows) and the pruning.
 - Find references (`textDocument/references`): the uses of a name in the buffer and the files it imports, with the
   declaration unless `context.includeDeclaration` is false.
 - Workspace symbols (`workspace/symbol`): where a name is declared in the `.agc` files below the workspace folder and
@@ -35,9 +44,13 @@ Needs Agentica 0.8.1 or later.
   import it. Checks run one at a time and a check refreshes the session for its file; the refreshed session is kept
   only when no document changed meanwhile.
 - Workspace symbols search the open documents as the editor shows them, besides the files on disk.
-- `bin/agc-lsp` compiles the server once into `${XDG_CACHE_HOME:-$HOME/.cache}/agc-lsp`, named by the version of
-  agentica and the text of `src/*.agc`, and runs the compiled program, which starts in a few tens of milliseconds
-  instead of about 3 s. A server that does not compile prints the error of agentica and exits with status 1.
+- `bin/agc-lsp` compiles the server once into `${XDG_CACHE_HOME:-$HOME/.cache}/agc-lsp` (`%LOCALAPPDATA%\agc-lsp` on
+  Windows), named by the version of agentica and the text of `src/*.agc`, and runs the compiled program, which starts
+  in a few tens of milliseconds instead of about 3 s. A server that does not compile prints the error of agentica and
+  exits with status 1. Starts at the same time may both compile; the program is moved into place with `Path.rename`,
+  which is atomic and never replaces a file, so one wins, the other uses it, and a program that exists is complete. A
+  file system that cannot do that rename (some network homes) makes the launcher fail with an error that suggests
+  `AGC_LSP_CACHE` on a local disk.
 - `--agentica PATH` names only the binary that prints the catalog of builtins.
 - CI and the docs need Agentica 0.8.1.
 - A module without `main` is checked in one run (sonic182/agentica#516, #525).

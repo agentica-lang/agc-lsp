@@ -1,1 +1,4 @@
-*.agc linguist-language=Ruby
+*.agc text eol=lf linguist-language=Ruby
+*.feature text eol=lf
+*.bat text eol=crlf
+bin/agc-lsp text eol=lf
