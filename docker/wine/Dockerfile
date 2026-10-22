@@ -14,8 +14,7 @@ RUN test -n "$AGENTICA_VERSION" \
     && mv "${archive}/bin" /agentica
 
 FROM debian:trixie-slim
-RUN dpkg --add-architecture i386 \
-    && apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates wine wine64 \
     && rm -rf /var/lib/apt/lists/*
 ENV WINEDEBUG=-all WINEPREFIX=/wine WINEPATH='Z:\agentica'

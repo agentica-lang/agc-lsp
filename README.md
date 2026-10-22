@@ -300,7 +300,7 @@ them. The slow checks and queries of the scenarios come from a module of thousan
 ```sh
 make wine         # wine-check, then wine-smoke
 make wine-check   # agentica.exe check of src/main.agc, bin/prepare.agc, specs/smoke.agc and specs/steps.agc
-make wine-smoke   # prepare the server with Windows paths, run the smoke session on it, verify the replies
+make wine-smoke   # bin/prepare.agc with Windows paths, the smoke session on the program, verify the replies
 ```
 
 These run the `windows-x86_64` release of agentica, the version of `AGENTICA_VERSION` in `.github/workflows/ci.yml`,
@@ -311,7 +311,9 @@ repo is mounted read-only in the container, and the compiled server is cached in
 (`docker volume rm agc-lsp_cache` to start cold).
 
 The Wine targets do not cover `bin\agc-lsp.bat`: Wine's `cmd` cannot run its `for /f` line, so `wine-smoke` calls
-`bin/prepare.agc` and `agentica run` itself, and only real Windows CI exercises the `.bat`. They do not run
+`bin/prepare.agc` and `agentica run` itself, and only real Windows CI exercises the `.bat`. The cache folder of
+`wine-smoke` already exists (a Docker volume), so the folder creation of `prepare.agc` (`Dir.mkdir_private`) is not
+exercised either. They do not run
 `agentica test` either: its run folder needs `Dir.mkdir_private`, which fails under Wine, so the features run only on
 Linux and on Windows CI.
 

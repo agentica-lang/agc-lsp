@@ -1,3 +1,5 @@
+name: agc-lsp
+
 services:
   wine:
     build:

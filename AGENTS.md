@@ -49,9 +49,10 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
   leaves out `specs/unix/`.
 - `make wine`: `wine-check` and `wine-smoke`, the Windows build of agentica under Wine in Docker (`compose.yaml`,
   `docker/wine/`; the version is `AGENTICA_VERSION` of the CI file). `wine-check` runs `agentica.exe check` on the
-  sources and the step program; `wine-smoke` prepares the program like `bin\agc-lsp.bat` does (Windows paths, a cache
-  in a Docker volume) and runs the smoke session on it. It does not run `bin\agc-lsp.bat` (Wine's `cmd` differs; real
-  Windows CI is its authority) nor `agentica test` (`Dir.mkdir_private` fails under Wine). `make test` does not use
+  sources and the step program; `wine-smoke` runs `bin/prepare.agc` with Windows paths (the cache folder is a Docker
+  volume that already exists, so the folder creation of `prepare.agc`, `Dir.mkdir_private`, is not exercised) and the
+  smoke session on the program. It does not run `bin\agc-lsp.bat` (Wine's `cmd` differs; real Windows CI is its
+  authority) nor `agentica test` (`Dir.mkdir_private` fails under Wine). `make test` does not use
   Docker.
 - CI (`.github/workflows/ci.yml`) runs `make test` on the release binary named by `AGENTICA_VERSION`.
 
