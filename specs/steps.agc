@@ -3,11 +3,16 @@
 import BDD from "std/bdd"
 
 LAUNCHER = "bin/agc-lsp"
+PREPARER = "bin/prepare.agc"
+TEMP_VARIABLES = ["TMPDIR", "TEMP", "TMP"]
+PARTIAL_SUFFIX = ".tmp"
 SPECS_CACHE = "agc-lsp-specs-cache"
 COPY = "copy"
 COMPILED_SUFFIX = ".agcb"
 TIMEOUT_MS = 20_000
+HEAVY_TIMEOUT_MS = 90_000
 LOCALHOST = "localhost"
+WINDOWS_ROOT = "C:\\proj"
 HEX_DIGITS = "0123456789ABCDEF"
 ASCII_LIMIT = 128
 COMMENT_LINE = "# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -75,11 +80,13 @@ def main() -> Void
     BDD.step("a copy of the launcher with the server source:", &copies_launcher),
     BDD.step("the server source changes to:", &changes_server_source),
     BDD.step("the launcher runs", &launcher_runs),
+    BDD.step("the launcher runs twice at once", &launcher_runs_twice),
     BDD.step("the launcher exits with code {int}", &launcher_exits_with),
     BDD.step("the launcher printed {string}", &launcher_printed),
     BDD.step("the launcher reported {string}", &launcher_reported),
     BDD.step("the cache holds {int} compiled servers", &cache_holds),
     BDD.step("the cache holds {int} compiled server", &cache_holds),
+    BDD.step("the cache holds no unfinished compile", &cache_holds_no_partial),
     BDD.step("the editor offers the workspace as {string}", &offers_workspace),
     BDD.step("the language server has loaded the builtin catalog", &started_with_catalog),
     BDD.step(
@@ -100,6 +107,7 @@ def main() -> Void
     BDD.step("the editor opens {string} with a buffer of {int} KB without waiting", &opens_with_large_buffer),
     BDD.step("the editor opens the files {string} without waiting", &opens_files_without_waiting),
     BDD.step("the editor opens {string} through a localhost URI", &opens_through_localhost),
+    BDD.step("the editor opens the URI {string} with:", &opens_uri_with),
     BDD.step("the editor opens an untitled buffer", &opens_untitled),
     BDD.step("the editor saves {string} as:", &saves_as),
     BDD.step("the editor saves {string} without waiting as:", &saves_without_waiting),
@@ -249,7 +257,8 @@ end
 def copies_launcher(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   ready = with_folder(ctx)
   script = File.read_text(Path.real(LAUNCHER).unwrap!, TIMEOUT_MS).unwrap_or("")
-  placed = write_copy(ready, "bin/agc-lsp", script)
+  prepare = File.read_text(Path.real(PREPARER).unwrap!, TIMEOUT_MS).unwrap_or("")
+  placed = write_copy(write_copy(ready, "bin/agc-lsp", script), "bin/prepare.agc", prepare)
   return write_copy(placed, "src/main.agc", BDD.doc_string(ctx))
 end
 
@@ -268,16 +277,54 @@ def write_copy(ctx: BDD.Context, name: String, text: String) -> BDD.Context
 end
 
 def launcher_runs(ctx: BDD.Context, _args: List[String]) -> BDD.Context
-  script = file_path(ctx, "#{COPY}/bin/agc-lsp")
-  arguments = ["XDG_CACHE_HOME=#{file_path(ctx, "cache")}", "bash", script]
-  case launched(arguments)
+  case launched(launcher_arguments(ctx))
     ok(done) -> return BDD.set(ctx, "launch", done)
     error(message) -> return BDD.assert(ctx, false, "cannot run the launcher: #{message}")
   end
 end
 
+def launcher_runs_twice(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  case launched_twice(launcher_arguments(ctx))
+    ok(done) -> return BDD.set(ctx, "launch", done)
+    error(message) -> return BDD.assert(ctx, false, "cannot run the launcher: #{message}")
+  end
+end
+
+def launcher_arguments(ctx: BDD.Context) -> List[String]
+  script = file_path(ctx, "#{COPY}/bin/agc-lsp")
+  return ["AGC_LSP_CACHE=#{file_path(ctx, "cache")}", "bash", script]
+end
+
 def launched(arguments: List[String]) -> Result[Json]
   child = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
+  return launcher_finished(child)
+end
+
+def launched_twice(arguments: List[String]) -> Result[Json]
+  first = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
+  second = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
+  one = try launcher_finished(first)
+  two = try launcher_finished(second)
+  status = launched_status(one)
+  if status == 0
+    status = launched_status(two)
+  end
+  return ok(JSON.object({
+    "status": JSON.from(status),
+    "stdout": JSON.from("#{launched_text(one, "stdout")}#{launched_text(two, "stdout")}"),
+    "stderr": JSON.from("#{launched_text(one, "stderr")}#{launched_text(two, "stderr")}"),
+  }))
+end
+
+def launched_status(done: Json) -> Int
+  return JSON.int(JSON.get(done, "status").unwrap_or(JSON.null())).unwrap_or(-1)
+end
+
+def launched_text(done: Json, name: String) -> String
+  return JSON.string(JSON.get(done, name).unwrap_or(JSON.null())).unwrap_or("")
+end
+
+def launcher_finished(child: Process) -> Result[Json]
   try Process.close_stdin(child, TIMEOUT_MS)
   output = try Process.output(child, TIMEOUT_MS)
   status = try Process.wait(child, TIMEOUT_MS)
@@ -310,10 +357,18 @@ end
 
 def cache_holds(ctx: BDD.Context, args: List[String]) -> BDD.Context
   none: List[String] = []
-  names = Dir.list(file_path(ctx, "cache/agc-lsp"), TIMEOUT_MS).unwrap_or(none).filter do |name|
+  names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(none).filter do |name|
     name.ends_with?(COMPILED_SUFFIX)
   end
   return BDD.assert(ctx, names.size == args[0].to_i!, "the cache holds #{names.size} compiled servers: #{names}")
+end
+
+def cache_holds_no_partial(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  none: List[String] = []
+  names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(none).filter do |name|
+    name.ends_with?(PARTIAL_SUFFIX)
+  end
+  return BDD.assert(ctx, names.size == 0, "the cache holds unfinished compiles: #{names}")
 end
 
 def started_in_folder(ctx: BDD.Context, _args: List[String]) -> BDD.Context
@@ -374,7 +429,7 @@ end
 
 def module_of_functions(ctx: BDD.Context, args: List[String]) -> BDD.Context
   functions = (0...args[1].to_i!).to_a.map do |n| function_source(n) end
-  return write_text(with_folder(ctx), args[0], "#{functions.join("\n")}\n")
+  return write_text(BDD.set(with_folder(ctx), "heavy", JSON.from(true)), args[0], "#{functions.join("\n")}\n")
 end
 
 def function_source(n: Int) -> String
@@ -424,6 +479,16 @@ end
 def opens_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   opened = open_text(with_folder(ctx), args[0], "", BDD.doc_string(ctx))
   return awaiting(opened, args[0])
+end
+
+def opens_uri_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  document = JSON.object({
+    "uri": JSON.from(args[0]),
+    "languageId": JSON.from("agentica"),
+    "version": JSON.from(1),
+    "text": JSON.from(BDD.doc_string(ctx)),
+  })
+  return notify(with_folder(ctx), "textDocument/didOpen", JSON.object({"textDocument": document}))
 end
 
 def opens_with_windows_endings(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1668,13 +1733,14 @@ end
 def workspace_params(ctx: BDD.Context, params: Map[String, Json]) -> Map[String, Json]
   case BDD.get(ctx, "workspace")
     ok(offered) ->
-      root = "file://#{encoded(folder(ctx))}"
+      root = file_uri(folder(ctx), "")
       case JSON.string(offered).unwrap_or("")
         "workspace folders" ->
           entry = JSON.object({"uri": JSON.from(root), "name": JSON.from("workspace")})
           return params.put("workspaceFolders", JSON.array([entry]))
         "root URI" -> return params.put("rootUri", JSON.from(root))
         "root path" -> return params.put("rootPath", JSON.from(folder(ctx)))
+        "root path of a Windows drive" -> return params.put("rootPath", JSON.from(WINDOWS_ROOT))
         _ -> return params
       end
     error(_) -> return params
@@ -1841,12 +1907,12 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     log_path = file_path(ctx, log_file)
     words = words.concat(["--log-file", log_path])
   end
-  arguments = ["XDG_CACHE_HOME=#{specs_cache()}", launcher_of(ctx)].concat(words)
+  arguments = ["AGC_LSP_CACHE=#{specs_cache()}", launcher_of(ctx)].concat(words)
   start_in = "."
   if BDD.get(ctx, "start in").ok?
     start_in = dir
   end
-  ran = session(dir, start_in, "env", arguments, actions)
+  ran = session(dir, start_in, "env", arguments, actions, wait_ms(ctx))
   log = ""
   if log_path != ""
     log = File.read_text(log_path, TIMEOUT_MS).unwrap_or("")
@@ -1860,6 +1926,13 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
   end
 end
 
+def wait_ms(ctx: BDD.Context) -> Int
+  if BDD.get(ctx, "heavy").ok?
+    return HEAVY_TIMEOUT_MS
+  end
+  return TIMEOUT_MS
+end
+
 def launcher_of(ctx: BDD.Context) -> String
   chosen = JSON.string(BDD.get(ctx, "launcher").unwrap_or(JSON.from(""))).unwrap_or("")
   if chosen != ""
@@ -1869,8 +1942,17 @@ def launcher_of(ctx: BDD.Context) -> String
 end
 
 def specs_cache() -> String
-  base = System.env("TMPDIR").unwrap_or("/tmp")
-  return Path.join([base, SPECS_CACHE]).unwrap!
+  return Path.join([temp_folder(), SPECS_CACHE]).unwrap!
+end
+
+def temp_folder() -> String
+  for name in TEMP_VARIABLES
+    value = System.env(name).unwrap_or("")
+    if value != ""
+      return value
+    end
+  end
+  return "/tmp"
 end
 
 def session(
@@ -1879,21 +1961,22 @@ def session(
   command: String,
   arguments: List[String],
   actions: List[Json],
+  wait_ms: Int,
 ) -> Result[Session]
-  server = try Process.spawn_captured(command, arguments, start_in, TIMEOUT_MS)
+  server = try Process.spawn_captured(command, arguments, start_in, wait_ms)
   received: List[Json] = []
   arrivals: List[Int] = []
   sent: Map[String, Json] = {}
   for action in actions
     sent = noted(sent, action)
-    heard = try perform(server, dir, action)
+    heard = try perform(server, dir, action, wait_ms)
     received = received.concat(heard.messages)
     arrivals = arrivals.concat(heard.arrivals)
   end
-  try Process.close_stdin(server, TIMEOUT_MS)
-  rest = try read_rest(server)
-  exit_code = try Process.wait(server, TIMEOUT_MS)
-  output = try Process.output(server, TIMEOUT_MS)
+  try Process.close_stdin(server, wait_ms)
+  rest = try read_rest(server, wait_ms)
+  exit_code = try Process.wait(server, wait_ms)
+  output = try Process.output(server, wait_ms)
   return ok(Session(
     messages: received.concat(rest.messages),
     arrivals: arrivals.concat(rest.arrivals),
@@ -1916,19 +1999,19 @@ def noted(sent: Map[String, Json], action: Json) -> Map[String, Json]
   end
 end
 
-def perform(server: Process, dir: String, action: Json) -> Result[Heard]
+def perform(server: Process, dir: String, action: Json, wait_ms: Int) -> Result[Heard]
   kind = try JSON.string(try JSON.get(action, "kind"))
   case kind
     "send" ->
       body = try JSON.string(try JSON.get(action, "body"))
-      try Process.send(server, frame(body), TIMEOUT_MS)
+      try Process.send(server, frame(body), wait_ms)
       return ok(nothing_heard())
     "raw" ->
-      try Process.send(server, try JSON.string(try JSON.get(action, "body")), TIMEOUT_MS)
+      try Process.send(server, try JSON.string(try JSON.get(action, "body")), wait_ms)
       return ok(nothing_heard())
-    "await" -> return read_until_diagnostics(server)
-    "replies" -> return read_until_replies(server, try JSON.list(try JSON.get(action, "ids")))
-    "log" -> return read_until_log(server, try JSON.string(try JSON.get(action, "text")))
+    "await" -> return read_until_diagnostics(server, wait_ms)
+    "replies" -> return read_until_replies(server, try JSON.list(try JSON.get(action, "ids")), wait_ms)
+    "log" -> return read_until_log(server, try JSON.string(try JSON.get(action, "text")), wait_ms)
     "pause" ->
       Task.sleep(try JSON.int(try JSON.get(action, "ms")))
       return ok(nothing_heard())
@@ -1944,11 +2027,11 @@ def nothing_heard() -> Heard
   return Heard(messages: [], arrivals: [])
 end
 
-def read_until_diagnostics(server: Process) -> Result[Heard]
+def read_until_diagnostics(server: Process, wait_ms: Int) -> Result[Heard]
   received: List[Json] = []
   arrivals: List[Int] = []
   while true
-    message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
+    message = try read_body(server, try Process.read_line(server, wait_ms), wait_ms)
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
@@ -1958,12 +2041,12 @@ def read_until_diagnostics(server: Process) -> Result[Heard]
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_until_replies(server: Process, ids: List[Json]) -> Result[Heard]
+def read_until_replies(server: Process, ids: List[Json], wait_ms: Int) -> Result[Heard]
   received: List[Json] = []
   arrivals: List[Int] = []
   waiting = ids.map do |id| id.to_s end
   while waiting.size > 0
-    message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
+    message = try read_body(server, try Process.read_line(server, wait_ms), wait_ms)
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     answered = at(message, ["result"]).ok? or at(message, ["error"]).ok?
@@ -1975,11 +2058,11 @@ def read_until_replies(server: Process, ids: List[Json]) -> Result[Heard]
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_until_log(server: Process, text: String) -> Result[Heard]
+def read_until_log(server: Process, text: String, wait_ms: Int) -> Result[Heard]
   received: List[Json] = []
   arrivals: List[Int] = []
   while true
-    message = try read_body(server, try Process.read_line(server, TIMEOUT_MS))
+    message = try read_body(server, try Process.read_line(server, wait_ms), wait_ms)
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     shown = JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("")
@@ -1990,31 +2073,31 @@ def read_until_log(server: Process, text: String) -> Result[Heard]
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_rest(server: Process) -> Result[Heard]
+def read_rest(server: Process, wait_ms: Int) -> Result[Heard]
   received: List[Json] = []
   arrivals: List[Int] = []
   while true
-    header = Process.read_line(server, TIMEOUT_MS)
+    header = Process.read_line(server, wait_ms)
     if !header.ok?
       return ok(Heard(messages: received, arrivals: arrivals))
     end
-    received = received.push(try read_body(server, header.unwrap!))
+    received = received.push(try read_body(server, header.unwrap!, wait_ms))
     arrivals = arrivals.push(Time.now_ms())
   end
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_body(server: Process, header: String) -> Result[Json]
+def read_body(server: Process, header: String, wait_ms: Int) -> Result[Json]
   prefix = "Content-Length: "
   if !header.starts_with?(prefix)
     return error("expected a Content-Length header; got #{header.inspect}")
   end
   length = try header.slice(prefix.length, header.length - prefix.length).to_i
-  blank = try Process.read_line(server, TIMEOUT_MS)
+  blank = try Process.read_line(server, wait_ms)
   if blank != ""
     return error("expected a blank line after the header; got #{blank.inspect}")
   end
-  body = try Process.read_bytes(server, length, TIMEOUT_MS)
+  body = try Process.read_bytes(server, length, wait_ms)
   return JSON.parse(try String.from_bytes(body))
 end
 
@@ -2056,13 +2139,12 @@ def with_folder(ctx: BDD.Context) -> BDD.Context
   if BDD.get(ctx, "dir").ok?
     return ctx
   end
-  base = System.env("TMPDIR").unwrap_or("/tmp")
-  path = Path.join([base, "agc-lsp-#{Time.now_ms()}-#{Random.int(0, 999_999_999)}"]).unwrap!
+  path = Path.join([temp_folder(), "agc-lsp-#{Time.now_ms()}-#{Random.int(0, 999_999_999)}"]).unwrap!
   made = Dir.mkdir_private(path, TIMEOUT_MS)
   if !made.ok?
     return BDD.assert(ctx, false, "cannot make #{path}: #{made.message}")
   end
-  real = Path.real(path).unwrap!
+  real = Path.real(path).unwrap!.replace("\\", "/")
   stray = manifest_above(real)
   if stray != ""
     _ = Path.remove(real, TIMEOUT_MS)
@@ -2107,7 +2189,18 @@ def file_path(ctx: BDD.Context, name: String) -> String
 end
 
 def uri(ctx: BDD.Context, name: String, authority: String = "") -> String
-  return "file://#{authority}#{encoded("#{folder(ctx)}/#{name}")}"
+  if name.length > 1 and name.at(1) == ":"
+    return file_uri(name, authority)
+  end
+  return file_uri("#{folder(ctx)}/#{name}", authority)
+end
+
+def file_uri(path: String, authority: String) -> String
+  rooted = path
+  if path.length > 1 and path.at(1) == ":"
+    rooted = "/#{path.slice(0, 1).downcase}#{path.slice(1, path.length - 1)}"
+  end
+  return "file://#{authority}#{encoded(rooted)}"
 end
 
 def encoded(path: String) -> String

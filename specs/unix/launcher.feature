@@ -4,6 +4,10 @@ Feature: The launcher
   `std/analysis`, which takes seconds to compile, so the launcher compiles it
   once and keeps the program in a cache, named by the version of agentica and
   the text of the sources.
+  The cache folder is named by `AGC_LSP_CACHE`, which the scenarios set to a
+  folder of their own. These scenarios start the shell launcher with `env` and
+  `bash`, so they are not run on Windows, where `bin\agc-lsp.bat` is covered by
+  the smoke test (`specs/smoke.agc`) instead.
 
   Scenario: the server starts through a link to the launcher
     Given the language server has started through a link to the launcher
@@ -75,3 +79,16 @@ Feature: The launcher
     Then the launcher exits with code 1
     And the launcher reported "CHECK-UNKNOWN-NAME"
     And the cache holds 0 compiled servers
+
+  Scenario: two starts at once leave one compiled program and no unfinished compile
+    Given a copy of the launcher with the server source:
+      """
+      def main() -> Void
+        puts("serving")
+      end
+      """
+    When the launcher runs twice at once
+    Then the launcher exits with code 0
+    And the launcher printed "serving"
+    And the cache holds 1 compiled server
+    And the cache holds no unfinished compile
