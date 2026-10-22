@@ -242,6 +242,75 @@ Feature: Errors that come from another file
     And "app.agc" gets no diagnostics
     And "app.agc" gets nothing more
 
+  Scenario: closing an imported file with unsaved text re-checks the importer
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "lib.agc" with:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the editor opens "app.agc"
+    And the editor closes "lib.agc" without waiting
+    And the editor waits for the diagnostics of 2 files
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And "app.agc" gets no diagnostics
+    And "app.agc" gets nothing more
+
+  Scenario: closing one of two URIs of an imported file keeps its unsaved text
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.answer())
+      end
+
+      """
+    When the editor opens "lib.agc" through a localhost URI
+    And the editor opens "lib.agc" with:
+      """
+      export def answer() -> Int
+        return "a"
+      end
+
+      """
+    And the editor opens "app.agc"
+    And the editor closes "lib.agc" through a localhost URI
+    And the editor waits 1500 milliseconds
+    Then "app.agc" gets these diagnostics:
+      | at      | severity | code                |
+      | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
+    And the diagnostic of "app.agc" points into "lib.agc" at 2:10-2:13
+    And "app.agc" gets nothing more
+
   Scenario: the importer is checked again from its unsaved buffer
     Given the language server has started
     And the file "lib.agc" contains:

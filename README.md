@@ -92,7 +92,7 @@ written in Agentica.
   ends. Typing never waits for longer than the check that runs.
 - Two URIs for one path (for example a `localhost` authority or a double slash) share one open text and one entry of
   the session: the last text written under either is the one every check sees. Each URI is still checked and published
-  on its own.
+  on its own, and the text stays until the last of them is closed.
 - A crash of a check task is logged as an error and leaves the previous diagnostics; a crash of the catalog task is
   logged as an error and leaves hover and completion empty.
 - Completion knows the builtins only, not your own functions, structs or imports (nor the `std/` modules), and
@@ -141,9 +141,9 @@ written in Agentica.
 
 ## Usage
 
-It needs `agentica` 0.8.1 or later on `PATH` (the server imports `std/analysis`, and its type names, `type_at_partial`
-and `refs_partial` come with 0.8.1). The programs that import `std/analysis` take about 3 s to start from source,
-because they compile the compiler, so `bin/agc-lsp` compiles the server once and keeps the program:
+It needs `bash` and `agentica` 0.8.1 or later on `PATH` (the server imports `std/analysis`, and its type names,
+`type_at_partial` and `refs_partial` come with 0.8.1). The programs that import `std/analysis` take about 3 s to start
+from source, because they compile the compiler, so `bin/agc-lsp` compiles the server once and keeps the program:
 
 ```sh
 bin/agc-lsp [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level LEVEL] \
@@ -151,11 +151,12 @@ bin/agc-lsp [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level 
 ```
 
 The launcher keeps the compiled program in `${XDG_CACHE_HOME:-$HOME/.cache}/agc-lsp/KEY.agcb`, where KEY is a SHA-256
-of the output of `agentica --version` and of the text of `src/*.agc`, so a new `agentica` or a change of the sources
-compiles again (about 3 s, with agentica's error on stderr and a non-zero status if it does not compile) and anything
-else starts in about 0.03 s. The program is compiled into a temporary file of the same folder and moved into place, so
-two editors that start at once never see a half file. Compiled programs that were not used for 30 days are removed
-when a new one is compiled. The server runs with `agentica run --allow-run`, which it needs to print the catalog.
+of the resolved path of the `agentica` binary, the output of `agentica --version` and the names and text of
+`src/*.agc`, so another `agentica` or a change of the sources compiles again (about 3 s, with agentica's error on
+stderr and a non-zero status if it does not compile) and anything else starts in about 0.03 s. The program is compiled
+into a temporary file of the same folder and moved into place, so two editors that start at once never see a half file.
+Compiled programs that were not used for 30 days are removed when a new one is compiled, except the one that is about
+to run. The server runs with `agentica run --allow-run`, which it needs to print the catalog.
 
 `--agentica PATH` names the binary that prints the builtin catalog (default: `agentica` from `PATH`); the checks and the
 queries are the ones of the binary that compiled the server. `--stdio` is accepted for clients that pass it; stdio is

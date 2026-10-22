@@ -133,6 +133,7 @@ def main() -> Void
     BDD.step("the editor searches the workspace for {string} three times in a row", &searches_workspace_in_a_row),
     BDD.step("the editor closes {string}", &closes),
     BDD.step("the editor closes {string} without waiting", &closes_without_waiting),
+    BDD.step("the editor closes {string} through a localhost URI", &closes_through_localhost),
     BDD.step("the editor waits {int} milliseconds", &waits),
     BDD.step("the editor waits for diagnostics", &waits_for_diagnostics),
     BDD.step("the editor waits for a log message containing {string}", &waits_for_log),
@@ -684,8 +685,12 @@ def closes_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return close_document(ctx, args[0])
 end
 
-def close_document(ctx: BDD.Context, name: String) -> BDD.Context
-  document = JSON.object({"uri": JSON.from(uri(ctx, name))})
+def closes_through_localhost(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return awaiting(close_document(ctx, args[0], LOCALHOST), args[0])
+end
+
+def close_document(ctx: BDD.Context, name: String, authority: String = "") -> BDD.Context
+  document = JSON.object({"uri": JSON.from(uri(ctx, name, authority))})
   return notify(ctx, "textDocument/didClose", JSON.object({"textDocument": document}))
 end
 

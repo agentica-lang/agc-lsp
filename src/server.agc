@@ -49,6 +49,8 @@ export struct State
   plan: Schedule.Plan
   ## Maps each URI to the file that its diagnostic points into.
   pointing: Map[String, String]
+  ## Maps each open URI to its path.
+  open: Map[String, String]
   ## Maps the path of each open document to its text.
   documents: Map[String, String]
   ## Is the session of std/analysis with the text of every open document and the checks refreshed into its cache.
@@ -77,6 +79,7 @@ end
 export def start(options: Options.Options) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
   pointing: Map[String, String] = {}
+  open: Map[String, String] = {}
   documents: Map[String, String] = {}
   loaders: List[Task[Result[Void]]] = []
   return State(
@@ -87,6 +90,7 @@ export def start(options: Options.Options) -> State
     events: events,
     plan: Schedule.start(events),
     pointing: pointing,
+    open: open,
     documents: documents,
     session: Analysis.open(Analysis.workspace()),
     revision: 0,
@@ -493,11 +497,12 @@ def keep(state: State, uri: String, text: String, delay_ms: Int) -> State
   if path == ""
     return state
   end
-  return revised(check(buffered(state, path, text), Schedule.delayed(uri, path, delay_ms)))
+  return revised(check(buffered(state, uri, path, text), Schedule.delayed(uri, path, delay_ms)))
 end
 
-def buffered(state: State, path: String, text: String) -> State
+def buffered(state: State, uri: String, path: String, text: String) -> State
   return state.with(
+    open: state.open.put(uri, path),
     documents: state.documents.put(path, text),
     session: Analysis.update(state.session, path, text),
   )
@@ -562,12 +567,19 @@ def closed(state: State, uri: String) -> State
   end
   none: List[Json] = []
   publish(uri, none)
-  return revised(state.with(
+  remaining = state.open.delete(uri)
+  dropped = state.with(
     plan: Schedule.forget(state.plan, uri),
     pointing: state.pointing.delete(uri),
-    documents: state.documents.delete(path),
-    session: Analysis.close(state.session, path),
-  ))
+    open: remaining,
+  )
+  if remaining.keys.any? do |other| remaining.get(other).unwrap_or("") == path end
+    return dropped
+  end
+  return dependents(revised(dropped.with(
+    documents: dropped.documents.delete(path),
+    session: Analysis.close(dropped.session, path),
+  )), uri, path, 0)
 end
 
 def agentica_path(uri: String) -> String

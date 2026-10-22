@@ -26,7 +26,7 @@ Needs Agentica 0.8.1 or later.
 - Go to definition on a local, a parameter, a loop name and a pattern name.
 - Definition and hover answer in the functions that check while another function has an error, and on the names that
   resolve in a function with an error.
-- Typing in a file checks again the open files whose error points into it, before it is saved.
+- Typing in a file, and closing it with unsaved text, checks again the open files whose error points into it.
 
 ### Changed
 
@@ -40,9 +40,11 @@ Needs Agentica 0.8.1 or later.
   instead of about 3 s. A server that does not compile prints the error of agentica and exits with status 1.
 - `--agentica PATH` names only the binary that prints the catalog of builtins.
 - CI and the docs need Agentica 0.8.1.
+- A module without `main` is checked in one run (sonic182/agentica#516, #525).
 
 ### Removed
 
+- The second check with a stub `main` appended to a module.
 - The deadline of 10 s for a check or a query, the limit of 4 checks at once (checks run one at a time) and the
   processes that ran `agentica check`, `type-at`, `refs`, `outline` and `symbol`.
 
