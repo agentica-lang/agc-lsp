@@ -1,6 +1,0 @@
-#!/bin/sh
-case "$2" in help|type-at|outline) exec agentica "$@";; esac
-for last; do :; done
-echo run >> "$last.runs"
-cat >/dev/null
-exit 0

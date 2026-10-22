@@ -1,22 +1,33 @@
-## Runs `agentica --json check` on the text of a buffer and maps its diagnostic to LSP.
+## Maps the first problem that std/analysis finds in a file to an LSP diagnostic, with relatedInformation for a problem
+## in another file.
 
 import Fields from "fields"
 import Places from "places"
-import Proc from "proc"
-import Logger from "std/logger"
+import Analysis from "std/analysis"
 import Uri from "uri"
 
-CHECK_TIMEOUT_MS = 10_000
 SEVERITY_ERROR = 1
 RELATED_MESSAGE = "the error is here"
 
-## Returns the first diagnostic of the text as LSP diagnostics, or an empty list when the check passes.
-export def diagnostics(agentica: String, path: String, text: String, encoding: String) -> Result[List[Json]]
-  found = try problems(agentica, path, text, Time.now_ms() + CHECK_TIMEOUT_MS)
-  if found.size == 0
-    return ok([])
+## Holds what the diagnostic of a check needs to be placed: the file, the open documents, the working folder and the
+## position encoding.
+export struct Placing
+  ## Is the path of the checked file.
+  path: String
+  ## Maps the path of each open document to its text.
+  documents: Map[String, String]
+  ## Is the working folder, from which std/analysis writes the names of files below it.
+  folder: String
+  ## Is the position encoding of the session.
+  encoding: String
+end
+
+## Returns the first problem of the check as LSP diagnostics, or an empty list when the check passes.
+export def diagnostics(checked: Analysis.Checked, placing: Placing) -> List[Json]
+  if checked.diagnostics.size == 0
+    return []
   end
-  return ok([diagnostic(found[0], path, text, encoding)])
+  return [diagnostic(checked.diagnostics[0], placing)]
 end
 
 ## Returns the URI that the related location of the first diagnostic points into, or an empty text.
@@ -24,104 +35,52 @@ export def points_into(found: List[Json]) -> String
   if found.size == 0
     return ""
   end
-  none: List[Json] = []
-  entries = JSON.list(JSON.get(found[0], "relatedInformation").unwrap_or(JSON.null())).unwrap_or(none)
+  entries = Fields.items(found[0], "relatedInformation")
   if entries.size == 0
     return ""
   end
-  location = JSON.get(entries[0], "location").unwrap_or(JSON.null())
+  location = Fields.value(entries[0], "location")
   return Fields.text(location, "uri")
 end
 
-def failed(message: String) -> Result[List[Json]]
-  Logger.warning(message)
-  return error(message)
-end
-
-def problems(agentica: String, path: String, source: String, deadline: Int) -> Result[List[Json]]
-  case run(agentica, path, source, deadline)
-    ok(problem) ->
-      if problem == ""
-        return ok([])
-      end
-      case JSON.parse(problem)
-        ok(found) -> return ok([found])
-        error(message) -> return failed("the diagnostic of #{path} is not JSON: #{message}")
-      end
-    error(message) -> return failed("cannot check #{path}: #{message}")
+def diagnostic(found: Analysis.Diagnostic, placing: Placing) -> Json
+  message = found.message
+  if found.help != ""
+    message = "#{message}\nhelp: #{found.help}"
   end
-end
-
-def run(agentica: String, path: String, text: String, deadline: Int) -> Result[String]
-  output = try Proc.run(agentica, ["--json", "check", "--stdin", path], text, deadline)
-  case output.status
-    0 ->
-      if output.unsent != ""
-        return error(output.unsent)
-      end
-      return ok("")
-    1 ->
-      problem = last_line(output.stderr)
-      if problem == "" and output.unsent != ""
-        return error(output.unsent)
-      elsif problem == ""
-        return error("agentica exited with status 1 and no diagnostic")
-      end
-      return ok(problem)
-    _ -> return error("agentica exited with status #{output.status}: #{output.stderr.strip}")
-  end
-end
-
-def last_line(text: String) -> String
-  lines = text.strip.split("\n")
-  return lines[lines.size - 1].strip
-end
-
-def diagnostic(found: Json, path: String, source: String, encoding: String) -> Json
-  file = Fields.text(found, "file")
-  message = Fields.text(found, "message")
-  help = Fields.text(found, "help")
-  if help != ""
-    message = "#{message}\nhelp: #{help}"
-  end
-  start = Places.place(found, "start")
-  stop = Places.place(found, "end")
-  key_path = Fields.text(found, "key_path")
   fields: Map[String, Json] = {
     "severity": JSON.from(SEVERITY_ERROR),
-    "code": JSON.from(Fields.text(found, "code")),
+    "code": JSON.from(found.code),
     "source": JSON.from("agentica"),
   }
-  if Uri.same_path?(file, path)
-    fields = fields.put("range", Places.range(source.split("\n"), start, stop, encoding))
+  if Uri.same_path?(found.file, placing.path)
+    lines = Places.lines_of(placing.documents, placing.path)
+    fields = fields.put("range", Places.range(lines, found.range, placing.encoding))
   else
-    message = "#{where(file, key_path, start)}: #{message}"
+    message = "#{where(found)}: #{message}"
     fields = fields.put("range", JSON.object({"start": Places.origin(), "end": Places.origin()}))
-    if file.starts_with?("/")
-      fields = fields.put("relatedInformation", JSON.array([related(found, encoding)]))
+    file = Uri.resolve(placing.folder, found.file)
+    if file.starts_with?("/") and Places.known?(placing.documents, file)
+      fields = fields.put("relatedInformation", JSON.array([related(found, file, placing)]))
     end
   end
   return JSON.object(fields.put("message", JSON.from(message)))
 end
 
-def related(found: Json, encoding: String) -> Json
-  file = Fields.text(found, "file")
-  key_path = Fields.text(found, "key_path")
-  start = Places.place(found, "start")
-  stop = Places.place(found, "end")
+def related(found: Analysis.Diagnostic, file: String, placing: Placing) -> Json
   range = JSON.object({"start": Places.origin(), "end": Places.origin()})
-  if key_path == "" and start.line > 0
-    range = Places.range(Places.source_lines(file), start, stop, encoding)
+  if found.key_path == "" and found.range.start.line > 0
+    range = Places.range(Places.lines_of(placing.documents, file), found.range, placing.encoding)
   end
   location = JSON.object({"uri": JSON.from(Uri.of_path(file)), "range": range})
   return JSON.object({"location": location, "message": JSON.from(RELATED_MESSAGE)})
 end
 
-def where(file: String, key_path: String, start: Places.Place) -> String
-  if key_path != ""
-    return "#{file} (#{key_path})"
-  elsif start.line == 0
-    return file
+def where(found: Analysis.Diagnostic) -> String
+  if found.key_path != ""
+    return "#{found.file} (#{found.key_path})"
+  elsif found.range.start.line == 0
+    return found.file
   end
-  return "#{file}:#{start.line}:#{start.column}"
+  return "#{found.file}:#{found.range.start.line}:#{found.range.start.column}"
 end

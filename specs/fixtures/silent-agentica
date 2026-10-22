@@ -1,4 +1,0 @@
-#!/bin/sh
-case "$2" in help|type-at|outline) exec agentica "$@";; esac
-cat >/dev/null
-exit 1

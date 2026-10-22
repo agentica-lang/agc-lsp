@@ -3,19 +3,25 @@
 
 import Fields from "fields"
 import Places from "places"
-import Query from "query"
-import Symbols from "symbols"
+import Refusals from "refusals"
+import Analysis from "std/analysis"
 import Logger from "std/logger"
+import Symbols from "symbols"
 import Uri from "uri"
 
-READ_TIMEOUT_MS = 10_000
+NO_FILES = "no .agc file"
+BUILTIN_KIND = "builtin"
 
-## Holds what a workspace symbol request needs: the compiler, the folder, the name and the position encoding.
+## Holds what a workspace symbol request needs: the session, the folder, the name and the position encoding.
 export struct Request
-  ## Is the executable that answers the query.
-  agentica: String
+  ## Is the session with the text of every open document at the time of the request.
+  session: Analysis.Session
+  ## Maps the path of each open document to its text.
+  documents: Map[String, String]
   ## Is the absolute path of the workspace folder.
   root: String
+  ## Is the working folder, from which std/analysis writes the names of files below it.
+  folder: String
   ## Is the name to find, written as the code declares it.
   name: String
   ## Is the position encoding of the session.
@@ -30,65 +36,66 @@ export def root_of(params: Json) -> String
   uris = folders.map do |folder| Fields.text(folder, "uri") end.push(Fields.text(params, "rootUri"))
   for uri in uris
     case Uri.path_of(uri)
-      ok(path) -> return trimmed(path)
+      ok(path) -> return Uri.trimmed(path)
       error(_) -> next
     end
   end
   path = Fields.text(params, "rootPath")
   if path.starts_with?("/")
-    return trimmed(path)
+    return Uri.trimmed(path)
   end
   return ""
 end
 
-## Returns the declarations of the name in the files of the workspace, as read from disk, as symbol information; the
-## list is empty when there are none.
+## Returns the declarations of the name in the files of the workspace and in the open documents, as symbol
+## information; the list is empty when there are none.
 export def answer(request: Request) -> Result[Json]
-  found = try Query.declarations_of(request.agentica, request.root, request.name)
-  lines = lines_by_file(found)
+  found = try declarations_of(request)
   symbols: List[Json] = []
   for match in found
-    case lines.get(match.name_span.file)
-      ok(file_lines) -> symbols = symbols.push(symbol(request, match, file_lines))
-      error(_) -> Logger.debug("the search dropped a match in a file that cannot be read: #{match.name_span.file}")
+    path = Uri.resolve(request.folder, match.module)
+    if Places.known?(request.documents, path)
+      symbols = symbols.push(symbol(request, match, path))
+    else
+      Logger.debug("the search dropped a match in a file that cannot be read: #{path}")
     end
   end
   return ok(JSON.array(symbols))
 end
 
-def lines_by_file(found: List[Query.Match]) -> Map[String, List[String]]
-  loaded: Map[String, List[String]] = {}
-  seen: Set[String] = Set.new([])
-  for match in found
-    file = match.name_span.file
-    if !seen.include?(file)
-      seen = seen.add(file)
-      case File.read_text(file, READ_TIMEOUT_MS)
-        ok(text) -> loaded = loaded.put(file, text.split("\n"))
-        error(_) -> next
+def declarations_of(request: Request) -> Result[List[Analysis.Symbol]]
+  none: List[Analysis.Symbol] = []
+  case Analysis.symbol(request.session, request.name, [request.root])
+    ok(searched) ->
+      for skipped in searched.skipped
+        Logger.debug("the search skipped a file", {"file": skipped.file, "code": skipped.diagnostic.code})
       end
-    end
+      return ok(searched.matches.filter do |match| match.kind != BUILTIN_KIND end)
+    error(message) if Refusals.in_search?(message) -> return ok(none)
+    error(message) if without_files?(message) ->
+      Logger.debug("the search found no agentica file in #{request.root}")
+      return ok(none)
+    error(message) -> return error(message)
   end
-  return loaded
 end
 
-def symbol(request: Request, match: Query.Match, lines: List[String]) -> Json
-  range = Places.range(lines, match.name_span.start, match.name_span.stop, request.encoding)
+def without_files?(message: String) -> Bool
+  case Analysis.diagnostic(message)
+    ok(found) -> return found.message.contains?(NO_FILES)
+    error(_) -> return false
+  end
+end
+
+def symbol(request: Request, match: Analysis.Symbol, path: String) -> Json
+  lines = Places.lines_of(request.documents, path)
+  range = Places.range(lines, match.name_range, request.encoding)
   fields: Map[String, Json] = {
     "name": JSON.from(match.name),
     "kind": JSON.from(Symbols.kind_of(match.kind)),
-    "location": JSON.object({"uri": JSON.from(Uri.of_path(match.name_span.file)), "range": range}),
+    "location": JSON.object({"uri": JSON.from(Uri.of_path(path)), "range": range}),
   }
-  if match.container != ""
-    fields = fields.put("containerName", JSON.from(match.container))
+  if match.owner != ""
+    fields = fields.put("containerName", JSON.from(match.owner))
   end
   return JSON.object(fields)
-end
-
-def trimmed(path: String) -> String
-  root = path
-  while root.length > 1 and root.ends_with?("/")
-    root = root.slice(0, root.length - 1)
-  end
-  return root
 end

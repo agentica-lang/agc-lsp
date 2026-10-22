@@ -1,3 +1,0 @@
-#!/bin/sh
-echo "agentica: cannot run" >&2
-exit 2

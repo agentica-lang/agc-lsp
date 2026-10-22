@@ -1,46 +1,37 @@
-## Reads the places that agentica prints and converts them to positions and ranges of the client.
+## Converts the places that std/analysis answers to positions and ranges of the client, and finds the lines they
+## are counted in.
 
-import Fields from "fields"
 import {UTF16, utf16_width} from "columns"
+import Analysis from "std/analysis"
+import Uri from "uri"
 
 READ_TIMEOUT_MS = 10_000
 
-## Holds a line and a column, both counted from 1 in code points; 0 means unknown.
-export struct Place
-  ## Is the line, counted from 1.
-  line: Int
-  ## Is the column, counted from 1 in code points.
-  column: Int
+## Returns the LSP range of a region in the lines of a file.
+export def range(lines: List[String], region: Analysis.Region, encoding: String) -> Json
+  return JSON.object({
+    "start": position(region.start, lines, encoding),
+    "end": position(region.stop, lines, encoding),
+  })
 end
 
-## Holds the part of a file from one place up to another, the end excluded.
-export struct Span
-  ## Is the file as agentica names it.
-  file: String
-  ## Is the first place.
-  start: Place
-  ## Is the place after the last one.
-  stop: Place
+## Returns the LSP position of the start of a file.
+export def origin() -> Json
+  return JSON.object({"line": JSON.from(0), "character": JSON.from(0)})
 end
 
-## Returns the start or the end of the range of a diagnostic or a span.
-export def place(found: Json, edge: String) -> Place
-  at = Fields.value(Fields.value(found, "range"), edge)
-  return Place(line: Fields.number(at, "line", 0), column: Fields.number(at, "column", 0))
+## Returns the lines of a file as the editor shows them when it is open, else as they are on disk, or a single empty
+## line when it cannot be read.
+export def lines_of(documents: Map[String, String], path: String) -> List[String]
+  return text_of(documents, path).split("\n")
 end
 
-## Returns the span of a JSON object with a file and a range.
-export def span(found: Json) -> Span
-  return Span(file: Fields.text(found, "file"), start: place(found, "start"), stop: place(found, "end"))
+## Returns true when the file is open in the editor or can be read from disk.
+export def known?(documents: Map[String, String], path: String) -> Bool
+  return held(documents, path).ok? or File.stat(path, READ_TIMEOUT_MS).ok?
 end
 
-## Returns the LSP range from a start to a stop in the lines of a file.
-export def range(lines: List[String], start: Place, stop: Place, encoding: String) -> Json
-  return JSON.object({"start": position(start, lines, encoding), "end": position(stop, lines, encoding)})
-end
-
-## Returns the LSP position of a place in the lines of a file.
-export def position(at: Place, lines: List[String], encoding: String) -> Json
+def position(at: Analysis.Position, lines: List[String], encoding: String) -> Json
   line = not_negative(at.line - 1)
   character = not_negative(at.column - 1)
   if encoding == UTF16 and line < lines.size
@@ -49,14 +40,27 @@ export def position(at: Place, lines: List[String], encoding: String) -> Json
   return JSON.object({"line": JSON.from(line), "character": JSON.from(character)})
 end
 
-## Returns the LSP position of the start of a file.
-export def origin() -> Json
-  return JSON.object({"line": JSON.from(0), "character": JSON.from(0)})
+def text_of(documents: Map[String, String], path: String) -> String
+  case held(documents, path)
+    ok(text) -> return text
+    error(_) -> return File.read_text(path, READ_TIMEOUT_MS).unwrap_or("")
+  end
 end
 
-## Returns the lines of a file on disk, or a single empty line when it cannot be read.
-export def source_lines(path: String) -> List[String]
-  return File.read_text(path, READ_TIMEOUT_MS).unwrap_or("").split("\n")
+def held(documents: Map[String, String], path: String) -> Result[String]
+  case documents.get(path)
+    ok(text) -> return ok(text)
+    error(_) -> return same_file(documents, path)
+  end
+end
+
+def same_file(documents: Map[String, String], path: String) -> Result[String]
+  for open in documents.keys
+    if Uri.same_path?(open, path)
+      return documents.get(open)
+    end
+  end
+  return error("not open: #{path}")
 end
 
 def not_negative(n: Int) -> Int

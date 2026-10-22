@@ -1,7 +1,9 @@
 Feature: Diagnostics in the editor
-  On open, on change and on save, the server checks the text of the buffer with
-  `agentica check` and publishes its first diagnostic, or none. Positions are
-  written as `agentica check` shows them: line:column, from 1, end exclusive.
+  On open, on change and on save, the server checks the text of the buffer as
+  `agentica check` does and publishes its first diagnostic, or none. Positions
+  are written as `agentica check` shows them: line:column, from 1, end
+  exclusive. Checks run one at a time; the slow ones in these scenarios import
+  a module of thousands of functions.
   These scenarios open files whose buffer is what is on disk; the ones where
   the buffer differs are in buffers.feature.
 
@@ -158,34 +160,6 @@ Feature: Diagnostics in the editor
       | at       | severity | code               |
       | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
 
-  Scenario: other output of the checker before the diagnostic is skipped
-    Given the language server has started with the arguments "--agentica specs/fixtures/noisy-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc"
-    Then "unknown.agc" gets these diagnostics:
-      | at       | severity | code               |
-      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
-
-  Scenario: the checker named after --stdio is the one used
-    Given the language server has started with the arguments "--stdio --agentica specs/fixtures/missing-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then no diagnostics are published
-    And the server warns "cannot check"
-
   Scenario: a file reached through a link and a double slash keeps its position
     Given the language server has started
     And the folder has the link "link" to itself
@@ -237,49 +211,6 @@ Feature: Diagnostics in the editor
     And the diagnostic of "app.agc" points to "agentica.toml (package)"
     And the diagnostic of "app.agc" points into "agentica.toml" at 1:1-1:1
 
-  Scenario: a checker that hangs is stopped and publishes nothing
-    Given the language server has started with the arguments "--agentica specs/fixtures/hanging-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 12000 milliseconds
-    Then no diagnostics are published
-    And the server warns "cannot check"
-    And the server exits with code 0
-
-  Scenario: a checker that fails without a diagnostic is reported
-    Given the language server has started with the arguments "--agentica specs/fixtures/silent-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then no diagnostics are published
-    And the server warns "agentica exited with status 1 and no diagnostic"
-
-  Scenario: a checker that cannot run the check is reported
-    Given the language server has started with the arguments "--agentica specs/fixtures/broken-agentica"
-    And the file "unknown.agc" contains:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens "unknown.agc" without waiting
-    And the editor waits 1500 milliseconds
-    Then no diagnostics are published
-    And the server warns "agentica exited with status 2"
-
   Scenario: a buffer that is not a file is not checked
     Given the language server has started
     When the editor opens an untitled buffer
@@ -295,10 +226,13 @@ Feature: Diagnostics in the editor
     When the editor opens "notes.txt"
     Then no diagnostics are published
 
-  Scenario: a check that hangs does not delay the answer to shutdown
-    Given the language server has started with the arguments "--agentica specs/fixtures/hanging-agentica"
+  Scenario: a check that is running does not delay the answer to shutdown
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
     And the file "unknown.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(oops)
       end
@@ -309,9 +243,12 @@ Feature: Diagnostics in the editor
     And the server exits with code 0
 
   Scenario: an older check that is still running is not published
-    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
     And the file "draft.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(oops)
       end
@@ -321,6 +258,8 @@ Feature: Diagnostics in the editor
     And the editor waits 300 milliseconds
     And the editor saves "draft.agc" without waiting as:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts("fixed")
       end
@@ -332,9 +271,12 @@ Feature: Diagnostics in the editor
     And "draft.agc" gets nothing more
 
   Scenario: closing a file while it is checked leaves its diagnostics empty
-    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
     And the file "draft.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(oops)
       end
@@ -349,9 +291,12 @@ Feature: Diagnostics in the editor
     And "draft.agc" gets nothing more
 
   Scenario: nothing is published after shutdown
-    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
     And the file "unknown.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(oops)
       end
@@ -364,8 +309,8 @@ Feature: Diagnostics in the editor
     Then no diagnostics are published
     And the server exits with code 0
 
-  Scenario: more files than the limit are all checked
-    Given the language server has started with the arguments "--agentica specs/fixtures/crowded-agentica"
+  Scenario: files opened together are all checked, one after the other
+    Given the language server has started
     And the files "one.agc, two.agc, three.agc, four.agc, five.agc, six.agc" contain:
       """
       def main() -> Void
@@ -394,32 +339,13 @@ Feature: Diagnostics in the editor
       | at       | severity | code               |
       | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
 
-  Scenario: a file waiting for a free check is checked once
-    Given the language server has started with the arguments "--agentica specs/fixtures/crowded-agentica"
-    And the files "one.agc, two.agc, three.agc, four.agc, five.agc" contain:
-      """
-      def main() -> Void
-        puts(oops)
-      end
-
-      """
-    When the editor opens the files "one.agc, two.agc, three.agc, four.agc, five.agc" without waiting
-    And the editor saves "five.agc" without waiting as:
-      """
-      def main() -> Void
-        puts("fixed")
-      end
-
-      """
-    And the editor waits for the diagnostics of 5 files
-    And the editor waits 1500 milliseconds
-    Then "five.agc" gets no diagnostics
-    And "five.agc" gets nothing more
-
-  Scenario: a slow check of one file does not hide another file
-    Given the language server has started with the arguments "--agentica specs/fixtures/slow-agentica"
+  Scenario: a file waiting for the running check is checked once, with its latest text
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
     And the file "slow.agc" contains:
       """
+      import Heavy from "heavy"
+
       def main() -> Void
         puts(oops)
       end
@@ -428,17 +354,26 @@ Feature: Diagnostics in the editor
     And the file "quick.agc" contains:
       """
       def main() -> Void
-        puts("hi")
+        puts(oops)
       end
 
       """
     When the editor opens "slow.agc" without waiting
     And the editor opens "quick.agc" without waiting
+    And the editor saves "quick.agc" without waiting as:
+      """
+      def main() -> Void
+        puts("fixed")
+      end
+
+      """
     And the editor waits for the diagnostics of 2 files
-    Then "quick.agc" gets no diagnostics
-    And "slow.agc" gets these diagnostics:
+    And the editor waits 1500 milliseconds
+    Then "slow.agc" gets these diagnostics:
       | at       | severity | code               |
-      | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+      | 4:8-4:12 | error    | CHECK-UNKNOWN-NAME |
+    And "quick.agc" gets no diagnostics
+    And "quick.agc" gets nothing more
 
   Scenario: a module without main that is fine publishes no diagnostics
     Given the language server has started
