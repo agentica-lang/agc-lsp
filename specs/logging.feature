@@ -146,6 +146,13 @@ Feature: Logging
     Given the language server has started with the arguments "--log-level"
     Then the server warns "needs a value"
 
+  Scenario: the binary named after --stdio is the one that prints the catalog
+    Given the editor asks for the client log level "warning"
+    And the language server has started with the arguments "--stdio --agentica specs/fixtures/missing-agentica"
+    When the editor waits for a log message containing "cannot load the builtin catalog"
+    Then the server warns "cannot load the builtin catalog from specs/fixtures/missing-agentica"
+    And the server never logs "ignoring the argument"
+
   Scenario Outline: an unknown level from the editor is warned about and the default is kept
     Given the editor asks for the log level "<level>"
     And the language server has started
