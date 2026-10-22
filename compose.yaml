@@ -1,0 +1,21 @@
+name: agc-lsp
+
+services:
+  wine:
+    build:
+      context: docker/wine
+      args:
+        AGENTICA_VERSION: ${AGENTICA_VERSION:?run it through make}
+    image: agc-lsp-wine:${AGENTICA_VERSION}
+    working_dir: /repo
+    network_mode: none
+    environment:
+      AGC_LSP_CACHE: 'Z:\cache'
+    volumes:
+      - .:/repo:ro
+      - cache:/cache
+    tmpfs:
+      - /tmp
+
+volumes:
+  cache:
