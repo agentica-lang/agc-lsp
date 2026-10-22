@@ -33,3 +33,43 @@ jobs:
       - run: make test
 
       - run: node --check editors/vscode/extension.js
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Agentica
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="agentica-${AGENTICA_VERSION}-windows-x86_64"
+          cd "$RUNNER_TEMP"
+          gh release download "$AGENTICA_VERSION" -R sonic182/agentica -p "${archive}.zip" -p SHA256SUMS
+          sha256sum -c --ignore-missing SHA256SUMS
+          unzip -q "${archive}.zip"
+          echo "$(cygpath -w "$RUNNER_TEMP/${archive}/bin")" >> "$GITHUB_PATH"
+
+      - run: agentica --version
+
+      - run: agentica check src/main.agc
+
+      - run: agentica check bin/prepare.agc
+
+      - run: agentica check specs/smoke.agc
+
+      - run: agentica check specs/steps.agc
+
+      - name: Start the server through bin\agc-lsp.bat
+        shell: cmd
+        run: |
+          agentica specs\smoke.agc input %RUNNER_TEMP%\smoke-in.txt || exit /b 1
+          set "AGC_LSP_CACHE=%RUNNER_TEMP%\agc-lsp-smoke-cache"
+          call bin\agc-lsp.bat --stdio < %RUNNER_TEMP%\smoke-in.txt > %RUNNER_TEMP%\smoke-out.txt || exit /b 1
+          agentica specs\smoke.agc verify %RUNNER_TEMP%\smoke-out.txt || exit /b 1
+
+      - name: Run the specs that are not for Unix only
+        shell: bash
+        run: agentica test specs/*.feature --steps specs/steps.agc
