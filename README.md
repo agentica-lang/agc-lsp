@@ -22,8 +22,9 @@ the checks and the queries of every open file, imported files included. It asks 
   parameter, loop name or pattern name, in the file and the files it imports.
 - Document symbols: the outline of the buffer as a hierarchy.
 - Workspace symbols: where a name is declared in the `.agc` files below the first workspace folder and in the open
-  documents. The query must be the whole name with its case (`area`, `Point.x`, `Shape.Circle`, `Models.greet`); there
-  is no prefix or fuzzy match.
+  documents (hidden folders, `agc_libs/` and links are skipped, and a file that does not parse is left out). The query
+  must be the whole name with its case (`area`, `Point.x`, `Shape.Circle`, `Models.greet`); there is no prefix or fuzzy
+  match.
 - Positions are UTF-16, or code points when the client offers `utf-32`.
 
 ## Limitations
@@ -40,7 +41,8 @@ the checks and the queries of every open file, imported files included. It asks 
   that resolve in that one, not on the expression that has the error. A `std/` module is not on disk, so a name
   declared there has hover but no location. The name of a variant in a `case` pattern (`Shape.Circle(r)`) gives
   nothing yet.
-- References are those in the buffer and the files it links; a file that only imports the name is not searched.
+- References are those in the buffer and the files it links; a file that imports the module but is not imported by
+  the buffer is not searched.
 - A diagnostic in a library or package file has the prefix in its message but no related location.
 - Windows: CI runs the server, but neither editor extension has been tried there, and the VS Code extension has not
   been tested in VS Code. A UNC or `\\?\` path is not handled. Killing the editor hard can leave the server running as
@@ -70,9 +72,10 @@ The program is kept in the `agc-lsp` folder of the user cache:
 | Windows | `%LOCALAPPDATA%\agc-lsp` |
 
 `AGC_LSP_CACHE` names the cache folder itself, on every system, and wins over the table. A new `agentica` or a change
-of `src/*.agc` compiles again (about 3 s); any other start takes about 0.03 s. Programs not used for 30 days are
-removed. A file system whose rename cannot move a file into place (some network homes) makes the launcher exit with
-status 1 and an error that names the cache folder: set `AGC_LSP_CACHE` (or `XDG_CACHE_HOME`) to a local disk.
+of `src/*.agc` compiles again (about 3 s); any other start takes about 0.03 s. When a new program is compiled, programs
+not used for 30 days are removed. A file system whose rename cannot move a file into place (some network homes) makes
+the launcher exit with status 1 and an error that names the cache folder: set `AGC_LSP_CACHE` (or `XDG_CACHE_HOME`) to
+a local disk.
 
 Once the program is compiled, a hover or a definition takes tens of milliseconds, and the first check of a file that
 imports `std/analysis` (this server does) about a second.
@@ -110,7 +113,8 @@ The server logs through `std/logger` to three destinations, each with its own le
 | the editor, as `window/logMessage` notifications | `error` | `--client-log-level`, `clientLogLevel` |
 | a file of JSON lines, one event per line | the level of stderr | `--log-file PATH`, with `--log-level`, `logLevel` |
 
-- `--log-format text|json` sets the format of stderr (`text` by default). The log file is always JSON lines.
+- `--log-format text|json` sets the format of stderr (`text` by default). The log file is always JSON lines, appended
+  to if it exists; one that cannot be written is warned about and not used.
 - The editor can set the two levels in the `initializationOptions` of `initialize`, for example
   `{"logLevel": "debug", "clientLogLevel": "info"}`; an option on the command line wins.
 - An invalid option or level is warned about and ignored.
