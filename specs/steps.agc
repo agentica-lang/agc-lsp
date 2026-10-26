@@ -237,6 +237,7 @@ def started_through_link(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   if !linked.ok?
     return BDD.assert(ready, false, "cannot link the launcher: #{linked.message}")
   end
+
   return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
 end
 
@@ -246,11 +247,13 @@ def started_through_relative_link(ctx: BDD.Context, _args: List[String]) -> BDD.
   if !first.ok?
     return BDD.assert(ready, false, "cannot link the launcher: #{first.message}")
   end
+
   path = file_path(ready, "agc-lsp")
   second = link("launcher", path)
   if !second.ok?
     return BDD.assert(ready, false, "cannot link the launcher: #{second.message}")
   end
+
   return initialize(BDD.set(ready, "launcher", JSON.from(path)), JSON.object({}))
 end
 
@@ -272,6 +275,7 @@ def write_copy(ctx: BDD.Context, name: String, text: String) -> BDD.Context
   if !made.ok?
     return BDD.assert(ctx, false, "cannot make the folder of #{path}: #{made.message}")
   end
+
   written = File.write_text(path, text, TIMEOUT_MS)
   return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
 end
@@ -309,6 +313,7 @@ def launched_twice(arguments: List[String]) -> Result[Json]
   if status == 0
     status = launched_status(two)
   end
+
   return ok(JSON.object({
     "status": JSON.from(status),
     "stdout": JSON.from("#{launched_text(one, "stdout")}#{launched_text(two, "stdout")}"),
@@ -360,6 +365,7 @@ def cache_holds(ctx: BDD.Context, args: List[String]) -> BDD.Context
   names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(none).filter do |name|
     name.ends_with?(COMPILED_SUFFIX)
   end
+
   return BDD.assert(ctx, names.size == args[0].to_i!, "the cache holds #{names.size} compiled servers: #{names}")
 end
 
@@ -368,6 +374,7 @@ def cache_holds_no_partial(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(none).filter do |name|
     name.ends_with?(PARTIAL_SUFFIX)
   end
+
   return BDD.assert(ctx, names.size == 0, "the cache holds unfinished compiles: #{names}")
 end
 
@@ -424,6 +431,7 @@ def files_contain(ctx: BDD.Context, args: List[String]) -> BDD.Context
   for name in names(args[0])
     written = write_file(written, name)
   end
+
   return written
 end
 
@@ -454,6 +462,7 @@ def write_text(ctx: BDD.Context, name: String, text: String) -> BDD.Context
   if !parents.ok?
     return BDD.assert(ctx, false, "cannot make the folder of #{path}: #{parents.message}")
   end
+
   written = File.write_text(path, text, TIMEOUT_MS)
   return BDD.assert(ctx, written.ok?, "cannot write #{path}: #{written.message}")
 end
@@ -506,6 +515,7 @@ def opens_files_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Con
   for name in names(args[0])
     opened = open_through(opened, name, "")
   end
+
   return opened
 end
 
@@ -552,6 +562,7 @@ def save(ctx: BDD.Context, name: String) -> BDD.Context
   if !BDD.get(ready, "open #{name}").ok?
     ready = open_through(ready, name, "")
   end
+
   text = BDD.doc_string(ready)
   written = add(ready, JSON.object({
     "kind": JSON.from("write"),
@@ -644,6 +655,7 @@ def asks_references_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Contex
     sent = put_references(sent, args, true)
     ids = ids.push(BDD.get(sent, "references #{args[1]}:#{args[2]}").unwrap!)
   end
+
   return wait_for(BDD.set(sent, "in a row", JSON.array(ids)), ids)
 end
 
@@ -676,6 +688,7 @@ def searches_workspace_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Con
     sent = search(sent, args[0])
     ids = ids.push(BDD.get(sent, "search #{args[0]}").unwrap!)
   end
+
   return wait_for(BDD.set(sent, "in a row", JSON.array(ids)), ids)
 end
 
@@ -715,6 +728,7 @@ def hovers_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Context
     sent = put_question(sent, "hover", HOVER, args, "")
     ids = ids.push(BDD.get(sent, "hover #{args[1]}:#{args[2]}").unwrap!)
   end
+
   return wait_for(BDD.set(sent, "in a row", JSON.array(ids)), ids)
 end
 
@@ -727,6 +741,7 @@ def hovers_over_each(ctx: BDD.Context, args: List[String]) -> BDD.Context
     sent = BDD.set(sent, "hover #{name} #{args[1]}:#{args[2]}", id)
     ids = ids.push(id)
   end
+
   return wait_for(sent, ids)
 end
 
@@ -776,6 +791,7 @@ def waits_for_files(ctx: BDD.Context, args: List[String]) -> BDD.Context
   for _ in 0...args[0].to_i!
     waited = add(waited, JSON.object({"kind": JSON.from("await")}))
   end
+
   return waited
 end
 
@@ -783,6 +799,7 @@ def awaiting(ctx: BDD.Context, name: String) -> BDD.Context
   if name.ends_with?(".agc")
     return add(ctx, JSON.object({"kind": JSON.from("await")}))
   end
+
   return ctx
 end
 
@@ -820,6 +837,7 @@ def run_session(ctx: BDD.Context, _args: List[String]) -> BDD.Context
       actions = actions.push(JSON.object({"kind": JSON.from("send"), "body": JSON.from(line)}))
     end
   end
+
   return record(ctx, run(ctx, actions))
 end
 
@@ -884,8 +902,10 @@ def last_publish(ctx: BDD.Context, target: String) -> Int
     if method == JSON.from(PUBLISH).to_s and at(message, ["params", "uri"]).unwrap_or(JSON.null()).to_s == wanted
       found = index
     end
+
     index += 1
   end
+
   return found
 end
 
@@ -951,6 +971,7 @@ def gets_no_log_message_containing(ctx: BDD.Context, args: List[String]) -> BDD.
     found = log_messages(done).filter do |message|
       JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("").contains?(args[0])
     end
+
     BDD.assert(done, found.size == 0, "unexpected log messages #{JSON.array(found)}")
   end
 end
@@ -1025,6 +1046,7 @@ def checks_started(ctx: BDD.Context, args: List[String]) -> BDD.Context
     started = entries(stderr(done)).filter do |entry|
       entry.text.contains?("check started") and entry.text.contains?("/#{args[1]} ")
     end
+
     message = "the server started #{started.size} checks of #{args[1]}; expected #{args[0]}"
     BDD.assert(done, started.size == args[0].to_i!, message)
   end
@@ -1065,6 +1087,7 @@ def each_hover_typed(ctx: BDD.Context, args: List[String]) -> BDD.Context
   for name in names(args[0])
     checked = hover_typed_of(checked, "hover #{name}", args[1], args[2], args[3])
   end
+
   return checked
 end
 
@@ -1081,6 +1104,7 @@ def earlier_are_null(ctx: BDD.Context) -> BDD.Context
     message = "expected null for request #{id}; actual #{result}"
     checked = BDD.assert(checked, result.ok? and result.unwrap!.to_s == "null", message)
   end
+
   return checked
 end
 
@@ -1124,8 +1148,10 @@ def position_of(ctx: BDD.Context, id: String) -> Int
     if at(message, ["id"]).unwrap_or(JSON.null()).to_s == id
       return index
     end
+
     index += 1
   end
+
   return -1
 end
 
@@ -1213,6 +1239,7 @@ def hover_value_of(ctx: BDD.Context, key: String, line: String, column: String) 
   if result.to_s == "null"
     return error("no hover at #{line}:#{column}")
   end
+
   return JSON.string(at(result, ["contents", "value"]).unwrap_or(JSON.null()))
 end
 
@@ -1321,9 +1348,11 @@ def symbol_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
       found = JSON.list(result).unwrap_or(none).filter do |symbol|
         JSON.string(at(symbol, ["name"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
       end
+
       if found.size == 0
         return BDD.assert(ctx, false, "no symbol #{args[0]} in #{result}")
       end
+
       actual = span_text(at(found[0], ["range"]).unwrap_or(JSON.null()))
       wanted = "#{args[2]}:#{args[3]}-#{args[4]}:#{args[5]}"
       return BDD.assert(ctx, actual == wanted, "expected the range #{wanted}; actual #{actual}")
@@ -1411,6 +1440,7 @@ def location_row(ctx: BDD.Context, location: Json) -> String
   if found.starts_with?(prefix)
     file = found.slice(prefix.length, found.length - prefix.length)
   end
+
   return "#{file} #{span_text(at(location, ["range"]).unwrap_or(JSON.null()))}"
 end
 
@@ -1420,6 +1450,7 @@ def symbol_row(ctx: BDD.Context, found: Json) -> String
   if container != ""
     name = "#{container}.#{name}"
   end
+
   kind = JSON.int(at(found, ["kind"]).unwrap_or(JSON.null())).unwrap_or(0)
   place = location_row(ctx, at(found, ["location"]).unwrap_or(JSON.null()))
   return "#{name} #{kind_name(kind)} #{place}"
@@ -1441,17 +1472,20 @@ def flattened(symbols: List[Json], parent: String) -> List[List[String]]
     if parent != ""
       qualified = "#{parent}.#{name}"
     end
+
     kind = JSON.int(at(symbol, ["kind"]).unwrap_or(JSON.null())).unwrap_or(0)
     selection = at(symbol, ["selectionRange"]).unwrap_or(JSON.null())
     outside = ""
     if !inside?(at(symbol, ["range"]).unwrap_or(JSON.null()), selection)
       outside = "outside"
     end
+
     rows = rows.push([qualified, kind_name(kind), span_text(selection), outside])
     none: List[Json] = []
     children = JSON.list(at(symbol, ["children"]).unwrap_or(JSON.null())).unwrap_or(none)
     rows = rows.concat(flattened(children, qualified))
   end
+
   return rows
 end
 
@@ -1461,6 +1495,7 @@ def kind_name(kind: Int) -> String
       return name
     end
   end
+
   return kind.to_s
 end
 
@@ -1525,9 +1560,11 @@ def completion_replaced(ctx: BDD.Context, args: List[String]) -> BDD.Context
       items = JSON.list(result).unwrap_or(none).filter do |item|
         JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
       end
+
       if items.size == 0
         return BDD.assert(ctx, false, "the completion at #{args[1]}:#{args[2]} lacks #{args[0]}")
       end
+
       edit = at(items[0], ["textEdit"]).unwrap_or(JSON.null())
       start = position("#{args[3]}:#{args[4]}")
       stop = position("#{args[5]}:#{args[6]}")
@@ -1569,6 +1606,7 @@ def item_matches?(item: Json, row: List[String]) -> Bool
   if label != row[0] or kind != COMPLETION_KINDS.get(row[1]).unwrap!
     return false
   end
+
   return row[2] == "" or (detail.starts_with?("#{row[2]}(") and documentation.length > 0)
 end
 
@@ -1587,6 +1625,7 @@ def entries(text: String) -> List[Entry]
       error(_) -> next
     end
   end
+
   return found
 end
 
@@ -1596,10 +1635,12 @@ def entry_of(line: String) -> Result[Entry]
     level = try JSON.string(try JSON.get(parsed, "level"))
     return ok(Entry(level: level, text: line))
   end
+
   words = line.split(" ")
   if words.size < 3 or !LOG_TYPES.get(words[1].downcase).ok?
     return error("not a log line")
   end
+
   return ok(Entry(level: words[1].downcase, text: line))
 end
 
@@ -1618,6 +1659,7 @@ def only_json(ctx: BDD.Context, text: String) -> BDD.Context
       return BDD.assert(ctx, false, "not a JSON line: #{line.inspect}")
     end
   end
+
   return BDD.assert(ctx, lines.size > 0, "no lines in #{text.inspect}")
 end
 
@@ -1634,6 +1676,7 @@ def logged_to_editor?(ctx: BDD.Context, level: String, text: String) -> Bool
     shown = JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("")
     kind == wanted and shown.contains?(text)
   end
+
   return matching.size > 0
 end
 
@@ -1643,6 +1686,7 @@ def related_is(ctx: BDD.Context, found: Json, expected: Json) -> BDD.Context
   if entries.size != 1
     return BDD.assert(ctx, false, "expected one related location in #{found}")
   end
+
   location = at(entries[0], ["location"]).unwrap_or(JSON.null())
   actual = canonical(JSON.encode(location))
   wanted = canonical(JSON.encode(expected))
@@ -1650,6 +1694,7 @@ def related_is(ctx: BDD.Context, found: Json, expected: Json) -> BDD.Context
   if message == ""
     return BDD.assert(ctx, false, "the related location of #{found} has no message")
   end
+
   return BDD.assert(ctx, actual == wanted, "expected the location #{wanted}; actual #{actual}")
 end
 
@@ -1663,8 +1708,10 @@ def answered_within(ctx: BDD.Context, method: String, limit: Int) -> BDD.Context
       waited = JSON.int(arrivals[index]).unwrap! - sent
       return BDD.assert(ctx, waited <= limit, "the answer to #{method} took #{waited} ms; limit #{limit} ms")
     end
+
     index += 1
   end
+
   return BDD.assert(ctx, false, "no answer to #{method} among #{JSON.array(messages(ctx))}")
 end
 
@@ -1709,9 +1756,11 @@ def reported(ctx: BDD.Context, name: String) -> BDD.Context
         if at(message, ["id"]).unwrap_or(JSON.from(0)).to_s == "null"
           return expect_error(ctx, found, name)
         end
+
       error(_) -> next
     end
   end
+
   return BDD.assert(ctx, false, "no error without an id among #{JSON.array(messages(ctx))}")
 end
 
@@ -1724,9 +1773,11 @@ def initialize(ctx: BDD.Context, capabilities: Json) -> BDD.Context
       error(_) -> next
     end
   end
+
   if options.size > 0
     params = params.put("initializationOptions", JSON.object(options))
   end
+
   return request(ctx, "initialize", JSON.object(workspace_params(ctx, params)))
 end
 
@@ -1743,6 +1794,7 @@ def workspace_params(ctx: BDD.Context, params: Map[String, Json]) -> Map[String,
         "root path of a Windows drive" -> return params.put("rootPath", JSON.from(WINDOWS_ROOT))
         _ -> return params
       end
+
     error(_) -> return params
   end
 end
@@ -1779,16 +1831,19 @@ def finished(ctx: BDD.Context, check: Fn[BDD.Context, BDD.Context]) -> BDD.Conte
   if BDD.get(ctx, "messages").ok?
     return check.call(ctx)
   end
+
   none: List[Json] = []
   base = ctx
   if !BDD.get(ctx, "ended").ok?
     base = notify(request(ctx, "shutdown", JSON.null()), "exit", JSON.null())
   end
+
   actions = JSON.list(BDD.get(base, "script").unwrap_or(JSON.array(none))).unwrap!
   recorded = record(base, run(base, actions))
   if !BDD.get(recorded, "messages").ok?
     return recorded
   end
+
   return check.call(recorded)
 end
 
@@ -1816,6 +1871,7 @@ def publish_is(ctx: BDD.Context, target: String, expected: Json) -> BDD.Context
   if seen >= lists.size
     return BDD.assert(ctx, false, "#{target} got #{lists.size} publishes, expected one more; stderr #{stderr(ctx)}")
   end
+
   actual = canonical(JSON.encode(JSON.array(lists[seen].map do |found| without_message(found) end)))
   wanted = canonical(JSON.encode(expected))
   counted = BDD.set(ctx, key, JSON.from(seen + 1))
@@ -1838,6 +1894,7 @@ def nothing_published(ctx: BDD.Context) -> BDD.Context
       return BDD.assert(ctx, false, "unexpected publish #{message}")
     end
   end
+
   return BDD.assert(ctx, true, "")
 end
 
@@ -1846,6 +1903,7 @@ def diagnostic_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, Json, B
   if lists.size == 0 or lists[lists.size - 1].size == 0
     return BDD.assert(ctx, false, "#{name} has no diagnostic")
   end
+
   return check.call(ctx, lists[lists.size - 1][0])
 end
 
@@ -1858,6 +1916,7 @@ def published(ctx: BDD.Context, sent: String) -> List[List[Json]]
       lists = lists.push(JSON.list(at(message, ["params", "diagnostics"]).unwrap!).unwrap!)
     end
   end
+
   return lists
 end
 
@@ -1887,6 +1946,7 @@ def without_message(found: Json) -> Json
       error(_) -> next
     end
   end
+
   return JSON.object(fields)
 end
 
@@ -1907,19 +1967,23 @@ def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
     log_path = file_path(ctx, log_file)
     words = words.concat(["--log-file", log_path])
   end
+
   arguments = ["AGC_LSP_CACHE=#{specs_cache()}", launcher_of(ctx)].concat(words)
   start_in = "."
   if BDD.get(ctx, "start in").ok?
     start_in = dir
   end
+
   ran = session(dir, start_in, "env", arguments, actions, wait_ms(ctx))
   log = ""
   if log_path != ""
     log = File.read_text(log_path, TIMEOUT_MS).unwrap_or("")
   end
+
   if dir != ""
     _ = Path.remove(dir, TIMEOUT_MS)
   end
+
   case ran
     ok(done) -> return ok(done.with(log: log))
     error(message) -> return error(message)
@@ -1930,6 +1994,7 @@ def wait_ms(ctx: BDD.Context) -> Int
   if BDD.get(ctx, "heavy").ok?
     return HEAVY_TIMEOUT_MS
   end
+
   return TIMEOUT_MS
 end
 
@@ -1938,6 +2003,7 @@ def launcher_of(ctx: BDD.Context) -> String
   if chosen != ""
     return chosen
   end
+
   return Path.real(LAUNCHER).unwrap!
 end
 
@@ -1952,6 +2018,7 @@ def temp_folder() -> String
       return value
     end
   end
+
   return "/tmp"
 end
 
@@ -1973,6 +2040,7 @@ def session(
     received = received.concat(heard.messages)
     arrivals = arrivals.concat(heard.arrivals)
   end
+
   try Process.close_stdin(server, wait_ms)
   rest = try read_rest(server, wait_ms)
   exit_code = try Process.wait(server, wait_ms)
@@ -1992,6 +2060,7 @@ def noted(sent: Map[String, Json], action: Json) -> Map[String, Json]
   if kind != "send"
     return sent
   end
+
   body = JSON.parse(JSON.string(JSON.get(action, "body").unwrap_or(JSON.null())).unwrap_or("")).unwrap_or(JSON.null())
   case JSON.get(body, "id")
     ok(id) -> return sent.put(id.to_s, JSON.from(Time.now_ms()))
@@ -2038,6 +2107,7 @@ def read_until_diagnostics(server: Process, wait_ms: Int) -> Result[Heard]
       return ok(Heard(messages: received, arrivals: arrivals))
     end
   end
+
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
@@ -2055,6 +2125,7 @@ def read_until_replies(server: Process, ids: List[Json], wait_ms: Int) -> Result
       waiting = waiting.filter do |id| id != sender end
     end
   end
+
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
@@ -2070,6 +2141,7 @@ def read_until_log(server: Process, text: String, wait_ms: Int) -> Result[Heard]
       return ok(Heard(messages: received, arrivals: arrivals))
     end
   end
+
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
@@ -2081,9 +2153,11 @@ def read_rest(server: Process, wait_ms: Int) -> Result[Heard]
     if !header.ok?
       return ok(Heard(messages: received, arrivals: arrivals))
     end
+
     received = received.push(try read_body(server, header.unwrap!, wait_ms))
     arrivals = arrivals.push(Time.now_ms())
   end
+
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
@@ -2092,11 +2166,13 @@ def read_body(server: Process, header: String, wait_ms: Int) -> Result[Json]
   if !header.starts_with?(prefix)
     return error("expected a Content-Length header; got #{header.inspect}")
   end
+
   length = try header.slice(prefix.length, header.length - prefix.length).to_i
   blank = try Process.read_line(server, wait_ms)
   if blank != ""
     return error("expected a blank line after the header; got #{blank.inspect}")
   end
+
   body = try Process.read_bytes(server, length, wait_ms)
   return JSON.parse(try String.from_bytes(body))
 end
@@ -2107,6 +2183,7 @@ def link(target: String, path: String) -> Result[Void]
   if status != 0
     return error("ln exited with status #{status}")
   end
+
   return ok()
 end
 
@@ -2124,6 +2201,7 @@ def reply(ctx: BDD.Context, id: Int, field: String) -> Result[Json]
       return JSON.get(message, field)
     end
   end
+
   return error("no reply to request #{id} among #{JSON.array(messages(ctx))}; stderr #{stderr(ctx)}")
 end
 
@@ -2132,6 +2210,7 @@ def at(value: Json, keys: List[String]) -> Result[Json]
   for key in keys
     found = try JSON.get(found, key)
   end
+
   return ok(found)
 end
 
@@ -2139,11 +2218,13 @@ def with_folder(ctx: BDD.Context) -> BDD.Context
   if BDD.get(ctx, "dir").ok?
     return ctx
   end
+
   path = Path.join([temp_folder(), "agc-lsp-#{Time.now_ms()}-#{Random.int(0, 999_999_999)}"]).unwrap!
   made = Dir.mkdir_private(path, TIMEOUT_MS)
   if !made.ok?
     return BDD.assert(ctx, false, "cannot make #{path}: #{made.message}")
   end
+
   real = Path.real(path).unwrap!.replace("\\", "/")
   stray = manifest_above(real)
   if stray != ""
@@ -2154,6 +2235,7 @@ def with_folder(ctx: BDD.Context) -> BDD.Context
     )
     return BDD.assert(ctx, false, message)
   end
+
   return BDD.set(ctx, "dir", JSON.from(real))
 end
 
@@ -2164,11 +2246,14 @@ def manifest_above(path: String) -> String
     if File.stat(candidate, TIMEOUT_MS).ok?
       return candidate
     end
+
     if parent == "/"
       return ""
     end
+
     parent = parent_of(parent)
   end
+
   return ""
 end
 
@@ -2177,6 +2262,7 @@ def parent_of(path: String) -> String
   if parts.size <= 2
     return "/"
   end
+
   return parts.take(parts.size - 1).join("/")
 end
 
@@ -2192,6 +2278,7 @@ def uri(ctx: BDD.Context, name: String, authority: String = "") -> String
   if name.length > 1 and name.at(1) == ":"
     return file_uri(name, authority)
   end
+
   return file_uri("#{folder(ctx)}/#{name}", authority)
 end
 
@@ -2200,6 +2287,7 @@ def file_uri(path: String, authority: String) -> String
   if path.length > 1 and path.at(1) == ":"
     rooted = "/#{path.slice(0, 1).downcase}#{path.slice(1, path.length - 1)}"
   end
+
   return "file://#{authority}#{encoded(rooted)}"
 end
 
@@ -2214,6 +2302,7 @@ def encoded(path: String) -> String
       parts = parts.push(char)
     end
   end
+
   return parts.join("")
 end
 

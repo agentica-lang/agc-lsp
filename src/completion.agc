@@ -13,6 +13,7 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   if !Words.code?(chars, cursor.index) or Words.after_suffix?(chars, cursor.index)
     return none()
   end
+
   start = Words.word_start(chars, cursor.index)
   partial = chars.take(cursor.index).drop(start).join("")
   replaced = Cursor.range(cursor, start, cursor.index)
@@ -20,6 +21,7 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
     bare = functions(Catalog.bare_starting(book, partial), false, replaced)
     return JSON.array(namespaces(book, partial, replaced).concat(bare))
   end
+
   case Words.receiver(chars, start)
     ok(receiver) if Catalog.namespace?(book, receiver.text) ->
       return JSON.array(functions(Catalog.functions_of(book, receiver.text, partial), true, replaced))
@@ -56,6 +58,7 @@ def function_item(entry: Catalog.Entry, by_member: Bool, replaced: Json) -> Json
   if by_member
     label = entry.member
   end
+
   return JSON.object({
     "label": JSON.from(label),
     "kind": JSON.from(FUNCTION_KIND),

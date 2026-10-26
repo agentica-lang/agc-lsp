@@ -43,6 +43,7 @@ export def parse(args: List[String]) -> Options
       index += 1
     end
   end
+
   return options
 end
 
@@ -63,16 +64,19 @@ def set(options: Options, word: String, value: String) -> Options
       if level?(value)
         return options.with(level: value)
       end
+
       return rejected(options, "log level", word, value)
     "--client-log-level" ->
       if level?(value)
         return options.with(client_level: value)
       end
+
       return rejected(options, "log level", word, value)
     _ ->
       if FORMATS.include?(value)
         return options.with(format: value)
       end
+
       return rejected(options, "log format", word, value)
   end
 end

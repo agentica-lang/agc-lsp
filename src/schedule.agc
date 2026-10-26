@@ -65,6 +65,7 @@ export def request(plan: Plan, pending: Pending) -> Plan
   if waiting?(cancelled, pending.uri)
     return cancelled.with(queue: cancelled.queue.map do |queued| newest(queued, pending) end)
   end
+
   return cancelled.with(queue: cancelled.queue.push(pending))
 end
 
@@ -81,6 +82,7 @@ export def supersede(plan: Plan, delay_ms: Int) -> Plan
   for running in plan.running
     current = request(current, delayed(running.uri, running.path, delay_ms))
   end
+
   return current
 end
 
@@ -100,11 +102,13 @@ export def tick(plan: Plan, basis: Basis) -> Plan
   if current.running.size > 0
     return current
   end
+
   now = Time.now_ms()
   due = current.queue.filter do |pending| pending.due <= now end
   if due.size == 0
     return current
   end
+
   pending = due[0]
   remaining = current.queue.filter do |queued| queued.uri != pending.uri end
   return launch(current.with(queue: remaining), pending, basis)
@@ -122,6 +126,7 @@ export def wait_ms(plan: Plan, limit: Int) -> Int
       wait = left
     end
   end
+
   return wait
 end
 
@@ -130,6 +135,7 @@ export def stop(plan: Plan) -> Plan
   for running in plan.running
     Task.cancel(running.task)
   end
+
   return plan.with(queue: [], running: [])
 end
 
@@ -139,6 +145,7 @@ def cancel(plan: Plan, uri: String) -> Plan
       Task.cancel(running.task)
     end
   end
+
   generation = plan.generations.get(uri).unwrap_or(0) + 1
   kept = plan.running.filter do |running| running.uri != uri end
   return plan.with(generations: plan.generations.put(uri, generation), running: kept)
@@ -148,6 +155,7 @@ def newest(queued: Pending, pending: Pending) -> Pending
   if queued.uri == pending.uri
     return pending
   end
+
   return queued
 end
 
@@ -178,8 +186,10 @@ def reap(plan: Plan) -> Plan
         else
           Logger.err("the check of #{running.uri} crashed: #{outcome.message}")
         end
+
       Await.TimedOut -> alive = alive.push(running)
     end
   end
+
   return plan.with(running: alive)
 end

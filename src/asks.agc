@@ -46,6 +46,7 @@ export def settle(plan: Plan, id: Json) -> Result[Plan]
   if !known?(plan, id)
     return error("no query for the request #{id}")
   end
+
   kept = plan.running.filter do |running| !same?(running.job.id, id) end
   return ok(fill(Change(plan: plan.with(running: kept), dropped: [])).plan)
 end
@@ -69,9 +70,11 @@ export def abandon(plan: Plan) -> Change
   for running in plan.running
     dropped = dropped.push(running.job.id)
   end
+
   for job in plan.queue
     dropped = dropped.push(job.id)
   end
+
   return Change(plan: start(), dropped: dropped)
 end
 
@@ -88,9 +91,11 @@ export def reap(plan: Plan) -> Change
         else
           alive = alive.push(running)
         end
+
       Await.TimedOut -> alive = alive.push(running)
     end
   end
+
   return fill(Change(plan: plan.with(running: alive), dropped: dropped))
 end
 
@@ -113,12 +118,14 @@ def drop_where(plan: Plan, matches: Fn[Events.QueryJob, Bool]) -> Change
       kept = kept.push(running)
     end
   end
+
   waiting = plan.queue.filter do |job| !matches.call(job) end
   for job in plan.queue
     if matches.call(job)
       dropped = dropped.push(job.id)
     end
   end
+
   return Change(plan: Plan(queue: waiting, running: kept), dropped: dropped)
 end
 
@@ -129,5 +136,6 @@ def fill(change: Change) -> Change
     started = Running(job: job, task: Task.spawn(&Events.answer_query, job))
     current = current.with(queue: current.queue.drop(1), running: current.running.push(started))
   end
+
   return change.with(plan: current)
 end

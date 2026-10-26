@@ -40,21 +40,26 @@ export def read() -> Incoming
         if header == ""
           break
         end
+
         if header.downcase.starts_with?(LENGTH_HEADER)
           length = header.slice(LENGTH_HEADER.length, header.length - LENGTH_HEADER.length).strip.to_i.unwrap_or(-1)
         end
+
       error(_) -> return Incoming.End
     end
   end
+
   if length < 0
     return Incoming.Unframed("missing or invalid Content-Length")
   end
+
   case body(length)
     ok(text) ->
       case JSON.parse(text)
         ok(message) -> return Incoming.Message(message)
         error(message) -> return Incoming.Malformed(message)
       end
+
     error(message) -> return Incoming.Malformed(message)
   end
 end
@@ -99,12 +104,15 @@ def body(length: Int) -> Result[String]
     if wanted > CHUNK_BYTES
       wanted = CHUNK_BYTES
     end
+
     chunk = try IO.read_bytes(wanted)
     if chunk.size == 0
       return error("input ended after #{data.size} of #{length} bytes")
     end
+
     data = data.concat(chunk)
   end
+
   return String.from_bytes(data)
 end
 

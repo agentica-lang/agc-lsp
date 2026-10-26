@@ -11,9 +11,11 @@ export def utf16_width(line: String, characters: Int) -> Int
   for char in chars.take(smaller(characters, chars.size))
     width += units_of(char)
   end
+
   if characters > chars.size
     width += characters - chars.size
   end
+
   return width
 end
 
@@ -26,9 +28,11 @@ export def characters_in(line: String, units: Int) -> Int
     if used >= units
       break
     end
+
     used += units_of(char)
     index += 1
   end
+
   return index
 end
 
@@ -36,6 +40,7 @@ def units_of(char: String) -> Int
   if String.code(char) >= SURROGATE_START
     return 2
   end
+
   return 1
 end
 
@@ -43,5 +48,6 @@ def smaller(a: Int, b: Int) -> Int
   if a < b
     return a
   end
+
   return b
 end
