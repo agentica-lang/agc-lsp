@@ -40,10 +40,12 @@ export def root_of(params: Json) -> String
       error(_) -> next
     end
   end
+
   path = Fields.text(params, "rootPath")
   if Uri.absolute?(path)
     return Uri.trimmed(path)
   end
+
   return ""
 end
 
@@ -60,6 +62,7 @@ export def answer(request: Request) -> Result[Json]
       Logger.debug("the search dropped a match in a file that cannot be read: #{path}")
     end
   end
+
   return ok(JSON.array(symbols))
 end
 
@@ -70,6 +73,7 @@ def declarations_of(request: Request) -> Result[List[Analysis.Symbol]]
       for skipped in searched.skipped
         Logger.debug("the search skipped a file", {"file": skipped.file, "code": skipped.diagnostic.code})
       end
+
       return ok(searched.matches.filter do |match| match.kind != BUILTIN_KIND end)
     error(message) if Refusals.in_search?(message) -> return ok(none)
     error(message) if without_files?(message) ->
@@ -97,5 +101,6 @@ def symbol(request: Request, match: Analysis.Symbol, path: String) -> Json
   if match.owner != ""
     fields = fields.put("containerName", JSON.from(match.owner))
   end
+
   return JSON.object(fields)
 end

@@ -26,6 +26,7 @@ def refused?(message: String, prefixes: List[String]) -> Bool
         Logger.debug("the query was refused: #{found.code}")
         return true
       end
+
       return false
     error(_) -> return false
   end

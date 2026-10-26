@@ -51,9 +51,11 @@ def symbol(item: Analysis.Item, lines: List[String], encoding: String) -> Json
   if item.signature != item.name
     fields = fields.put("detail", JSON.from(item.signature))
   end
+
   if children.size > 0
     fields = fields.put("children", JSON.array(children))
   end
+
   return JSON.object(fields)
 end
 
@@ -66,6 +68,7 @@ def variant_symbol(variant: Analysis.Variant, lines: List[String], encoding: Str
   if variant.payload.size > 0
     signature = "#{variant.name}(#{variant.payload.join(", ")})"
   end
+
   return member(variant.name, "variant", signature, variant.name_range, lines, encoding)
 end
 
@@ -86,5 +89,6 @@ def member(
   if signature != name
     fields = fields.put("detail", JSON.from(signature))
   end
+
   return JSON.object(fields)
 end

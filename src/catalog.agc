@@ -51,15 +51,18 @@ export def parse(text: String) -> Result[Book]
     if name == ""
       next
     end
+
     entry = entry_of(item, name)
     book = book.with(entries: book.entries.put(name, entry))
     if entry.namespace != ""
       book = book.with(namespaces: book.namespaces.add(entry.namespace))
     end
   end
+
   if book.entries.size == 0
     return error("the catalog has no builtins")
   end
+
   ordered: List[Entry] = []
   for name in book.entries.keys.sort
     case book.entries.get(name)
@@ -67,6 +70,7 @@ export def parse(text: String) -> Result[Book]
       error(_) -> next
     end
   end
+
   return ok(book.with(ordered: ordered))
 end
 
@@ -112,6 +116,7 @@ def read(helper: Process, deadline: Int) -> Result[Book]
   if status != 0
     return error("agentica exited with status #{status}: #{output.stderr.strip}")
   end
+
   return parse(output.stdout)
 end
 
@@ -123,6 +128,7 @@ def entry_of(item: Json, name: String) -> Entry
     namespace = name.slice(0, dot)
     member = name.slice(dot + 1, name.length - dot - 1)
   end
+
   return Entry(
     name: name,
     namespace: namespace,
@@ -138,6 +144,7 @@ def signatures_of(item: Json) -> List[String]
   if overloads.size == 0
     return [field(item, "signature")]
   end
+
   return overloads.map do |overload| field(overload, "signature") end
 end
 
@@ -150,5 +157,6 @@ def remaining(deadline: Int) -> Int
   if left < SHORTEST_WAIT_MS
     return SHORTEST_WAIT_MS
   end
+
   return left
 end

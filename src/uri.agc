@@ -18,16 +18,19 @@ export def path_of(uri: String) -> Result[String]
   if !uri.starts_with?(FILE_SCHEME)
     return error("not a file URI: #{uri}")
   end
+
   rest = before(before(uri.slice(FILE_SCHEME.length, uri.length - FILE_SCHEME.length), "#"), "?")
   slash = rest.index_of("/").unwrap_or(rest.length)
   authority = rest.slice(0, slash)
   if authority != "" and authority.downcase != LOCALHOST
     return error("not a local file URI: #{uri}")
   end
+
   path = try decode(rest.slice(slash, rest.length - slash))
   if path.starts_with?("/") and drive?(path.slice(1, path.length - 1))
     return ok(normal(path.slice(1, path.length - 1)))
   end
+
   return ok(path)
 end
 
@@ -37,6 +40,7 @@ export def of_path(path: String) -> String
   if drive?(path)
     parts = parts.push("/")
   end
+
   for char in normal(path).split("")
     if char == " " or char == "%" or char == "#" or char == "?" or String.code(char) >= ASCII_LIMIT
       for byte in char.to_bytes
@@ -46,6 +50,7 @@ export def of_path(path: String) -> String
       parts = parts.push(char)
     end
   end
+
   return "#{FILE_SCHEME}#{parts.join("")}"
 end
 
@@ -54,12 +59,14 @@ export def same_path?(a: String, b: String) -> Bool
   if normal(a) == normal(b)
     return true
   end
+
   case Path.real(a)
     ok(first) ->
       case Path.real(b)
         ok(second) -> return first == second
         error(_) -> return false
       end
+
     error(_) -> return false
   end
 end
@@ -74,16 +81,20 @@ export def resolve(folder: String, file: String) -> String
   if absolute?(file)
     return normal(file)
   end
+
   relative = file
   if drive?(folder)
     relative = file.replace("\\", "/")
   end
+
   while relative.starts_with?("./")
     relative = relative.slice(2, relative.length - 2)
   end
+
   if folder.ends_with?("/")
     return "#{folder}#{relative}"
   end
+
   return "#{folder}/#{relative}"
 end
 
@@ -93,6 +104,7 @@ export def trimmed(path: String) -> String
   while shorter.length > 1 and shorter.ends_with?("/") and !drive_root?(shorter)
     shorter = shorter.slice(0, shorter.length - 1)
   end
+
   return shorter
 end
 
@@ -100,6 +112,7 @@ def normal(path: String) -> String
   if !drive?(path)
     return path
   end
+
   return "#{path.slice(0, 1).downcase}#{path.slice(1, path.length - 1).replace("\\", "/")}"
 end
 
@@ -111,9 +124,11 @@ def drive?(text: String) -> Bool
   if text.length < 2 or text.at(1) != ":"
     return false
   end
+
   if text.length > 2 and text.at(2) != "/" and text.at(2) != "\\"
     return false
   end
+
   code = String.code(text.at(0).downcase)
   return code >= LOWER_A and code <= LOWER_Z
 end
@@ -141,6 +156,7 @@ def decode(text: String) -> Result[String]
       index += 1
     end
   end
+
   return String.from_bytes(data)
 end
 

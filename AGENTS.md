@@ -28,7 +28,7 @@ src/completion.agc textDocument/completion of builtins: after `Ns.` or at the st
 src/check.agc     maps the first problem of `Analysis.check` to an LSP diagnostic (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
 bin/prepare.agc   cache key (agentica binary, version, src/*.agc), cache folder (AGC_LSP_CACHE, else per OS), compile once with an atomic rename (an error that suggests AGC_LSP_CACHE if the file system has none), prune; prints the path of the compiled server
-bin/agc-lsp       the launcher for Linux and macOS: finds the repo through symlinks, asks prepare.agc for the program, then `exec agentica run --allow-run -- PROGRAM "$@"`
+bin/agc-lsp       the launcher for Linux and macOS: finds the repo through symlinks, asks prepare.agc for the program, then `exec agentica run -- PROGRAM "$@"`
 bin/agc-lsp.bat   the same launcher for Windows (cmd.exe, `%~dp0`)
 compose.yaml      Docker Compose service `wine`: the Windows build of agentica under Wine, the repo mounted read-only
 docker/wine/      its Dockerfile (agentica.exe of `AGENTICA_VERSION`, verified against SHA256SUMS) and `smoke.sh`
@@ -62,9 +62,11 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
 - Before writing `.agc` or `.feature` files, load the `agentica-programming` skill (`.agents/skills/`).
 - Before writing or reviewing `.agc` code, load the `agentica-code-guidelines` skill too (`.agents/skills/`) and follow
   `site/content/style.md` of Agentica.
-- This repo has no `agentica.toml` on purpose: `agentica check` reads the first one it finds in the folders above a
-  file, so a manifest here would reach the scenarios. Scenario folders live outside the repo (under `TMPDIR` or
-  `/tmp`), and `with_folder` in `specs/steps.agc` fails if an `agentica.toml` exists in any folder above them.
+- The `agentica.toml` at the root holds only `[style]` (`blank_line_after_end` and `max_line_width`, which `agentica
+  check` enforces on every file below it) and no `[package]` or dependencies. `agentica check` reads the first manifest
+  it finds in the folders above a file, so the scenarios must not sit below the repo: their folders live outside it
+  (under `TMPDIR` or `/tmp`), and `with_folder` in `specs/steps.agc` fails if an `agentica.toml` exists in any folder
+  above them.
 
 ## Design notes
 

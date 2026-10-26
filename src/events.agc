@@ -103,6 +103,7 @@ export def read_input(events: Channel[Event]) -> Result[Void]
       return ok()
     end
   end
+
   return ok()
 end
 
@@ -112,6 +113,7 @@ export def check(job: Job) -> Result[Void]
   if Logger.enabled?(LogLevel.Debug)
     Logger.debug("check started", {"uri": job.uri, "generation": job.generation.to_s})
   end
+
   refreshed = Analysis.refresh(job.session, job.path)
   checked = Analysis.check(refreshed, job.path)
   if Logger.enabled?(LogLevel.Debug)
@@ -123,6 +125,7 @@ export def check(job: Job) -> Result[Void]
     }
     Logger.debug("check finished", fields)
   end
+
   report = Report(
     uri: job.uri,
     generation: job.generation,
@@ -141,6 +144,7 @@ export def load_catalog(job: CatalogJob) -> Result[Void]
     ok(book) -> Logger.info("loaded the builtin catalog", {"builtins": book.entries.size.to_s})
     error(message) -> Logger.warning("cannot load the builtin catalog from #{job.agentica}: #{message}")
   end
+
   deliver(job.events, Event.Cataloged(outcome))
   return ok()
 end
@@ -171,6 +175,7 @@ def settle(events: Channel[Event], id: Json, what: String, outcome: Result[Json]
     ok(found) -> result = found
     error(message) -> Logger.warning("cannot answer the request for the #{what}: #{message}")
   end
+
   deliver(events, Event.Answered(Answer(id: id, result: result)))
   return ok()
 end

@@ -8,6 +8,15 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Needs Agentica 0.11.0 or later.
+
+### Changed
+
+- CI and the docs need Agentica 0.11.0.
+- The launchers no longer pass `--allow-run`, which Agentica removed in 0.9.0 (programs may start processes by
+  default). **Breaking:** the launchers fail on Agentica before 0.9.0.
+- An `agentica.toml` with `[style]` (`blank_line_after_end`, `max_line_width = 119`) sets the layout of the sources.
+
 ## [0.0.2] - 2026-10-22
 
 Needs Agentica 0.8.1 or later.

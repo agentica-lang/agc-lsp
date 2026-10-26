@@ -31,6 +31,7 @@ def main() -> Void
   if args.size != 2
     fail("usage: prepare.agc ROOT AGENTICA")
   end
+
   case prepared(args[0], args[1])
     ok(program) -> puts(program)
     error(message) -> fail(message)
@@ -51,6 +52,7 @@ def prepared(root: String, agentica: String) -> Result[String]
     try compile(root, agentica, key, cache)
     prune(cache, Time.now_ms() / 1000)
   end
+
   stamp(cache)
   return ok(cache.program)
 end
@@ -59,12 +61,14 @@ def make_folder(folder: String) -> Result[Void]
   if File.stat(folder, IO_TIMEOUT_MS).ok?
     return ok()
   end
+
   parent = try Path.resolve("#{folder}/..")
   try Dir.mkdir(parent, IO_TIMEOUT_MS)
   made = Dir.mkdir_private(folder, IO_TIMEOUT_MS)
   if made.ok? or File.stat(folder, IO_TIMEOUT_MS).ok?
     return ok()
   end
+
   return made
 end
 
@@ -73,6 +77,7 @@ def version_of(binary: String) -> Result[String]
   if done.status != 0
     return error("cannot run '#{binary} --version': #{done.stderr.trim}")
   end
+
   return ok(done.stdout.trim)
 end
 
@@ -99,6 +104,7 @@ def cache_key(root: String, binary: String, version: String) -> Result[String]
     text = try File.read_text(path, IO_TIMEOUT_MS)
     pieces = pieces.push("#{name}\n#{text}")
   end
+
   return ok(hex(Crypto.sha256(pieces.join("").to_bytes)))
 end
 
@@ -118,6 +124,7 @@ def cache_folder() -> Result[String]
   if override != ""
     return ok(override)
   end
+
   base = try cache_base()
   return Path.join([base, LIBRARY])
 end
@@ -126,10 +133,12 @@ def cache_base() -> Result[String]
   if System.os() == WINDOWS
     return environment("LOCALAPPDATA")
   end
+
   configured = System.env("XDG_CACHE_HOME").unwrap_or("")
   if configured != ""
     return ok(configured)
   end
+
   home = try environment("HOME")
   return Path.join([home, ".cache"])
 end
@@ -139,6 +148,7 @@ def environment(name: String) -> Result[String]
   if value == ""
     return error("#{name} is not set")
   end
+
   return ok(value)
 end
 
@@ -156,10 +166,12 @@ def publish(root: String, binary: String, partial: String, cache: Cache) -> Resu
     IO.warn("#{done.stdout}#{done.stderr}".trim)
     return error("cannot compile #{source}")
   end
+
   moved = Path.rename(partial, cache.program, IO_TIMEOUT_MS)
   if moved.ok? or File.stat(cache.program, IO_TIMEOUT_MS).ok?
     return ok()
   end
+
   return error((
     "cannot publish the compiled server in #{cache.folder}: #{moved.message}; " +
     "the file system cannot move a file without replacing one, so set #{CACHE_OVERRIDE} to a folder on a local disk"
@@ -185,6 +197,7 @@ def prune_entry(cache: Cache, name: String, path: String, now: Int) -> Void
   if leftover and idle_seconds(path, now) > PARTIAL_SECONDS
     _ = Path.remove(path, IO_TIMEOUT_MS)
   end
+
   if name.ends_with?(PROGRAM_SUFFIX) and path != cache.program and unused_seconds(path, now) > KEEP_SECONDS
     _ = Path.remove(path, IO_TIMEOUT_MS)
     _ = Path.remove("#{path}#{STAMP_SUFFIX}", IO_TIMEOUT_MS)

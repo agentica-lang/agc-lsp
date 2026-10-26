@@ -29,18 +29,22 @@ export def locate(documents: Map[String, String], params: Json, encoding: String
   if line < 0 or line >= lines.size or character < 0
     return error("no such position #{line}:#{character}")
   end
+
   text = lines[line]
   if text.ends_with?("\r")
     text = text.slice(0, text.length - 1)
   end
+
   chars = text.split("")
   index = character
   if encoding == UTF16
     index = characters_in(text, character)
   end
+
   if index > chars.size
     index = chars.size
   end
+
   return ok(Cursor(line: line, text: text, chars: chars, index: index, encoding: encoding))
 end
 
@@ -59,5 +63,6 @@ def position(cursor: Cursor, index: Int) -> Json
   if cursor.encoding == UTF16
     character = utf16_width(cursor.text, index)
   end
+
   return JSON.object({"line": JSON.from(cursor.line), "character": JSON.from(character)})
 end

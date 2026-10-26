@@ -16,6 +16,7 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   if !Words.code?(cursor.chars, cursor.index + 1)
     return JSON.null()
   end
+
   case find(book, cursor)
     ok(found) ->
       contents = JSON.object({
@@ -33,6 +34,7 @@ export def settled?(book: Catalog.Book, cursor: Cursor.Cursor) -> Bool
   if !Words.name_at?(cursor.chars, cursor.index)
     return true
   end
+
   case find(book, cursor)
     ok(found) -> return !found.by_receiver
     error(_) -> return false
@@ -51,12 +53,15 @@ def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]
   if Words.dotted?(chars, word.start)
     return after_dot(book, chars, word)
   end
+
   if Catalog.namespace?(book, word.text)
     return qualified(book, word.text, try Words.member(chars, word.stop), word.start)
   end
+
   if !Words.called?(chars, word.stop)
     return error("not a call: #{word.text}")
   end
+
   entry = try Catalog.find(book, word.text)
   return ok(Found(entries: [entry], start: word.start, stop: word.stop, by_receiver: false))
 end
@@ -77,6 +82,7 @@ def methods(book: Catalog.Book, word: Words.Word) -> Result[Found]
   if entries.size == 0
     return error("no builtin method #{word.text}")
   end
+
   return ok(Found(entries: entries, start: word.start, stop: word.stop, by_receiver: true))
 end
 

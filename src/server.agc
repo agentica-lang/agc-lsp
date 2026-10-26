@@ -113,14 +113,17 @@ export def serve(state: State) -> Int
           Next.Continue(next) -> current = watch(next.with(plan: Schedule.tick(next.plan, basis(next))))
           Next.Exit(status) -> return finish(current, reader, status)
         end
+
       error(_) ->
         if reader_crashed?(reader)
           Logger.err("the reader of the input crashed")
           return finish(current, reader, 1)
         end
+
         current = watch(current.with(plan: Schedule.tick(current.plan, basis(current))))
     end
   end
+
   return finish(current, reader, exit_status(current))
 end
 
@@ -139,6 +142,7 @@ def watch(state: State) -> State
   if state.loaders.size == 0 and state.asks.running.size == 0
     return state
   end
+
   return dropped_answer(state.with(loaders: running(state.loaders)), Asks.reap(state.asks))
 end
 
@@ -150,9 +154,11 @@ def running(loaders: List[Task[Result[Void]]]) -> List[Task[Result[Void]]]
         if !outcome.ok?
           Logger.err("the builtin catalog task crashed: #{outcome.message}")
         end
+
       Await.TimedOut -> alive = alive.push(loader)
     end
   end
+
   return alive
 end
 
@@ -160,6 +166,7 @@ def dropped_answer(state: State, change: Asks.Change) -> State
   for id in change.dropped
     Rpc.respond(id, JSON.null())
   end
+
   return state.with(asks: change.plan)
 end
 
@@ -168,6 +175,7 @@ def finish(state: State, reader: Task[Result[Void]], status: Int) -> Int
   for loader in state.loaders
     Task.cancel(loader)
   end
+
   Asks.stop(state.asks)
   Schedule.stop(state.plan)
   return status
@@ -183,11 +191,13 @@ def dispatch(state: State, event: Events.Event) -> Next
           return Next.Continue(state.with(asks: plan))
         error(_) -> return Next.Continue(state)
       end
+
     Events.Event.Cataloged(outcome) ->
       case outcome
         ok(book) -> return Next.Continue(state.with(catalog: book))
         error(_) -> return Next.Continue(state)
       end
+
     Events.Event.Input(incoming) -> return input(state, incoming)
     Events.Event.Log(logged) ->
       Logs.write_to_editor(logged)
@@ -212,10 +222,12 @@ def checked(state: State, report: Events.Report) -> State
   if state.shut_down
     return state
   end
+
   held = adopted(state, report)
   if !Schedule.current?(held.plan, report)
     return held
   end
+
   return published(held.with(plan: Schedule.settle(held.plan, report.uri)), report)
 end
 
@@ -223,6 +235,7 @@ def adopted(state: State, report: Events.Report) -> State
   if report.revision != state.revision
     return state
   end
+
   return state.with(session: report.session)
 end
 
@@ -246,11 +259,13 @@ def handle(state: State, message: Json) -> Next
     Rpc.fail(JSON.null(), INVALID_REQUEST, "a message must be a JSON object")
     return Next.Continue(state)
   end
+
   method = JSON.string(JSON.get(message, "method").unwrap_or(JSON.null())).unwrap_or("")
   log_received(message, method)
   if method == "exit"
     return Next.Exit(exit_status(state))
   end
+
   case JSON.get(message, "id")
     ok(id) ->
       if method == "" and response?(message)
@@ -259,6 +274,7 @@ def handle(state: State, message: Json) -> Next
         Rpc.fail(id, INVALID_REQUEST, "a request needs a method")
         return Next.Continue(state)
       end
+
       return Next.Continue(request(state, id, method, params(message)))
     error(_) -> return Next.Continue(notification(state, method, params(message)))
   end
@@ -272,6 +288,7 @@ def request(state: State, id: Json, method: String, params: Json) -> State
     Rpc.fail(id, INVALID_REQUEST, "the server is shut down")
     return state
   end
+
   case method
     "initialize" -> return initialize(state, id, params)
     "textDocument/hover" -> return hover(state, id, params)
@@ -298,10 +315,12 @@ def initialize(state: State, id: Json, params: Json) -> State
     Rpc.fail(id, INVALID_REQUEST, "the server is already initialized")
     return state
   end
+
   encoding = UTF16
   if Set.new(offered(params)).include?(UTF32)
     encoding = UTF32
   end
+
   sync = JSON.object({
     "openClose": JSON.from(true),
     "change": JSON.from(FULL_SYNC),
@@ -335,6 +354,7 @@ def hover(state: State, id: Json, params: Json) -> State
         Rpc.respond(id, Hover.answer(state.catalog, cursor))
         return state
       end
+
       return ask(state, id, "textDocument/hover", params, cursor)
     error(_) ->
       Rpc.respond(id, JSON.null())
@@ -360,6 +380,7 @@ def symbols(state: State, id: Json, params: Json) -> State
     Rpc.respond(id, JSON.null())
     return state
   end
+
   return ask(state, id, "textDocument/documentSymbol", params, Cursor.start(state.encoding))
 end
 
@@ -383,6 +404,7 @@ def workspace_symbols(state: State, id: Json, params: Json) -> State
     Rpc.respond(id, JSON.array(none))
     return state
   end
+
   request = Workspace.Request(
     session: state.session,
     documents: state.documents,
@@ -441,6 +463,7 @@ def question_of(method: String, request: Lookup.Request, params: Json) -> Events
   if method == "textDocument/references"
     return Events.Question.References(request, with_declaration?(params))
   end
+
   return Events.Question.Document(request)
 end
 
@@ -454,6 +477,7 @@ def cancelled(state: State, params: Json) -> State
   for id in change.dropped
     Rpc.fail(id, REQUEST_CANCELLED, "request cancelled")
   end
+
   return state.with(asks: change.plan)
 end
 
@@ -461,6 +485,7 @@ def notification(state: State, method: String, params: Json) -> State
   if !state.initialized or state.shut_down
     return state
   end
+
   case method
     "textDocument/didOpen" -> return opened(state, document_uri(params), params)
     "textDocument/didChange" ->
@@ -470,6 +495,7 @@ def notification(state: State, method: String, params: Json) -> State
           Logger.warning(message)
           return state
       end
+
     "textDocument/didSave" -> return saved(state, document_uri(params))
     "textDocument/didClose" -> return closed(state, document_uri(params))
     "$/cancelRequest" -> return cancelled(state, params)
@@ -486,6 +512,7 @@ def opened(state: State, uri: String, params: Json) -> State
           Logger.warning("#{message}: #{uri}")
           return state
       end
+
     error(message) ->
       Logger.warning(message)
       return state
@@ -497,6 +524,7 @@ def keep(state: State, uri: String, text: String, delay_ms: Int) -> State
   if path == ""
     return state
   end
+
   return revised(check(buffered(state, uri, path, text), Schedule.delayed(uri, path, delay_ms)))
 end
 
@@ -521,6 +549,7 @@ def edited(state: State, uri: String, text: String) -> State
   if path == ""
     return state
   end
+
   return dependents(keep(state, uri, text, CHANGE_DELAY_MS), uri, path, CHANGE_DELAY_MS)
 end
 
@@ -533,6 +562,7 @@ def dependents(state: State, uri: String, path: String, delay_ms: Int) -> State
   if path == ""
     return state
   end
+
   refreshed = state
   for document in state.pointing.keys
     case state.pointing.get(document)
@@ -540,9 +570,11 @@ def dependents(state: State, uri: String, path: String, delay_ms: Int) -> State
         if document != uri and Uri.same_path?(target, path)
           refreshed = recheck_after(refreshed, document, delay_ms)
         end
+
       error(_) -> next
     end
   end
+
   return refreshed
 end
 
@@ -551,6 +583,7 @@ def recheck_after(state: State, uri: String, delay_ms: Int) -> State
   if state.documents.get(path).ok?
     return check(state, Schedule.delayed(uri, path, delay_ms))
   end
+
   return state
 end
 
@@ -562,9 +595,11 @@ def closed(state: State, uri: String) -> State
       Logger.warning(message)
       return state
   end
+
   if !path.ends_with?(AGENTICA_EXTENSION)
     return state
   end
+
   none: List[Json] = []
   publish(uri, none)
   remaining = state.open.delete(uri)
@@ -576,6 +611,7 @@ def closed(state: State, uri: String) -> State
   if remaining.keys.any? do |other| remaining.get(other).unwrap_or("") == path end
     return dropped
   end
+
   return dependents(revised(dropped.with(
     documents: dropped.documents.delete(path),
     session: Analysis.close(dropped.session, path),
@@ -587,6 +623,7 @@ def agentica_path(uri: String) -> String
   if path.ends_with?(AGENTICA_EXTENSION)
     return path
   end
+
   return ""
 end
 
@@ -606,6 +643,7 @@ def offered(params: Json) -> List[String]
   for encoding in encodings
     names = names.push(JSON.string(encoding).unwrap_or(""))
   end
+
   return names
 end
 
@@ -623,10 +661,12 @@ def changed_text(params: Json) -> Result[String]
   if changes.size == 0
     return error("a change without contentChanges")
   end
+
   last = changes[changes.size - 1]
   if JSON.get(last, "range").ok?
     return error("an incremental change was ignored; the server asks for full sync")
   end
+
   return JSON.string(JSON.get(last, "text").unwrap_or(JSON.null()))
 end
 
@@ -639,6 +679,7 @@ def log_received(message: Json, method: String) -> Void
   if !Logger.enabled?(LogLevel.Debug)
     return
   end
+
   case JSON.get(message, "id")
     ok(id) -> Logger.debug("received a message", {"method": method, "id": JSON.encode(id)})
     error(_) -> Logger.debug("received a message", {"method": method})
@@ -661,5 +702,6 @@ def exit_status(state: State) -> Int
   if state.shut_down
     return 0
   end
+
   return 1
 end

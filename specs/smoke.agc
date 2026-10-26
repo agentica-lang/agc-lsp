@@ -11,6 +11,7 @@ def main() -> Void
   if args.size != 2
     fail("usage: smoke.agc input|verify FILE")
   end
+
   case args[0]
     "input" -> finish(write_input(args[1]), "smoke input written")
     "verify" -> finish(verify(args[1]), "smoke ok")
@@ -52,6 +53,7 @@ def verify(path: String) -> Result[Void]
   if result.to_s != JSON.null().to_s
     return error("shutdown answered with #{result.to_s}")
   end
+
   return ok()
 end
 
@@ -82,6 +84,7 @@ def reply(messages: List[Json], id: Int) -> Result[Json]
       return ok(message)
     end
   end
+
   return error("no reply to request #{id} among #{messages.size} messages")
 end
 
@@ -92,8 +95,10 @@ def read_messages(file: FileHandle) -> Result[List[Json]]
     if !header.ok?
       return ok(messages)
     end
+
     messages = messages.push(try read_message(file, header.unwrap!))
   end
+
   return ok(messages)
 end
 
@@ -101,11 +106,13 @@ def read_message(file: FileHandle, header: String) -> Result[Json]
   if !header.starts_with?(LENGTH_PREFIX)
     return error("expected a Content-Length header; got #{header.inspect}")
   end
+
   length = try header.slice(LENGTH_PREFIX.length, header.length - LENGTH_PREFIX.length).to_i
   blank = try File.read_line(file, TIMEOUT_MS)
   if blank != ""
     return error("expected a blank line after the header; got #{blank.inspect}")
   end
+
   body = try File.read_bytes(file, length, TIMEOUT_MS)
   return JSON.parse(try String.from_bytes(body))
 end

@@ -37,6 +37,7 @@ def position(at: Analysis.Position, lines: List[String], encoding: String) -> Js
   if encoding == UTF16 and line < lines.size
     character = utf16_width(lines[line], character)
   end
+
   return JSON.object({"line": JSON.from(line), "character": JSON.from(character)})
 end
 
@@ -60,6 +61,7 @@ def same_file(documents: Map[String, String], path: String) -> Result[String]
       return documents.get(open)
     end
   end
+
   return error("not open: #{path}")
 end
 
@@ -67,5 +69,6 @@ def not_negative(n: Int) -> Int
   if n < 0
     return 0
   end
+
   return n
 end

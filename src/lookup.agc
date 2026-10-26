@@ -112,9 +112,11 @@ def origin_of(found: Analysis.TypeAt) -> Origin
   if found.definition.size > 0
     return Origin.Declared(found.definition[0])
   end
+
   if found.kind == BUILTIN_KIND and JSON.kind(found.help) == "object"
     return Origin.Builtin(Catalog.from_help(found.help))
   end
+
   return Origin.Unknown
 end
 
@@ -123,6 +125,7 @@ def location(request: Request, file: String, name_range: Analysis.Region) -> Jso
   if !Places.known?(request.documents, path)
     return JSON.null()
   end
+
   return JSON.object({
     "uri": JSON.from(location_uri(request, path)),
     "range": Places.range(Places.lines_of(request.documents, path), name_range, request.cursor.encoding),
@@ -134,6 +137,7 @@ def places_of(uses: Analysis.Refs, with_declaration: Bool) -> List[Use]
   if !with_declaration
     return found
   end
+
   declared = uses.definition.map do |symbol| Use(file: symbol.module, range: symbol.name_range) end
   return declared.concat(found)
 end
@@ -152,6 +156,7 @@ def locations(request: Request, places: List[Use]) -> Json
       error(_) -> next
     end
   end
+
   return JSON.array(found)
 end
 
@@ -163,6 +168,7 @@ def lines_by_file(request: Request, places: List[Use]) -> Map[String, List[Strin
       loaded = loaded.put(path, Places.lines_of(request.documents, path))
     end
   end
+
   return loaded
 end
 
@@ -170,6 +176,7 @@ def location_uri(request: Request, path: String) -> String
   if Uri.same_path?(path, request.path)
     return request.uri
   end
+
   return Uri.of_path(path)
 end
 
@@ -177,6 +184,7 @@ def typed(found: Analysis.TypeAt) -> String
   if found.text.contains?("\n") or found.text.length > SHORT_TEXT_CHARS
     return fenced(found.type)
   end
+
   return fenced("#{found.text}: #{found.type}")
 end
 
@@ -198,9 +206,11 @@ def fence_for(text: String) -> String
       run = 0
     end
   end
+
   if longest < MIN_FENCE
     longest = MIN_FENCE - 1
   end
+
   return List.repeat("`", longest + 1).join("")
 end
 
@@ -208,6 +218,7 @@ def declaration_text(declared: Analysis.Definition) -> String
   if declared.doc == ""
     return fenced(declared.signature)
   end
+
   return "#{fenced(declared.signature)}\n\n#{declared.doc}"
 end
 
@@ -226,6 +237,7 @@ def typed_sections(found: Analysis.TypeAt) -> List[String]
   if found.type == "" or found.kind == TYPE_KIND
     return []
   end
+
   return [typed(found)]
 end
 
@@ -238,6 +250,7 @@ def covered(request: Request, found: Analysis.TypeAt) -> Json
           return Cursor.range(request.cursor, name.start, name.stop)
         error(_) -> return span_range(request, found)
       end
+
     Origin.Declared(_) -> return span_range(request, found)
     Origin.Unknown -> return span_range(request, found)
   end
@@ -247,12 +260,14 @@ def qualified(chars: List[String], entry: Catalog.Entry, word: Words.Word) -> Wo
   if entry.namespace == ""
     return word
   end
+
   if word.text == entry.namespace
     case Words.member(chars, word.stop)
       ok(member) -> return word.with(stop: member.stop)
       error(_) -> return word
     end
   end
+
   case Words.receiver(chars, word.start)
     ok(receiver) if receiver.text == entry.namespace -> return word.with(start: receiver.start)
     ok(_) -> return word
@@ -270,6 +285,7 @@ def answer(request: Request, found: Analysis.TypeAt) -> Json
   if shown.size == 0
     return Hover.answer(request.book, request.cursor)
   end
+
   value = JSON.object({"kind": JSON.from("markdown"), "value": JSON.from(shown.join(SECTION_BREAK))})
   return JSON.object({"contents": value, "range": covered(request, found)})
 end

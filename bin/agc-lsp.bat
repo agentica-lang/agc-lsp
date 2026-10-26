@@ -9,7 +9,7 @@ echo agc-lsp: cannot find 'agentica' 1>&2
 exit /b 1
 :prepare
 set "program="
-for /f "delims=" %%i in ('call "%binary%" --allow-run "%root%\bin\prepare.agc" "%root%" "%binary%"') do set "program=%%i"
+for /f "delims=" %%i in ('call "%binary%" "%root%\bin\prepare.agc" "%root%" "%binary%"') do set "program=%%i"
 if not defined program exit /b 1
-"%binary%" run --allow-run -- "%program%" %*
+"%binary%" run -- "%program%" %*
 exit /b %errorlevel%

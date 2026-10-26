@@ -51,9 +51,9 @@ the checks and the queries of every open file, imported files included. It asks 
 
 ## Usage
 
-It needs `agentica` 0.8.1 or later on `PATH`, and `bash` on Linux and macOS or `cmd.exe` on Windows. The server imports
-`std/analysis`, which compiles the compiler (about 3 s from source), so the launcher compiles the server once and keeps
-the program:
+It needs `agentica` 0.11.0 or later on `PATH`, and `bash` on Linux and macOS or `cmd.exe` on Windows. The server
+imports `std/analysis`, which compiles the compiler (about 3 s from source), so the launcher compiles the server once
+and keeps the program:
 
 ```sh
 bin/agc-lsp [--stdio] [--agentica PATH] [--log-level LEVEL] [--client-log-level LEVEL] \

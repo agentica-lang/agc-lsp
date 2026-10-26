@@ -23,6 +23,7 @@ export def start(options: Options) -> Options
   for problem in usable.problems
     Logger.warning(problem)
   end
+
   Logger.info("starting", {"agentica": usable.agentica})
   return usable
 end
@@ -51,6 +52,7 @@ def writable(options: Options) -> Options
   if options.file == ""
     return options
   end
+
   case File.append_text(options.file, "", FILE_TIMEOUT_MS)
     ok(_) -> return options
     error(message) ->
@@ -68,6 +70,7 @@ def install(options: Options, level: LogLevel) -> Void
   else
     _ = Logger.attach("stderr", level, &Logger.stderr_text)
   end
+
   if options.file != ""
     path = options.file
     _ = Logger.attach("file", level) do |event|
@@ -89,16 +92,19 @@ def choose(given: String, asked: Json, key: String, default: String) -> Chosen
   if given != ""
     return Chosen(level: level_named(given), problem: "")
   end
+
   case JSON.get(asked, key)
     error(_) -> return Chosen(level: fallback, problem: "")
     ok(value) ->
       if JSON.null?(value)
         return Chosen(level: fallback, problem: "")
       end
+
       name = JSON.string(value).unwrap_or(JSON.encode(value))
       if level?(name)
         return Chosen(level: level_named(name), problem: "")
       end
+
       problem = "unknown log level #{name} for #{key} in the initializationOptions; keeping the default"
       return Chosen(level: fallback, problem: problem)
   end
@@ -118,6 +124,7 @@ def lower(a: LogLevel, b: LogLevel) -> LogLevel
   if rank(a) <= rank(b)
     return a
   end
+
   return b
 end
 
@@ -147,8 +154,10 @@ def editor_text(event: LogEvent) -> String
       error(_) -> next
     end
   end
+
   if shown.size == 0
     return event.message
   end
+
   return "#{event.message} #{shown.join(" ")}"
 end
