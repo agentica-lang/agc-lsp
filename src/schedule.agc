@@ -1,10 +1,12 @@
-## Decides which checks run, wait or are stale, per file. Checks run one at a time, since two refreshes of one session
-## give two caches and keeping one drops the work of the other.
+## Decides which checks run, wait or are stale, per file. Checks of different files run at once, at most four, since
+## each starts from the entry of its file in the shared table and publishes the entry it leaves there.
 
+import Entries from "entries"
 import Events from "events"
 import Analysis from "std/analysis"
 import Logger from "std/logger"
 
+MAX_CHECKS = 4
 REAP_MS = 1
 OVERDUE_WAIT_MS = 1
 
@@ -18,7 +20,7 @@ export struct Pending
   due: Int
 end
 
-## Holds the check that runs.
+## Holds a check that runs.
 export struct Running
   ## Is the URI of the file.
   uri: String
@@ -28,15 +30,15 @@ export struct Running
   task: Task[Result[Void]]
 end
 
-## Holds the session that a check starts with, and its revision.
+## Holds what a check starts with: the session and the shared entries.
 export struct Basis
   ## Is the session with the text of every open document.
   session: Analysis.Session
-  ## Is the number of changes to the open documents that the session holds.
-  revision: Int
+  ## Is the table of the entries that the tasks share.
+  entries: Entries.Table
 end
 
-## Holds the queue of waiting checks, the running check and the generation of each file.
+## Holds the queue of waiting checks, the running checks and the generation of each file.
 export struct Plan
   ## Is the channel that receives the reports.
   events: Channel[Events.Event]
@@ -44,7 +46,7 @@ export struct Plan
   generations: Map[String, Int]
   ## Lists the checks that wait to start.
   queue: List[Pending]
-  ## Lists the check that runs, none when the session is free to refresh.
+  ## Lists the checks that run, at most four.
   running: List[Running]
 end
 
@@ -96,22 +98,22 @@ export def settle(plan: Plan, uri: String) -> Plan
   return plan.with(running: plan.running.filter do |running| running.uri != uri end)
 end
 
-## Returns the plan with the next check that is due started when none runs.
+## Returns the plan with the checks that are due started, while fewer than four run.
 export def tick(plan: Plan, basis: Basis) -> Plan
   current = reap(plan)
-  if current.running.size > 0
-    return current
-  end
-
   now = Time.now_ms()
-  due = current.queue.filter do |pending| pending.due <= now end
-  if due.size == 0
-    return current
+  while current.running.size < MAX_CHECKS
+    due = current.queue.filter do |pending| pending.due <= now end
+    if due.size == 0
+      return current
+    end
+
+    pending = due[0]
+    remaining = current.queue.filter do |queued| queued.uri != pending.uri end
+    current = launch(current.with(queue: remaining), pending, basis)
   end
 
-  pending = due[0]
-  remaining = current.queue.filter do |queued| queued.uri != pending.uri end
-  return launch(current.with(queue: remaining), pending, basis)
+  return current
 end
 
 ## Returns how many milliseconds to wait for an event before the next check is due, at most the limit.
@@ -120,7 +122,7 @@ export def wait_ms(plan: Plan, limit: Int) -> Int
   wait = limit
   for pending in plan.queue
     left = pending.due - now
-    if left <= 0 and plan.running.size == 0
+    if left <= 0 and plan.running.size < MAX_CHECKS
       return OVERDUE_WAIT_MS
     elsif left > 0 and left < wait
       wait = left
@@ -130,7 +132,7 @@ export def wait_ms(plan: Plan, limit: Int) -> Int
   return wait
 end
 
-## Returns the plan after cancelling the running check.
+## Returns the plan after cancelling the running checks.
 export def stop(plan: Plan) -> Plan
   for running in plan.running
     Task.cancel(running.task)
@@ -167,13 +169,13 @@ def launch(plan: Plan, pending: Pending, basis: Basis) -> Plan
   job = Events.Job(
     events: plan.events,
     session: basis.session,
-    revision: basis.revision,
+    entries: basis.entries,
     path: pending.path,
     uri: pending.uri,
     generation: plan.generations.get(pending.uri).unwrap_or(0),
   )
   started = Running(uri: pending.uri, path: pending.path, task: Task.spawn(&Events.check, job))
-  return plan.with(running: [started])
+  return plan.with(running: plan.running.push(started))
 end
 
 def reap(plan: Plan) -> Plan

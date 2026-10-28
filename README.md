@@ -1,6 +1,6 @@
 # agc-lsp
 
-A Language Server Protocol (LSP) server for [Agentica](https://github.com/sonic182/agentica), a language for AI agents,
+A Language Server Protocol (LSP) server for [Agentica](https://github.com/agentica-lang/agentica), a language for AI agents,
 written in Agentica.
 
 > **Status:** early stage. Diagnostics, hover, completion, go to definition, find references, document symbols and
@@ -51,7 +51,7 @@ the checks and the queries of every open file, imported files included. It asks 
 
 ## Usage
 
-It needs `agentica` 0.11.0 or later on `PATH`, and `bash` on Linux and macOS or `cmd.exe` on Windows. The server
+It needs `agentica` 0.14.0 or later on `PATH`, and `bash` on Linux and macOS or `cmd.exe` on Windows. The server
 imports `std/analysis`, which compiles the compiler (about 3 s from source), so the launcher compiles the server once
 and keeps the program:
 

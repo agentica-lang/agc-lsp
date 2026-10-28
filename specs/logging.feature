@@ -36,6 +36,26 @@ Feature: Logging
     And the editor gets no log message containing "hidden-text"
     And the log file "server.log" never contains "hidden-text"
 
+  Scenario: a check of a file that was checked before starts from the entry of its file
+    Given the language server has started with the arguments "--log-level debug --client-log-level debug"
+    And the file "ok.agc" contains:
+      """
+      def main() -> Void
+        puts("hi")
+      end
+
+      """
+    When the editor opens "ok.agc"
+    And the editor saves "ok.agc" as:
+      """
+      def main() -> Void
+        puts("again")
+      end
+
+      """
+    Then the editor gets a "debug" log message containing "entry=false"
+    And the editor gets a "debug" log message containing "entry=true"
+
   Scenario: the starting, the initialization and the shutdown are logged at info level
     Given the language server has started with the arguments "--log-level info --agentica specs/fixtures/nohelp-agentica"
     Then the server logs an "info" line containing "starting"

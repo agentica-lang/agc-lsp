@@ -6,6 +6,7 @@ import Check from "check"
 import Completion from "completion"
 import Cursor from "cursor"
 import {UTF16, UTF32} from "columns"
+import Entries from "entries"
 import Events from "events"
 import Fields from "fields"
 import Hover from "hover"
@@ -32,8 +33,8 @@ WAIT_MS = 1000
 READER_CHECK_MS = 1
 CHANGE_DELAY_MS = 200
 
-## Holds the state of the server: its options, the open documents and the session that holds their text, the plan of
-## the checks and the catalog.
+## Holds the state of the server: its options, the open documents and the session that holds their text, the entries
+## that the tasks share, the plan of the checks and the catalog.
 export struct State
   ## Holds the command-line options.
   options: Options.Options
@@ -53,10 +54,10 @@ export struct State
   open: Map[String, String]
   ## Maps the path of each open document to its text.
   documents: Map[String, String]
-  ## Is the session of std/analysis with the text of every open document and the checks refreshed into its cache.
+  ## Is the session of std/analysis with the text of every open document. It holds no cache: that is in the entries.
   session: Analysis.Session
-  ## Counts the changes to the open documents that the session holds.
-  revision: Int
+  ## Is the table of what std/analysis kept for each open document, which the check and query tasks share.
+  entries: Entries.Table
   ## Is the working folder, from which std/analysis writes the names of files below it.
   folder: String
   ## Is the catalog of builtins, empty until it loads.
@@ -93,7 +94,7 @@ export def start(options: Options.Options) -> State
     open: open,
     documents: documents,
     session: Analysis.open(Analysis.workspace()),
-    revision: 0,
+    entries: Entries.start(),
     folder: Uri.trimmed(Path.cwd().unwrap_or("/")),
     catalog: Catalog.empty(),
     loaders: loaders,
@@ -128,7 +129,7 @@ export def serve(state: State) -> Int
 end
 
 def basis(state: State) -> Schedule.Basis
-  return Schedule.Basis(session: state.session, revision: state.revision)
+  return Schedule.Basis(session: state.session, entries: state.entries)
 end
 
 def reader_crashed?(reader: Task[Result[Void]]) -> Bool
@@ -223,20 +224,12 @@ def checked(state: State, report: Events.Report) -> State
     return state
   end
 
-  held = adopted(state, report)
-  if !Schedule.current?(held.plan, report)
-    return held
-  end
-
-  return published(held.with(plan: Schedule.settle(held.plan, report.uri)), report)
-end
-
-def adopted(state: State, report: Events.Report) -> State
-  if report.revision != state.revision
+  Entries.retain(state.entries, state.documents)
+  if !Schedule.current?(state.plan, report)
     return state
   end
 
-  return state.with(session: report.session)
+  return published(state.with(plan: Schedule.settle(state.plan, report.uri)), report)
 end
 
 def published(state: State, report: Events.Report) -> State
@@ -415,6 +408,7 @@ def workspace_symbols(state: State, id: Json, params: Json) -> State
   )
   job = Events.QueryJob(
     events: state.events,
+    entries: state.entries,
     id: id,
     method: "workspace/symbol",
     key: state.root,
@@ -447,6 +441,7 @@ def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cur
       )
       job = Events.QueryJob(
         events: state.events,
+        entries: state.entries,
         id: id,
         method: method,
         key: path,
@@ -537,7 +532,7 @@ def buffered(state: State, uri: String, path: String, text: String) -> State
 end
 
 def revised(state: State) -> State
-  return state.with(revision: state.revision + 1, plan: Schedule.supersede(state.plan, CHANGE_DELAY_MS))
+  return state.with(plan: Schedule.supersede(state.plan, CHANGE_DELAY_MS))
 end
 
 def check(state: State, pending: Schedule.Pending) -> State
@@ -612,10 +607,12 @@ def closed(state: State, uri: String) -> State
     return dropped
   end
 
-  return dependents(revised(dropped.with(
+  forgotten = dropped.with(
     documents: dropped.documents.delete(path),
     session: Analysis.close(dropped.session, path),
-  )), uri, path, 0)
+  )
+  Entries.retain(forgotten.entries, forgotten.documents)
+  return dependents(revised(forgotten), uri, path, 0)
 end
 
 def agentica_path(uri: String) -> String

@@ -6,7 +6,7 @@ RUN apt-get update \
 WORKDIR /download
 RUN test -n "$AGENTICA_VERSION" \
     && archive="agentica-${AGENTICA_VERSION}-windows-x86_64" \
-    && base="https://github.com/sonic182/agentica/releases/download/${AGENTICA_VERSION}" \
+    && base="https://github.com/agentica-lang/agentica/releases/download/${AGENTICA_VERSION}" \
     && curl -fsSLO "${base}/${archive}.zip" \
     && curl -fsSLO "${base}/SHA256SUMS" \
     && sha256sum -c --ignore-missing SHA256SUMS \

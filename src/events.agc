@@ -1,6 +1,7 @@
 ## Defines the events of the server loop and the tasks that send them.
 
 import Catalog from "catalog"
+import Entries from "entries"
 import Lookup from "lookup"
 import Rpc from "rpc"
 import Analysis from "std/analysis"
@@ -16,10 +17,6 @@ export struct Report
   uri: String
   ## Is the generation of the check, to tell newer checks from older.
   generation: Int
-  ## Is the revision of the session that the check started with.
-  revision: Int
-  ## Is that session with the checked file linked and checked in its cache.
-  session: Analysis.Session
   ## Is the answer of the check.
   checked: Analysis.Checked
 end
@@ -46,14 +43,14 @@ export enum Event
   Log(LogEvent)
 end
 
-## Holds what a check task needs: the session, the file and the channel for the result.
+## Holds what a check task needs: the session, the shared entries, the file and the channel for the result.
 export struct Job
   ## Is the channel that receives the report.
   events: Channel[Event]
   ## Is the session with the text of every open document.
   session: Analysis.Session
-  ## Is the revision of the session.
-  revision: Int
+  ## Is the table of the entries that the tasks share.
+  entries: Entries.Table
   ## Is the path of the file.
   path: String
   ## Is the URI of the file.
@@ -76,6 +73,8 @@ end
 export struct QueryJob
   ## Is the channel that receives the answer.
   events: Channel[Event]
+  ## Is the table of the entries that the tasks share, from which a question about a document starts.
+  entries: Entries.Table
   ## Is the id of the request.
   id: Json
   ## Is the method of the request.
@@ -107,15 +106,18 @@ export def read_input(events: Channel[Event]) -> Result[Void]
   return ok()
 end
 
-## Refreshes the session for the file of the job, checks it and sends the report to the channel, returning ok.
+## Refreshes the file of the job from its shared entry, checks it, publishes its new entry and sends the report to the
+## channel, returning ok.
 export def check(job: Job) -> Result[Void]
   started = Time.now_ms()
   if Logger.enabled?(LogLevel.Debug)
-    Logger.debug("check started", {"uri": job.uri, "generation": job.generation.to_s})
+    opened = {"uri": job.uri, "generation": job.generation.to_s, "entry": Entries.held?(job.entries, job.path).to_s}
+    Logger.debug("check started", opened)
   end
 
-  refreshed = Analysis.refresh(job.session, job.path)
+  refreshed = Analysis.refresh(Entries.restored(job.entries, job.session, job.path), job.path)
   checked = Analysis.check(refreshed, job.path)
+  Entries.publish(job.entries, refreshed, job.path)
   if Logger.enabled?(LogLevel.Debug)
     fields = {
       "uri": job.uri,
@@ -129,8 +131,6 @@ export def check(job: Job) -> Result[Void]
   report = Report(
     uri: job.uri,
     generation: job.generation,
-    revision: job.revision,
-    session: refreshed,
     checked: checked,
   )
   deliver(job.events, Event.Checked(report))
@@ -154,7 +154,7 @@ export def answer_query(job: QueryJob) -> Result[Void]
   case job.question
     Question.Document(request) -> return answer_document(job, request)
     Question.References(request, with_declaration) ->
-      return settle(job.events, job.id, "references", Lookup.references(request, with_declaration))
+      return settle(job.events, job.id, "references", Lookup.references(started_from(job, request), with_declaration))
     Question.Workspace(request) ->
       return settle(job.events, job.id, "workspace symbols", Workspace.answer(request))
   end
@@ -162,11 +162,17 @@ end
 
 def answer_document(job: QueryJob, request: Lookup.Request) -> Result[Void]
   case job.method
-    "textDocument/definition" -> return settle(job.events, job.id, "definition", Lookup.definition(request))
-    "textDocument/hover" -> return settle(job.events, job.id, "hover", Lookup.hover(request))
+    "textDocument/definition" ->
+      return settle(job.events, job.id, "definition", Lookup.definition(started_from(job, request)))
+    "textDocument/hover" -> return settle(job.events, job.id, "hover", Lookup.hover(started_from(job, request)))
     _ ->
       return settle(job.events, job.id, "document symbols", Symbols.answer(request))
   end
+end
+
+# The request with the session that starts from the entry of its document, which the checks of that file left.
+def started_from(job: QueryJob, request: Lookup.Request) -> Lookup.Request
+  return request.with(session: Entries.restored(job.entries, request.session, request.path))
 end
 
 def settle(events: Channel[Event], id: Json, what: String, outcome: Result[Json]) -> Result[Void]
