@@ -8,10 +8,11 @@ An LSP server for Agentica, written in Agentica. Plan: sonic182/agentica#346.
 src/main.agc      entry point: options, logging, then the server loop
 src/options.agc   command-line options and their defaults
 src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
-src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file and the std/analysis session that holds it, with its revision; which open files point into which file; the builtin catalog and the workspace folder it keeps
-src/events.agc    the reader, check (refresh the session for a file, then check it), catalog and request (definition, references, hover, symbols, workspace symbols) tasks, and the events they send to the server loop
+src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file and the std/analysis session that holds it, and the table of entries the tasks share; which open files point into which file; the builtin catalog and the workspace folder it keeps
+src/events.agc    the reader, check (start from the entry of a file, refresh, check, publish the new entry), catalog and request (definition, references, hover, symbols, workspace symbols) tasks, and the events they send to the server loop
 src/asks.agc      which definition, references, hover, symbols and workspace symbol queries run (at most 4), wait, are superseded or cancelled, per request id
-src/schedule.agc  which checks run (one at a time, since a session is refreshed by one task), wait or are stale, per file, and the time each is due (changes wait 200 ms)
+src/schedule.agc  which checks run (at most 4, one per file), wait or are stale, per file, and the time each is due (changes wait 200 ms)
+src/entries.agc   the ATS table of std/analysis entries (`Analysis.entry`, `Analysis.adopt`) by path of the open file: start a session from one, publish one, drop those of closed files
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
 src/catalog.agc   the builtins from `agentica --json help`, the only process the server starts: loading, parsing, lookups by name, namespace and prefix
 src/columns.agc   character indexes of a line to and from UTF-16 code units
@@ -72,8 +73,15 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
 
 ## Design notes
 
-- Two refreshes of one session give two caches and keeping one drops the work of the other, hence one check at a time;
-  a check stores its refreshed session only when no document changed while it ran.
+- The cache of std/analysis is not threaded through the loop. A `Session` holds only the text of the open documents; what
+  `refresh` kept for a file is an `Analysis.Entry` in an `ATS` table (`src/entries.agc`), by path. A check adopts the
+  entry of its file, refreshes, checks and publishes the new entry; a definition, references or hover query adopts it
+  and never publishes. So checks of different files run at once (each refreshes a session of its own, and two entries
+  are two caches, never merged) and no refresh is lost to another.
+- An entry is only a shortcut: std/analysis uses it while the files and buffers say what they said, and checks again
+  otherwise. A check that was cancelled may or may not have published, one that ends late may publish an older entry
+  over a newer one, and the loop drops the entries of closed files on every close and report: all of these cost time, never a wrong
+  answer. Entries of two files share nothing, not even the modules both import.
 - Two URIs for one path (a `localhost` authority, a double slash) share one open text and one session entry, the last
   text written wins; each URI is still checked and published on its own, and the text stays until the last is closed.
 - Queries answer for the text the buffer had when they arrived, even if it changed or was closed meanwhile; a refusal

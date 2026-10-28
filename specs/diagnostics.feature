@@ -2,8 +2,8 @@ Feature: Diagnostics in the editor
   On open, on change and on save, the server checks the text of the buffer as
   `agentica check` does and publishes its first diagnostic, or none. Positions
   are written as `agentica check` shows them: line:column, from 1, end
-  exclusive. Checks run one at a time; the slow ones in these scenarios import
-  a module of thousands of functions.
+  exclusive. Checks of different files run at once; the slow ones in these
+  scenarios import a module of thousands of functions.
   These scenarios open files whose buffer is what is on disk; the ones where
   the buffer differs are in buffers.feature.
 
@@ -392,6 +392,35 @@ Feature: Diagnostics in the editor
     And the editor waits for the diagnostics of 2 files
     Then "quick.agc" gets no diagnostics
     And "quick.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 2:8-2:13 | error    | CHECK-UNKNOWN-NAME |
+    And "slow.agc" gets these diagnostics:
+      | at       | severity | code               |
+      | 4:8-4:12 | error    | CHECK-UNKNOWN-NAME |
+    And the diagnostics of "quick.agc" are published before those of "slow.agc"
+
+  Scenario: a quick file is checked while a slow one is still being checked
+    Given the language server has started
+    And the file "heavy.agc" is a module of 5000 functions
+    And the file "slow.agc" contains:
+      """
+      import Heavy from "heavy"
+
+      def main() -> Void
+        puts(oops)
+      end
+
+      """
+    And the file "quick.agc" contains:
+      """
+      def main() -> Void
+        puts(typed)
+      end
+
+      """
+    When the editor opens the files "quick.agc, slow.agc" without waiting
+    And the editor waits for the diagnostics of 2 files
+    Then "quick.agc" gets these diagnostics:
       | at       | severity | code               |
       | 2:8-2:13 | error    | CHECK-UNKNOWN-NAME |
     And "slow.agc" gets these diagnostics:
