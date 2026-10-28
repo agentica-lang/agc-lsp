@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  AGENTICA_VERSION: "0.11.0"
+  AGENTICA_VERSION: "0.14.0"
 
 jobs:
   test:
@@ -23,7 +23,7 @@ jobs:
         run: |
           archive="agentica-${AGENTICA_VERSION}-linux-x86_64"
           cd "$RUNNER_TEMP"
-          gh release download "$AGENTICA_VERSION" -R sonic182/agentica -p "${archive}.tar.gz" -p SHA256SUMS
+          gh release download "$AGENTICA_VERSION" -R agentica-lang/agentica -p "${archive}.tar.gz" -p SHA256SUMS
           sha256sum -c --ignore-missing SHA256SUMS
           tar xzf "${archive}.tar.gz"
           echo "$RUNNER_TEMP/${archive}/bin" >> "$GITHUB_PATH"
@@ -47,7 +47,7 @@ jobs:
         run: |
           archive="agentica-${AGENTICA_VERSION}-windows-x86_64"
           cd "$RUNNER_TEMP"
-          gh release download "$AGENTICA_VERSION" -R sonic182/agentica -p "${archive}.zip" -p SHA256SUMS
+          gh release download "$AGENTICA_VERSION" -R agentica-lang/agentica -p "${archive}.zip" -p SHA256SUMS
           sha256sum -c --ignore-missing SHA256SUMS
           unzip -q "${archive}.zip"
           echo "$(cygpath -w "$RUNNER_TEMP/${archive}/bin")" >> "$GITHUB_PATH"

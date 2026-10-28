@@ -1,6 +1,6 @@
 # agc-lsp
 
-An LSP server for Agentica, written in Agentica. Plan: sonic182/agentica#346.
+An LSP server for Agentica, written in Agentica. Plan: agentica-lang/agentica#346.
 
 ## Map
 
