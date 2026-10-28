@@ -22,6 +22,14 @@ export def restored(table: Table, session: Analysis.Session, path: String) -> An
   end
 end
 
+## Returns whether the table has an entry for the path.
+export def held?(table: Table, path: String) -> Bool
+  case table.get(path)
+    ok(_) -> return true
+    error(_) -> return false
+  end
+end
+
 ## Puts the entry that the session holds for the path in the table, when it holds one.
 export def publish(table: Table, session: Analysis.Session, path: String) -> Void
   case Analysis.entry(session, path)

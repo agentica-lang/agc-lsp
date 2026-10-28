@@ -111,7 +111,8 @@ end
 export def check(job: Job) -> Result[Void]
   started = Time.now_ms()
   if Logger.enabled?(LogLevel.Debug)
-    Logger.debug("check started", {"uri": job.uri, "generation": job.generation.to_s})
+    opened = {"uri": job.uri, "generation": job.generation.to_s, "entry": Entries.held?(job.entries, job.path).to_s}
+    Logger.debug("check started", opened)
   end
 
   refreshed = Analysis.refresh(Entries.restored(job.entries, job.session, job.path), job.path)

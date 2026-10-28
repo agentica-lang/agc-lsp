@@ -73,15 +73,15 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
 
 ## Design notes
 
-- The cache of std/analysis is not threaded through the loop. A `Session` holds only the text of the open documents; what
-  `refresh` kept for a file is an `Analysis.Entry` in an `ATS` table (`src/entries.agc`), by path. A check adopts the
-  entry of its file, refreshes, checks and publishes the new entry; a definition, references or hover query adopts it
-  and never publishes. So checks of different files run at once (each refreshes a session of its own, and two entries
-  are two caches, never merged) and no refresh is lost to another.
+- The cache of std/analysis is not threaded through the loop. A `Session` holds only the text of the open documents;
+  what `refresh` kept for a file is an `Analysis.Entry` in an `ATS` table (`src/entries.agc`), by path. A check adopts
+  the entry of its file, refreshes, checks and publishes the new entry; a definition, references or hover query adopts
+  it and never publishes. So checks of different files run at once (each refreshes a session of its own, and two
+  entries are two caches, never merged) and no refresh is lost to another.
 - An entry is only a shortcut: std/analysis uses it while the files and buffers say what they said, and checks again
   otherwise. A check that was cancelled may or may not have published, one that ends late may publish an older entry
-  over a newer one, and the loop drops the entries of closed files on every close and report: all of these cost time, never a wrong
-  answer. Entries of two files share nothing, not even the modules both import.
+  over a newer one, and the loop drops the entries of closed files on every close and report: all of these cost time,
+  never a wrong answer. Entries of two files share nothing, not even the modules both import.
 - Two URIs for one path (a `localhost` authority, a double slash) share one open text and one session entry, the last
   text written wins; each URI is still checked and published on its own, and the text stays until the last is closed.
 - Queries answer for the text the buffer had when they arrived, even if it changed or was closed meanwhile; a refusal
