@@ -8,6 +8,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-30
+
 Needs Agentica 0.18.0 or later (`Analysis.entry` and `Analysis.adopt` came in 0.14.0, agentica-lang/agentica#764).
 
 ### Changed
@@ -101,6 +103,7 @@ First release. Needs Agentica 0.7.0 or later.
 - The `bin/agc-lsp` launcher, a Neovim 0.11+ config and a minimal VS Code
   extension (same version as the server).
 
-[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.0.2...HEAD
+[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.1.0...HEAD
+[0.1.0]: https://github.com/agentica-lang/agc-lsp/compare/0.0.2...0.1.0
 [0.0.2]: https://github.com/agentica-lang/agc-lsp/compare/0.0.1...0.0.2
 [0.0.1]: https://github.com/agentica-lang/agc-lsp/releases/tag/0.0.1
