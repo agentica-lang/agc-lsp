@@ -150,8 +150,8 @@ def editor_text(event: LogEvent) -> String
   shown: List[String] = []
   for key in event.fields.keys
     case event.fields.get(key)
-      ok(value) -> shown = shown.push("#{key}=#{value}")
-      error(_) -> next
+      some(value) -> shown = shown.push("#{key}=#{value}")
+      none -> next
     end
   end
 

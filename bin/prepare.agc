@@ -177,8 +177,8 @@ def stamp(cache: Cache) -> Void
 end
 
 def prune(cache: Cache, now: Int) -> Void
-  none: List[String] = []
-  for name in Dir.list(cache.folder, IO_TIMEOUT_MS).unwrap_or(none)
+  no_items: List[String] = []
+  for name in Dir.list(cache.folder, IO_TIMEOUT_MS).unwrap_or(no_items)
     case Path.join([cache.folder, name])
       ok(path) -> prune_entry(cache, name, path, now)
       error(_) -> next

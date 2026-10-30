@@ -135,8 +135,8 @@ end
 
 def before(text: String, mark: String) -> String
   case text.index_of(mark)
-    ok(at) -> return text.slice(0, at)
-    error(_) -> return text
+    some(at) -> return text.slice(0, at)
+    none -> return text
   end
 end
 
@@ -161,5 +161,5 @@ def decode(text: String) -> Result[String]
 end
 
 def digit(char: String) -> Result[Int]
-  return HEX_DIGITS.index_of(char.downcase)
+  return HEX_DIGITS.index_of(char.downcase).to_result("not a hex digit: #{char}")
 end

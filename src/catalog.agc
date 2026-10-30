@@ -66,8 +66,8 @@ export def parse(text: String) -> Result[Book]
   ordered: List[Entry] = []
   for name in book.entries.keys.sort
     case book.entries.get(name)
-      ok(entry) -> ordered = ordered.push(entry)
-      error(_) -> next
+      some(entry) -> ordered = ordered.push(entry)
+      none -> next
     end
   end
 
@@ -81,7 +81,7 @@ end
 
 ## Returns the builtin with the qualified name, or an error when there is none.
 export def find(book: Book, name: String) -> Result[Entry]
-  return book.entries.get(name)
+  return book.entries.get(name).to_result("no builtin #{name}")
 end
 
 ## Returns true when the name is a namespace of builtins, such as String.
@@ -139,8 +139,8 @@ def entry_of(item: Json, name: String) -> Entry
 end
 
 def signatures_of(item: Json) -> List[String]
-  none: List[Json] = []
-  overloads = JSON.list(JSON.get(item, "overloads").unwrap_or(JSON.null())).unwrap_or(none)
+  no_items: List[Json] = []
+  overloads = JSON.list(JSON.get(item, "overloads").unwrap_or(JSON.null())).unwrap_or(no_items)
   if overloads.size == 0
     return [field(item, "signature")]
   end

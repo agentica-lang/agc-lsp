@@ -148,12 +148,12 @@ def locations(request: Request, places: List[Use]) -> Json
   for place in places
     path = Uri.resolve(request.folder, place.file)
     case lines.get(path)
-      ok(file_lines) ->
+      some(file_lines) ->
         found = found.push(JSON.object({
           "uri": JSON.from(location_uri(request, path)),
           "range": Places.range(file_lines, place.range, request.cursor.encoding),
         }))
-      error(_) -> next
+      none -> next
     end
   end
 
@@ -164,7 +164,7 @@ def lines_by_file(request: Request, places: List[Use]) -> Map[String, List[Strin
   loaded: Map[String, List[String]] = {}
   for place in places
     path = Uri.resolve(request.folder, place.file)
-    if !loaded.get(path).ok? and Places.known?(request.documents, path)
+    if loaded.get(path).none? and Places.known?(request.documents, path)
       loaded = loaded.put(path, Places.lines_of(request.documents, path))
     end
   end

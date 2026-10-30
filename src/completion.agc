@@ -11,7 +11,7 @@ MODULE_KIND = 9
 export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   chars = cursor.chars
   if !Words.code?(chars, cursor.index) or Words.after_suffix?(chars, cursor.index)
-    return none()
+    return no_items()
   end
 
   start = Words.word_start(chars, cursor.index)
@@ -25,12 +25,12 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   case Words.receiver(chars, start)
     ok(receiver) if Catalog.namespace?(book, receiver.text) ->
       return JSON.array(functions(Catalog.functions_of(book, receiver.text, partial), true, replaced))
-    ok(_) -> return none()
-    error(_) -> return none()
+    ok(_) -> return no_items()
+    error(_) -> return no_items()
   end
 end
 
-def none() -> Json
+def no_items() -> Json
   items: List[Json] = []
   return JSON.array(items)
 end

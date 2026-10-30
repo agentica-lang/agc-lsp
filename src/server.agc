@@ -369,7 +369,7 @@ def definition(state: State, id: Json, params: Json) -> State
 end
 
 def symbols(state: State, id: Json, params: Json) -> State
-  if !state.documents.get(agentica_path(document_uri(params))).ok?
+  if state.documents.get(agentica_path(document_uri(params))).none?
     Rpc.respond(id, JSON.null())
     return state
   end
@@ -393,8 +393,8 @@ end
 def workspace_symbols(state: State, id: Json, params: Json) -> State
   name = Fields.text(params, "query").strip
   if state.root == "" or name == "" or name.starts_with?("-")
-    none: List[Json] = []
-    Rpc.respond(id, JSON.array(none))
+    no_items: List[Json] = []
+    Rpc.respond(id, JSON.array(no_items))
     return state
   end
 
@@ -421,8 +421,8 @@ def completion(state: State, params: Json) -> Json
   case Cursor.locate(state.documents, params, state.encoding)
     ok(cursor) -> return Completion.answer(state.catalog, cursor)
     error(_) ->
-      none: List[Json] = []
-      return JSON.array(none)
+      no_items: List[Json] = []
+      return JSON.array(no_items)
   end
 end
 
@@ -561,12 +561,12 @@ def dependents(state: State, uri: String, path: String, delay_ms: Int) -> State
   refreshed = state
   for document in state.pointing.keys
     case state.pointing.get(document)
-      ok(target) ->
+      some(target) ->
         if document != uri and Uri.same_path?(target, path)
           refreshed = recheck_after(refreshed, document, delay_ms)
         end
 
-      error(_) -> next
+      none -> next
     end
   end
 
@@ -575,7 +575,7 @@ end
 
 def recheck_after(state: State, uri: String, delay_ms: Int) -> State
   path = Uri.path_of(uri).unwrap_or("")
-  if state.documents.get(path).ok?
+  if state.documents.get(path).some?
     return check(state, Schedule.delayed(uri, path, delay_ms))
   end
 
@@ -595,8 +595,8 @@ def closed(state: State, uri: String) -> State
     return state
   end
 
-  none: List[Json] = []
-  publish(uri, none)
+  no_items: List[Json] = []
+  publish(uri, no_items)
   remaining = state.open.delete(uri)
   dropped = state.with(
     plan: Schedule.forget(state.plan, uri),
@@ -634,8 +634,8 @@ end
 def offered(params: Json) -> List[String]
   capabilities = JSON.get(params, "capabilities").unwrap_or(JSON.null())
   general = JSON.get(capabilities, "general").unwrap_or(JSON.null())
-  none: List[Json] = []
-  encodings = JSON.list(JSON.get(general, "positionEncodings").unwrap_or(JSON.null())).unwrap_or(none)
+  no_items: List[Json] = []
+  encodings = JSON.list(JSON.get(general, "positionEncodings").unwrap_or(JSON.null())).unwrap_or(no_items)
   names: List[String] = []
   for encoding in encodings
     names = names.push(JSON.string(encoding).unwrap_or(""))
@@ -653,8 +653,8 @@ def document_text(params: Json) -> Result[String]
 end
 
 def changed_text(params: Json) -> Result[String]
-  none: List[Json] = []
-  changes = JSON.list(JSON.get(params, "contentChanges").unwrap_or(JSON.null())).unwrap_or(none)
+  no_items: List[Json] = []
+  changes = JSON.list(JSON.get(params, "contentChanges").unwrap_or(JSON.null())).unwrap_or(no_items)
   if changes.size == 0
     return error("a change without contentChanges")
   end

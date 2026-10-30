@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  AGENTICA_VERSION: "0.17.0"
+  AGENTICA_VERSION: "0.18.0"
 
 jobs:
   test:
@@ -54,13 +54,7 @@ jobs:
 
       - run: agentica --version
 
-      - run: agentica check src/main.agc
-
-      - run: agentica check bin/prepare.agc
-
-      - run: agentica check specs/smoke.agc
-
-      - run: agentica check specs/steps.agc
+      - run: agentica check src/main.agc bin/prepare.agc specs/smoke.agc specs/steps.agc
 
       - name: Start the server through bin\agc-lsp.bat
         shell: cmd
