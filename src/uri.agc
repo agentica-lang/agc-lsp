@@ -43,7 +43,7 @@ export def of_path(path: String) -> String
 
   for char in normal(path).split("")
     if char == " " or char == "%" or char == "#" or char == "?" or String.code(char) >= ASCII_LIMIT
-      for byte in char.to_bytes
+      for byte in char.bytes
         parts = parts.push("%#{HEX_UPPER.at(byte / 16)}#{HEX_UPPER.at(byte % 16)}")
       end
     else
@@ -142,22 +142,22 @@ end
 
 def decode(text: String) -> Result[String]
   chars = text.split("")
-  data: List[Int] = []
+  parts: List[Bytes] = []
   index = 0
   while index < chars.size
     char = chars[index]
     if char == "%" and index + 2 < chars.size
       high = try digit(chars[index + 1])
       low = try digit(chars[index + 2])
-      data = data.push(high * 16 + low)
+      parts = parts.push(try Bytes.from_list([high * 16 + low]))
       index += 3
     else
-      data = data.concat(char.to_bytes)
+      parts = parts.push(char.bytes)
       index += 1
     end
   end
 
-  return String.from_bytes(data)
+  return String.from_bytes(Bytes.concat(parts))
 end
 
 def digit(char: String) -> Result[Int]
