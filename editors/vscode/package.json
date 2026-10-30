@@ -2,7 +2,7 @@
   "name": "agentica-lsp",
   "displayName": "Agentica",
   "description": "Diagnostics, hover, completion, go to definition, references and symbols for Agentica (.agc) files from the agc-lsp language server.",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "publisher": "agentica-lang",
   "license": "Apache-2.0",
   "repository": {
