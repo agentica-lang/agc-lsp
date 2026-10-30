@@ -7,7 +7,6 @@ STAMP_SUFFIX = ".used"
 LEFTOVER_PREFIX = "compiling."
 PARTIAL_SUFFIX = ".tmp"
 SOURCE_SUFFIX = ".agc"
-HEX_DIGITS = "0123456789ABCDEF"
 WINDOWS = "windows"
 KEEP_SECONDS = 2_592_000
 PARTIAL_SECONDS = 3_600
@@ -105,12 +104,7 @@ def cache_key(root: String, binary: String, version: String) -> Result[String]
     pieces = pieces.push("#{name}\n#{text}")
   end
 
-  return ok(hex(Crypto.sha256(pieces.join("").to_bytes)))
-end
-
-def hex(bytes: List[Int]) -> String
-  digits = bytes.map do |byte| "#{HEX_DIGITS.at(byte / 16)}#{HEX_DIGITS.at(byte % 16)}" end
-  return digits.join("")
+  return ok(Digest.sha256_hexdigest(pieces.join("").bytes))
 end
 
 def cache_for(key: String) -> Result[Cache]

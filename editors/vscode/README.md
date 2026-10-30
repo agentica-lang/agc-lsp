@@ -6,7 +6,7 @@ Syntax highlighting is not part of this extension; it will come from
 
 ## Install locally
 
-1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.14.0 or later. On
+1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.17.0 or later. On
    Windows, put the `bin` folder of the repository on `PATH`: the extension starts the command through `cmd.exe`, so
    `agc-lsp` finds `agc-lsp.bat`.
 2. From this folder:

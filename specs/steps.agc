@@ -2188,7 +2188,7 @@ def link(target: String, path: String) -> Result[Void]
 end
 
 def frame(body: String) -> String
-  return "Content-Length: #{body.to_bytes.size}\r\n\r\n#{body}"
+  return "Content-Length: #{body.bytes.size}\r\n\r\n#{body}"
 end
 
 def canonical(text: String) -> String
@@ -2295,7 +2295,7 @@ def encoded(path: String) -> String
   parts: List[String] = []
   for char in path.split("")
     if char == " " or char == "%" or char == "#" or char == "?" or String.code(char) >= ASCII_LIMIT
-      for byte in char.to_bytes
+      for byte in char.bytes
         parts = parts.push("%#{HEX_DIGITS.at(byte / 16)}#{HEX_DIGITS.at(byte % 16)}")
       end
     else

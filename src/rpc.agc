@@ -98,25 +98,27 @@ export def log_message(kind: Int, message: String) -> Void
 end
 
 def body(length: Int) -> Result[String]
-  data: List[Int] = []
-  while data.size < length
-    wanted = length - data.size
+  chunks: List[Bytes] = []
+  received = 0
+  while received < length
+    wanted = length - received
     if wanted > CHUNK_BYTES
       wanted = CHUNK_BYTES
     end
 
     chunk = try IO.read_bytes(wanted)
     if chunk.size == 0
-      return error("input ended after #{data.size} of #{length} bytes")
+      return error("input ended after #{received} of #{length} bytes")
     end
 
-    data = data.concat(chunk)
+    chunks = chunks.push(chunk)
+    received += chunk.size
   end
 
-  return String.from_bytes(data)
+  return String.from_bytes(Bytes.concat(chunks))
 end
 
 def send(text: String) -> Void
-  IO.print("Content-Length: #{text.to_bytes.size}\r\n\r\n#{text}")
+  IO.print("Content-Length: #{text.bytes.size}\r\n\r\n#{text}")
   IO.flush()
 end

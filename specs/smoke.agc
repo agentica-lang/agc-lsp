@@ -75,7 +75,7 @@ def notification(method: String) -> String
 end
 
 def frame(body: String) -> String
-  return "#{LENGTH_PREFIX}#{body.to_bytes.size}\r\n\r\n#{body}"
+  return "#{LENGTH_PREFIX}#{body.bytes.size}\r\n\r\n#{body}"
 end
 
 def reply(messages: List[Json], id: Int) -> Result[Json]
