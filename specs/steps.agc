@@ -361,8 +361,8 @@ def launch_field(ctx: BDD.Context, name: String) -> Json
 end
 
 def cache_holds(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  none: List[String] = []
-  names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(none).filter do |name|
+  no_items: List[String] = []
+  names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(no_items).filter do |name|
     name.ends_with?(COMPILED_SUFFIX)
   end
 
@@ -370,8 +370,8 @@ def cache_holds(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def cache_holds_no_partial(ctx: BDD.Context, _args: List[String]) -> BDD.Context
-  none: List[String] = []
-  names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(none).filter do |name|
+  no_items: List[String] = []
+  names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(no_items).filter do |name|
     name.ends_with?(PARTIAL_SUFFIX)
   end
 
@@ -914,8 +914,8 @@ def answers_within(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def gets_none(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  none: List[Json] = []
-  return next_publish(ctx, uri(ctx, args[0]), JSON.array(none))
+  no_items: List[Json] = []
+  return next_publish(ctx, uri(ctx, args[0]), JSON.array(no_items))
 end
 
 def publishes_nothing(ctx: BDD.Context, _args: List[String]) -> BDD.Context
@@ -1096,8 +1096,8 @@ def earlier_hovers_are_null(ctx: BDD.Context, _args: List[String]) -> BDD.Contex
 end
 
 def earlier_are_null(ctx: BDD.Context) -> BDD.Context
-  none: List[Json] = []
-  ids = JSON.list(BDD.get(ctx, "in a row").unwrap!).unwrap_or(none)
+  no_items: List[Json] = []
+  ids = JSON.list(BDD.get(ctx, "in a row").unwrap!).unwrap_or(no_items)
   checked = ctx
   for id in ids.take(ids.size - 1)
     result = reply(checked, JSON.int(id).unwrap!, "result")
@@ -1328,8 +1328,8 @@ def symbols_listed(ctx: BDD.Context, name: String, rows: List[List[String]]) -> 
   id = JSON.int(BDD.get(ctx, "symbols #{name}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) ->
-      none: List[Json] = []
-      top = JSON.list(result).unwrap_or(none)
+      no_items: List[Json] = []
+      top = JSON.list(result).unwrap_or(no_items)
       listed = flattened(top, "")
       actual = JSON.encode(listed.map do |row| row.take(3) end)
       wanted = JSON.encode(rows.map do |row| row.take(3) end)
@@ -1344,8 +1344,8 @@ def symbol_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
   id = JSON.int(BDD.get(ctx, "symbols #{args[1]}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) ->
-      none: List[Json] = []
-      found = JSON.list(result).unwrap_or(none).filter do |symbol|
+      no_items: List[Json] = []
+      found = JSON.list(result).unwrap_or(no_items).filter do |symbol|
         JSON.string(at(symbol, ["name"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
       end
 
@@ -1385,8 +1385,8 @@ end
 def references_listed(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context
   case result_at(ctx, "references", line, column)
     ok(result) ->
-      none: List[Json] = []
-      actual = JSON.list(result).unwrap_or(none).map do |found| location_row(ctx, found) end.sort
+      no_items: List[Json] = []
+      actual = JSON.list(result).unwrap_or(no_items).map do |found| location_row(ctx, found) end.sort
       wanted = rows.map do |row| "#{row[0]} #{row[1]}" end.sort
       message = "expected the references #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
       return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
@@ -1406,8 +1406,8 @@ def workspace_symbols_listed(ctx: BDD.Context, name: String, rows: List[List[Str
   id = JSON.int(BDD.get(ctx, "search #{name}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) ->
-      none: List[Json] = []
-      actual = JSON.list(result).unwrap_or(none).map do |found| symbol_row(ctx, found) end.sort
+      no_items: List[Json] = []
+      actual = JSON.list(result).unwrap_or(no_items).map do |found| symbol_row(ctx, found) end.sort
       wanted = rows.map do |row| "#{row[0]} #{row[1]} #{row[2]} #{row[3]}" end.sort
       message = "expected the workspace symbols #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
       return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
@@ -1481,8 +1481,8 @@ def flattened(symbols: List[Json], parent: String) -> List[List[String]]
     end
 
     rows = rows.push([qualified, kind_name(kind), span_text(selection), outside])
-    none: List[Json] = []
-    children = JSON.list(at(symbol, ["children"]).unwrap_or(JSON.null())).unwrap_or(none)
+    no_items: List[Json] = []
+    children = JSON.list(at(symbol, ["children"]).unwrap_or(JSON.null())).unwrap_or(no_items)
     rows = rows.concat(flattened(children, qualified))
   end
 
@@ -1545,8 +1545,8 @@ end
 def completion_offered(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context
   case result_at(ctx, "completion", line, column)
     ok(result) ->
-      none: List[Json] = []
-      items = JSON.list(result).unwrap_or(none)
+      no_items: List[Json] = []
+      items = JSON.list(result).unwrap_or(no_items)
       missing = rows.filter do |row| !offers?(items, row) end
       return BDD.assert(ctx, missing.size == 0, "the completion at #{line}:#{column} lacks #{missing} in #{result}")
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1556,8 +1556,8 @@ end
 def completion_replaced(ctx: BDD.Context, args: List[String]) -> BDD.Context
   case result_at(ctx, "completion", args[1], args[2])
     ok(result) ->
-      none: List[Json] = []
-      items = JSON.list(result).unwrap_or(none).filter do |item|
+      no_items: List[Json] = []
+      items = JSON.list(result).unwrap_or(no_items).filter do |item|
         JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
       end
 
@@ -1611,8 +1611,8 @@ def item_matches?(item: Json, row: List[String]) -> Bool
 end
 
 def labels(result: Json) -> List[String]
-  none: List[Json] = []
-  return JSON.list(result).unwrap_or(none).map do |item|
+  no_items: List[Json] = []
+  return JSON.list(result).unwrap_or(no_items).map do |item|
     JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("")
   end
 end
@@ -1637,7 +1637,7 @@ def entry_of(line: String) -> Result[Entry]
   end
 
   words = line.split(" ")
-  if words.size < 3 or !LOG_TYPES.get(words[1].downcase).ok?
+  if words.size < 3 or LOG_TYPES.get(words[1].downcase).none?
     return error("not a log line")
   end
 
@@ -1681,8 +1681,8 @@ def logged_to_editor?(ctx: BDD.Context, level: String, text: String) -> Bool
 end
 
 def related_is(ctx: BDD.Context, found: Json, expected: Json) -> BDD.Context
-  none: List[Json] = []
-  entries = JSON.list(at(found, ["relatedInformation"]).unwrap_or(JSON.null())).unwrap_or(none)
+  no_items: List[Json] = []
+  entries = JSON.list(at(found, ["relatedInformation"]).unwrap_or(JSON.null())).unwrap_or(no_items)
   if entries.size != 1
     return BDD.assert(ctx, false, "expected one related location in #{found}")
   end
@@ -1822,8 +1822,8 @@ def send(ctx: BDD.Context, body: String) -> BDD.Context
 end
 
 def add(ctx: BDD.Context, action: Json) -> BDD.Context
-  none: List[Json] = []
-  actions = JSON.list(BDD.get(ctx, "script").unwrap_or(JSON.array(none))).unwrap!
+  no_items: List[Json] = []
+  actions = JSON.list(BDD.get(ctx, "script").unwrap_or(JSON.array(no_items))).unwrap!
   return BDD.set(ctx, "script", JSON.array(actions.push(action)))
 end
 
@@ -1832,13 +1832,13 @@ def finished(ctx: BDD.Context, check: Fn[BDD.Context, BDD.Context]) -> BDD.Conte
     return check.call(ctx)
   end
 
-  none: List[Json] = []
+  no_items: List[Json] = []
   base = ctx
   if !BDD.get(ctx, "ended").ok?
     base = notify(request(ctx, "shutdown", JSON.null()), "exit", JSON.null())
   end
 
-  actions = JSON.list(BDD.get(base, "script").unwrap_or(JSON.array(none))).unwrap!
+  actions = JSON.list(BDD.get(base, "script").unwrap_or(JSON.array(no_items))).unwrap!
   recorded = record(base, run(base, actions))
   if !BDD.get(recorded, "messages").ok?
     return recorded
@@ -1958,8 +1958,8 @@ end
 
 def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
   dir = folder(ctx)
-  none: List[Json] = []
-  extra = JSON.list(BDD.get(ctx, "arguments").unwrap_or(JSON.array(none))).unwrap!
+  no_items: List[Json] = []
+  extra = JSON.list(BDD.get(ctx, "arguments").unwrap_or(JSON.array(no_items))).unwrap!
   words = extra.map do |word| JSON.string(word).unwrap! end
   log_path = ""
   log_file = JSON.string(BDD.get(ctx, "log file").unwrap_or(JSON.from(""))).unwrap_or("")

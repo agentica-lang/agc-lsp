@@ -31,8 +31,8 @@ end
 ## Returns the absolute path of the first workspace folder of initialize, else its root URI or root path, or an empty
 ## text when the editor gave none that is a local folder.
 export def root_of(params: Json) -> String
-  none: List[Json] = []
-  folders = JSON.list(Fields.value(params, "workspaceFolders")).unwrap_or(none)
+  no_items: List[Json] = []
+  folders = JSON.list(Fields.value(params, "workspaceFolders")).unwrap_or(no_items)
   uris = folders.map do |folder| Fields.text(folder, "uri") end.push(Fields.text(params, "rootUri"))
   for uri in uris
     case Uri.path_of(uri)
@@ -67,7 +67,7 @@ export def answer(request: Request) -> Result[Json]
 end
 
 def declarations_of(request: Request) -> Result[List[Analysis.Symbol]]
-  none: List[Analysis.Symbol] = []
+  no_items: List[Analysis.Symbol] = []
   case Analysis.symbol(request.session, request.name, [request.root])
     ok(searched) ->
       for skipped in searched.skipped
@@ -75,10 +75,10 @@ def declarations_of(request: Request) -> Result[List[Analysis.Symbol]]
       end
 
       return ok(searched.matches.filter do |match| match.kind != BUILTIN_KIND end)
-    error(message) if Refusals.in_search?(message) -> return ok(none)
+    error(message) if Refusals.in_search?(message) -> return ok(no_items)
     error(message) if without_files?(message) ->
       Logger.debug("the search found no agentica file in #{request.root}")
-      return ok(none)
+      return ok(no_items)
     error(message) -> return error(message)
   end
 end

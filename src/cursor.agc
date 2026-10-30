@@ -25,7 +25,7 @@ export def locate(documents: Map[String, String], params: Json, encoding: String
   at = JSON.get(params, "position").unwrap_or(JSON.null())
   line = try JSON.int(try JSON.get(at, "line"))
   character = try JSON.int(try JSON.get(at, "character"))
-  lines = (try documents.get(path)).split("\n")
+  lines = (try documents.get(path).to_result("not open: #{path}")).split("\n")
   if line < 0 or line >= lines.size or character < 0
     return error("no such position #{line}:#{character}")
   end

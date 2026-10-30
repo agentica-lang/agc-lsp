@@ -50,15 +50,15 @@ end
 
 def held(documents: Map[String, String], path: String) -> Result[String]
   case documents.get(path)
-    ok(text) -> return ok(text)
-    error(_) -> return same_file(documents, path)
+    some(text) -> return ok(text)
+    none -> return same_file(documents, path)
   end
 end
 
 def same_file(documents: Map[String, String], path: String) -> Result[String]
   for open in documents.keys
     if Uri.same_path?(open, path)
-      return documents.get(open)
+      return documents.get(open).to_result("not open: #{path}")
     end
   end
 

@@ -8,15 +8,16 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Needs Agentica 0.17.0 or later (`Analysis.entry` and `Analysis.adopt` came in 0.14.0, agentica-lang/agentica#764).
+Needs Agentica 0.18.0 or later (`Analysis.entry` and `Analysis.adopt` came in 0.14.0, agentica-lang/agentica#764).
 
 ### Changed
 
 - The cache of `std/analysis` is shared between the tasks in an `ATS` table of entries by file, instead of being passed
   along with one session: checks of different files run at once (at most 4), and a definition, references or hover
   request starts from the entry that the checks left for its file. The entries of closed files are dropped.
-- CI and the docs need Agentica 0.17.0. **Breaking:** the sources use `Bytes` (`s.bytes`, `IO.read_bytes`,
-  `String.from_bytes`, `Digest.sha256_hexdigest`), which Agentica 0.14.0 to 0.16.x do not have.
+- CI and the docs need Agentica 0.18.0. **Breaking:** the sources use `Optional` (`Map.get` and `String.index_of` give
+  one), which Agentica 0.17.x does not have, and `Bytes` (`s.bytes`, `IO.read_bytes`, `String.from_bytes`,
+  `Digest.sha256_hexdigest`), which Agentica 0.14.0 to 0.16.x do not have.
 - The launchers no longer pass `--allow-run`, which Agentica removed in 0.9.0 (programs may start processes by
   default). **Breaking:** the launchers need Agentica 0.11.0 (they fail on versions before 0.9.0).
 - An `agentica.toml` with `[style]` (`blank_line_after_end`, `max_line_width = 119`) sets the layout of the sources.

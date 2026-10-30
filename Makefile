@@ -8,7 +8,7 @@ export AGENTICA_VERSION
 .PHONY: check smoke test wine wine-check wine-smoke
 
 check:
-	for file in $(CHECKED); do $(AGENTICA) check $$file || exit 1; done
+	$(AGENTICA) check $(CHECKED)
 
 smoke:
 	dir=$$(mktemp -d) && trap 'rm -rf "$$dir"' EXIT && \
@@ -22,7 +22,7 @@ test: check smoke
 wine: wine-check wine-smoke
 
 wine-check:
-	$(WINE) sh -c 'for file in $(CHECKED); do agentica check $$file || exit 1; done'
+	$(WINE) sh -c 'agentica check $(CHECKED)'
 
 wine-smoke:
 	$(WINE) sh docker/wine/smoke.sh
