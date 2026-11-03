@@ -54,6 +54,26 @@ Feature: Completion of builtins
       | String | Module |         |
     And the completion at 3:6 does not offer "puts"
 
+  Scenario: Math, a module of Agentica 0.23.0, is offered with its functions
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        root = Math.sq
+        Mat
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 2:17
+    And the editor asks for completion in "app.agc" at 3:6
+    Then the completion at 2:17 offers:
+      | label | kind     | builtin   |
+      | sqrt  | Function | Math.sqrt |
+    And the completion item "sqrt" at 2:17 replaces 2:15-2:17
+    And the completion at 3:6 offers:
+      | label | kind   | builtin |
+      | Math  | Module |         |
+
   Scenario: nothing is offered after a variable, in a comment, in a string or after a question mark
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:
