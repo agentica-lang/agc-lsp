@@ -52,6 +52,29 @@ Feature: Hover on builtins
     And the hover at 4:15 does not show "Map.size"
     And the hover at 4:15 covers 4:14-4:18
 
+  Scenario: Math and the methods of Agentica 0.23.0 show their signatures
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        root = Math.sqrt(2.0)
+        puts(root.round)
+        puts((0 - 3).abs)
+      end
+
+      """
+    And the editor hovers over "app.agc" at 2:11
+    And the editor hovers over "app.agc" at 2:16
+    And the editor hovers over "app.agc" at 3:13
+    And the editor hovers over "app.agc" at 4:17
+    Then the hover at 2:11 shows "Math.sqrt"
+    And the hover at 2:11 covers 2:10-2:19
+    And the hover at 2:16 shows "Math.sqrt"
+    And the hover at 3:13 shows "Float.round"
+    And the hover at 3:13 covers 3:13-3:18
+    And the hover at 4:17 shows "Int.abs"
+    And the hover at 4:17 covers 4:16-4:19
+
   Scenario: a method call in a function with an error shows every builtin with that name
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

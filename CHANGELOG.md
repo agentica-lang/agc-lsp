@@ -8,6 +8,16 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- CI runs on Agentica 0.23.0 (it was 0.18.0). The server still needs Agentica 0.18.0 or later, but only 0.23.0 is
+  tested; the new scenarios for `Math` need the catalog of 0.23.0.
+
+### Added
+
+- Scenarios for the completion and hover of `Math` (a module since Agentica 0.23.0) and of the methods `n.abs` and
+  `x.round`.
+
 ## [0.1.0] - 2026-10-30
 
 Needs Agentica 0.18.0 or later (`Analysis.entry` and `Analysis.adopt` came in 0.14.0, agentica-lang/agentica#764).
