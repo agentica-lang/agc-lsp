@@ -74,6 +74,25 @@ Feature: Completion of builtins
       | label | kind   | builtin |
       | Math  | Module |         |
 
+  Scenario: OpenSSL.Digest, a family of Agentica 0.27.0, has its members offered after OpenSSL. and after OpenSSL.Digest.
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        a = OpenSSL.Dig
+        b = OpenSSL.Digest.sha25
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 2:17
+    And the editor asks for completion in "app.agc" at 3:26
+    Then the completion at 2:17 offers:
+      | label         | kind     | builtin               |
+      | Digest.sha256 | Function | OpenSSL.Digest.sha256 |
+    And the completion at 3:26 offers:
+      | label  | kind     | builtin               |
+      | sha256 | Function | OpenSSL.Digest.sha256 |
+
   Scenario: nothing is offered after a variable, in a comment, in a string or after a question mark
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

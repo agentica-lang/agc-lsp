@@ -10,11 +10,16 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- CI runs on Agentica 0.23.0 (it was 0.18.0). The server still needs Agentica 0.18.0 or later, but only 0.23.0 is
-  tested; the new scenarios for `Math` need the catalog of 0.23.0.
+- CI runs on Agentica 0.28.0 and installs it with `agentica-lang/setup-agentica`. The server needs Agentica 0.27.0 or
+  later (`bin/prepare.agc` uses `OpenSSL.Digest`).
+
+### Fixed
+
+- Completion after a family name such as `OpenSSL.Digest.` offers its members.
 
 ### Added
 
+- Scenarios for the completion and hover of `OpenSSL.Digest` (a family since Agentica 0.27.0).
 - Scenarios for the completion and hover of `Math` (a module since Agentica 0.23.0) and of the methods `n.abs` and
   `x.round`.
 

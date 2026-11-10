@@ -18,13 +18,26 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
   partial = chars.take(cursor.index).drop(start).join("")
   replaced = Cursor.range(cursor, start, cursor.index)
   if !Words.dotted?(chars, start)
-    bare = functions(Catalog.bare_starting(book, partial), false, replaced)
+    bare = functions(Catalog.bare_starting(book, partial), "", replaced)
     return JSON.array(namespaces(book, partial, replaced).concat(bare))
   end
 
   case Words.receiver(chars, start)
     ok(receiver) if Catalog.namespace?(book, receiver.text) ->
-      return JSON.array(functions(Catalog.functions_of(book, receiver.text, partial), true, replaced))
+      return JSON.array(functions(Catalog.functions_of(book, receiver.text, partial), "", replaced))
+    ok(receiver) ->
+      return family_items(book, chars, receiver, partial, replaced)
+    error(_) -> return no_items()
+  end
+end
+
+## Offers the members of a family, as in `OpenSSL.Digest.`: the namespace is the word before the receiver, and the
+## catalog names a member `Digest.sha256`.
+def family_items(book: Catalog.Book, chars: List[String], family: Words.Word, partial: String, replaced: Json) -> Json
+  case Words.receiver(chars, family.start)
+    ok(outer) if Catalog.namespace?(book, outer.text) ->
+      prefix = "#{family.text}."
+      return JSON.array(functions(Catalog.functions_of(book, outer.text, "#{prefix}#{partial}"), prefix, replaced))
     ok(_) -> return no_items()
     error(_) -> return no_items()
   end
@@ -45,19 +58,22 @@ def namespaces(book: Catalog.Book, prefix: String, replaced: Json) -> List[Json]
   end
 end
 
-def functions(entries: List[Catalog.Entry], by_member: Bool, replaced: Json) -> List[Json]
-  return entries.map do |entry| function_item(entry, by_member, replaced) end
+def functions(entries: List[Catalog.Entry], family: String, replaced: Json) -> List[Json]
+  return entries.map do |entry| function_item(entry, family, replaced) end
 end
 
 def edit(replaced: Json, text: String) -> Json
   return JSON.object({"range": replaced, "newText": JSON.from(text)})
 end
 
-def function_item(entry: Catalog.Entry, by_member: Bool, replaced: Json) -> Json
+## `family` is what the member name starts with and the label leaves out: "" for a bare name or a namespace member.
+def function_item(entry: Catalog.Entry, family: String, replaced: Json) -> Json
   label = entry.name
-  if by_member
+  if entry.namespace != ""
     label = entry.member
   end
+
+  label = label.slice(family.length, label.length - family.length)
 
   return JSON.object({
     "label": JSON.from(label),

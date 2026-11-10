@@ -56,7 +56,7 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
   smoke session on the program. It does not run `bin\agc-lsp.bat` (Wine's `cmd` differs; real Windows CI is its
   authority) nor `agentica test` (`Dir.mkdir_private` fails under Wine). `make test` does not use
   Docker.
-- CI (`.github/workflows/ci.yml`) runs `make test` on the release binary named by `AGENTICA_VERSION`.
+- CI (`.github/workflows/ci.yml`) installs the release named by `AGENTICA_VERSION` with `agentica-lang/setup-agentica` (`version: ${{ env.AGENTICA_VERSION }}`; the `sha256` of each archive is next to it, and bumps with the version) and runs `make test`. `AGENTICA_VERSION` is the one place of the version: the Makefile reads it with `sed`, so keep its line `  AGENTICA_VERSION: "X.Y.Z"`.
 
 ## Rules
 
