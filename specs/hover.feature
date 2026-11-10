@@ -52,6 +52,20 @@ Feature: Hover on builtins
     And the hover at 4:15 does not show "Map.size"
     And the hover at 4:15 covers 4:14-4:18
 
+  Scenario: OpenSSL.Digest.sha256, a builtin of a family, shows its signature on the family and on the function
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        puts(OpenSSL.Digest.sha256_hexdigest("a".bytes))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 2:10
+    And the editor hovers over "app.agc" at 2:24
+    Then the hover at 2:10 shows "OpenSSL.Digest.sha256_hexdigest"
+    And the hover at 2:24 shows "OpenSSL.Digest.sha256_hexdigest"
+
   Scenario: Math and the methods of Agentica 0.23.0 show their signatures
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

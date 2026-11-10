@@ -95,6 +95,7 @@ Feature: Unsaved buffers
 
       def main() -> Void
         puts("hi")
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -105,6 +106,7 @@ Feature: Unsaved buffers
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -114,6 +116,7 @@ Feature: Unsaved buffers
 
       def main() -> Void
         puts(nothing)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -123,6 +126,7 @@ Feature: Unsaved buffers
 
       def main() -> Void
         puts(x)
+        puts(Heavy.slow0(1))
       end
 
       """

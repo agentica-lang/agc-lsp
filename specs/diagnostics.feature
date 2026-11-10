@@ -220,6 +220,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -236,6 +237,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -247,6 +249,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts("fixed")
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -264,6 +267,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -284,6 +288,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -333,6 +338,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -369,6 +375,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """
@@ -408,6 +415,7 @@ Feature: Diagnostics in the editor
 
       def main() -> Void
         puts(oops)
+        puts(Heavy.slow0(1))
       end
 
       """

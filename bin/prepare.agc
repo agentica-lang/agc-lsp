@@ -104,7 +104,7 @@ def cache_key(root: String, binary: String, version: String) -> Result[String]
     pieces = pieces.push("#{name}\n#{text}")
   end
 
-  return ok(Digest.sha256_hexdigest(pieces.join("").bytes))
+  return ok(OpenSSL.Digest.sha256_hexdigest(pieces.join("").bytes))
 end
 
 def cache_for(key: String) -> Result[Cache]
