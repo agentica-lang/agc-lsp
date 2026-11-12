@@ -41,7 +41,7 @@ export def read() -> Incoming
           break
         end
 
-        if header.downcase.starts_with?(LENGTH_HEADER)
+        if header.downcase.start_with?(LENGTH_HEADER)
           length = header.slice(LENGTH_HEADER.length, header.length - LENGTH_HEADER.length).strip.to_i.unwrap_or(-1)
         end
 
@@ -67,7 +67,7 @@ end
 ## Sends the result as the response to the request id.
 export def respond(id: Json, result: Json) -> Void
   send(JSON.encode(Response(jsonrpc: JSONRPC_VERSION, id: id, result: result)))
-  if Logger.enabled?(LogLevel.Debug)
+  if Logger.enabled?(Logger.Level.Debug)
     Logger.debug("sent a response", {"id": JSON.encode(id)})
   end
 end
@@ -80,7 +80,7 @@ export def fail(id: Json, code: Int, message: String) -> Void
     "error": JSON.object({"code": JSON.from(code), "message": JSON.from(message)}),
   }
   send(JSON.encode(failure))
-  if Logger.enabled?(LogLevel.Debug)
+  if Logger.enabled?(Logger.Level.Debug)
     Logger.debug("sent an error", {"id": JSON.encode(id), "code": code.to_s})
   end
 end

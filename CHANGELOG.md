@@ -8,10 +8,17 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
+Needs Agentica 0.30.1 or later.
+
 ### Changed
 
-- CI runs on Agentica 0.28.0 and installs it with `agentica-lang/setup-agentica`. The server needs Agentica 0.27.0 or
-  later (`bin/prepare.agc` uses `OpenSSL.Digest`).
+- **Breaking:** the server needs Agentica 0.30.1 or later: it uses `Process.Options` (0.29.0) and `Logger.Level` and
+  `Logger.Event` (0.30.0), which older releases do not have. It also compiles with the current development version of
+  Agentica, which names builtins only by their Ruby form (`start_with?`, `include?`, `strip`) and refuses a method call
+  after the `end` of a `do` block.
+- CI runs on Agentica 0.30.1 and installs it with `agentica-lang/setup-agentica`.
 
 ### Fixed
 
@@ -118,7 +125,8 @@ First release. Needs Agentica 0.7.0 or later.
 - The `bin/agc-lsp` launcher, a Neovim 0.11+ config and a minimal VS Code
   extension (same version as the server).
 
-[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.1.0...HEAD
+[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/agentica-lang/agc-lsp/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/agentica-lang/agc-lsp/compare/0.0.2...0.1.0
 [0.0.2]: https://github.com/agentica-lang/agc-lsp/compare/0.0.1...0.0.2
 [0.0.1]: https://github.com/agentica-lang/agc-lsp/releases/tag/0.0.1

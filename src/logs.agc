@@ -10,7 +10,7 @@ FILE_TIMEOUT_MS = 1000
 SEND_TIMEOUT_MS = 1000
 
 struct Chosen
-  level: LogLevel
+  level: Logger.Level
   problem: String
 end
 
@@ -44,7 +44,7 @@ export def attach_editor(options: Options, events: Channel[Events.Event], asked:
 end
 
 ## Sends the log event to the editor as a window/logMessage notification.
-export def write_to_editor(event: LogEvent) -> Void
+export def write_to_editor(event: Logger.Event) -> Void
   Rpc.log_message(editor_type(event.level), editor_text(event))
 end
 
@@ -61,7 +61,7 @@ def writable(options: Options) -> Options
   end
 end
 
-def install(options: Options, level: LogLevel) -> Void
+def install(options: Options, level: Logger.Level) -> Void
   _ = Logger.detach("console")
   _ = Logger.detach("stderr")
   _ = Logger.detach("file")
@@ -79,7 +79,7 @@ def install(options: Options, level: LogLevel) -> Void
   end
 end
 
-def to_editor(events: Channel[Events.Event], event: LogEvent) -> Void
+def to_editor(events: Channel[Events.Event], event: Logger.Event) -> Void
   if event.task == MAIN_TASK
     write_to_editor(event)
   else
@@ -110,17 +110,17 @@ def choose(given: String, asked: Json, key: String, default: String) -> Chosen
   end
 end
 
-def level_named(name: String) -> LogLevel
+def level_named(name: String) -> Logger.Level
   case name
-    "debug" -> return LogLevel.Debug
-    "info" -> return LogLevel.Info
-    "warning" -> return LogLevel.Warning
-    "error" -> return LogLevel.Error
-    _ -> return LogLevel.Warning
+    "debug" -> return Logger.Level.Debug
+    "info" -> return Logger.Level.Info
+    "warning" -> return Logger.Level.Warning
+    "error" -> return Logger.Level.Error
+    _ -> return Logger.Level.Warning
   end
 end
 
-def lower(a: LogLevel, b: LogLevel) -> LogLevel
+def lower(a: Logger.Level, b: Logger.Level) -> Logger.Level
   if rank(a) <= rank(b)
     return a
   end
@@ -128,25 +128,25 @@ def lower(a: LogLevel, b: LogLevel) -> LogLevel
   return b
 end
 
-def rank(level: LogLevel) -> Int
+def rank(level: Logger.Level) -> Int
   case level
-    LogLevel.Debug -> return 0
-    LogLevel.Info -> return 1
-    LogLevel.Warning -> return 2
-    LogLevel.Error -> return 3
+    Logger.Level.Debug -> return 0
+    Logger.Level.Info -> return 1
+    Logger.Level.Warning -> return 2
+    Logger.Level.Error -> return 3
   end
 end
 
-def editor_type(level: LogLevel) -> Int
+def editor_type(level: Logger.Level) -> Int
   case level
-    LogLevel.Error -> return 1
-    LogLevel.Warning -> return 2
-    LogLevel.Info -> return 3
-    LogLevel.Debug -> return 4
+    Logger.Level.Error -> return 1
+    Logger.Level.Warning -> return 2
+    Logger.Level.Info -> return 3
+    Logger.Level.Debug -> return 4
   end
 end
 
-def editor_text(event: LogEvent) -> String
+def editor_text(event: Logger.Event) -> String
   shown: List[String] = []
   for key in event.fields.keys
     case event.fields.get(key)

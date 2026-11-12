@@ -103,7 +103,7 @@ def read_messages(file: FileHandle) -> Result[List[Json]]
 end
 
 def read_message(file: FileHandle, header: String) -> Result[Json]
-  if !header.starts_with?(LENGTH_PREFIX)
+  if !header.start_with?(LENGTH_PREFIX)
     return error("expected a Content-Length header; got #{header.inspect}")
   end
 

@@ -19,9 +19,10 @@ export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
 
   case find(book, cursor)
     ok(found) ->
+      described = found.entries.map do |entry| describe(entry) end
       contents = JSON.object({
         "kind": JSON.from("markdown"),
-        "value": JSON.from(found.entries.map do |entry| describe(entry) end.join("\n\n---\n\n")),
+        "value": JSON.from(described.join("\n\n---\n\n")),
       })
       return JSON.object({"contents": contents, "range": Cursor.range(cursor, found.start, found.stop)})
     error(_) -> return JSON.null()

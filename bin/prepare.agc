@@ -74,14 +74,14 @@ end
 def version_of(binary: String) -> Result[String]
   done = try run(binary, ["--version"], IO_TIMEOUT_MS)
   if done.status != 0
-    return error("cannot run '#{binary} --version': #{done.stderr.trim}")
+    return error("cannot run '#{binary} --version': #{done.stderr.strip}")
   end
 
-  return ok(done.stdout.trim)
+  return ok(done.stdout.strip)
 end
 
 def run(binary: String, args: List[String], timeout_ms: Int) -> Result[Finished]
-  child = try Process.spawn_captured(binary, args, ".", timeout_ms)
+  child = try Process.spawn_captured(binary, args, Process.Options(timeout_ms: timeout_ms, chdir: "."))
   done = finish(child, timeout_ms)
   Process.close(child)
   return done
@@ -96,7 +96,7 @@ end
 def cache_key(root: String, binary: String, version: String) -> Result[String]
   folder = try Path.join([root, "src"])
   names = try Dir.list(folder, IO_TIMEOUT_MS)
-  sources = names.filter do |name| name.ends_with?(SOURCE_SUFFIX) end
+  sources = names.filter do |name| name.end_with?(SOURCE_SUFFIX) end
   pieces = ["#{binary}\n#{version}\n"]
   for name in sources
     path = try Path.join([folder, name])
@@ -157,7 +157,7 @@ def publish(root: String, binary: String, partial: String, cache: Cache) -> Resu
   source = try Path.join([root, "src", "main.agc"])
   done = try run(binary, ["compile", source, "-o", partial], COMPILE_TIMEOUT_MS)
   if done.status != 0
-    IO.warn("#{done.stdout}#{done.stderr}".trim)
+    IO.warn("#{done.stdout}#{done.stderr}".strip)
     return error("cannot compile #{source}")
   end
 
@@ -187,12 +187,12 @@ def prune(cache: Cache, now: Int) -> Void
 end
 
 def prune_entry(cache: Cache, name: String, path: String, now: Int) -> Void
-  leftover = name.ends_with?(PARTIAL_SUFFIX) or name.starts_with?(LEFTOVER_PREFIX)
+  leftover = name.end_with?(PARTIAL_SUFFIX) or name.start_with?(LEFTOVER_PREFIX)
   if leftover and idle_seconds(path, now) > PARTIAL_SECONDS
     _ = Path.remove(path, IO_TIMEOUT_MS)
   end
 
-  if name.ends_with?(PROGRAM_SUFFIX) and path != cache.program and unused_seconds(path, now) > KEEP_SECONDS
+  if name.end_with?(PROGRAM_SUFFIX) and path != cache.program and unused_seconds(path, now) > KEEP_SECONDS
     _ = Path.remove(path, IO_TIMEOUT_MS)
     _ = Path.remove("#{path}#{STAMP_SUFFIX}", IO_TIMEOUT_MS)
   end

@@ -392,7 +392,7 @@ end
 
 def workspace_symbols(state: State, id: Json, params: Json) -> State
   name = Fields.text(params, "query").strip
-  if state.root == "" or name == "" or name.starts_with?("-")
+  if state.root == "" or name == "" or name.start_with?("-")
     no_items: List[Json] = []
     Rpc.respond(id, JSON.array(no_items))
     return state
@@ -591,7 +591,7 @@ def closed(state: State, uri: String) -> State
       return state
   end
 
-  if !path.ends_with?(AGENTICA_EXTENSION)
+  if !path.end_with?(AGENTICA_EXTENSION)
     return state
   end
 
@@ -617,7 +617,7 @@ end
 
 def agentica_path(uri: String) -> String
   path = Uri.path_of(uri).unwrap_or("")
-  if path.ends_with?(AGENTICA_EXTENSION)
+  if path.end_with?(AGENTICA_EXTENSION)
     return path
   end
 
@@ -673,7 +673,7 @@ def document_uri(params: Json) -> String
 end
 
 def log_received(message: Json, method: String) -> Void
-  if !Logger.enabled?(LogLevel.Debug)
+  if !Logger.enabled?(Logger.Level.Debug)
     return
   end
 

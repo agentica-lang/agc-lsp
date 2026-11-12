@@ -6,7 +6,7 @@ Syntax highlighting is not part of this extension; it will come from
 
 ## Install locally
 
-1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.27.0 or later. On
+1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.30.1 or later. On
    Windows, put the `bin` folder of the repository on `PATH`: the extension starts the command through `cmd.exe`, so
    `agc-lsp` finds `agc-lsp.bat`.
 2. From this folder:
@@ -14,7 +14,7 @@ Syntax highlighting is not part of this extension; it will come from
    ```sh
    npm install
    npx @vscode/vsce package
-   code --install-extension agentica-lsp-0.1.0.vsix
+   code --install-extension agentica-lsp-0.2.0.vsix
    ```
 
    `vsce package` copies the repository `LICENSE` into this folder first (git ignores the copy), so it needs no
