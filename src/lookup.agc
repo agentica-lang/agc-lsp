@@ -181,7 +181,7 @@ def location_uri(request: Request, path: String) -> String
 end
 
 def typed(found: Analysis.TypeAt) -> String
-  if found.text.contains?("\n") or found.text.length > SHORT_TEXT_CHARS
+  if found.text.include?("\n") or found.text.length > SHORT_TEXT_CHARS
     return fenced(found.type)
   end
 

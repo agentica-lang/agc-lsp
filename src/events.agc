@@ -40,7 +40,7 @@ export enum Event
   ## Is the loaded catalog, or the reason it failed.
   Cataloged(Result[Catalog.Book])
   ## Is a log line to send to the editor.
-  Log(LogEvent)
+  Log(Logger.Event)
 end
 
 ## Holds what a check task needs: the session, the shared entries, the file and the channel for the result.
@@ -110,7 +110,7 @@ end
 ## channel, returning ok.
 export def check(job: Job) -> Result[Void]
   started = Time.now_ms()
-  if Logger.enabled?(LogLevel.Debug)
+  if Logger.enabled?(Logger.Level.Debug)
     opened = {"uri": job.uri, "generation": job.generation.to_s, "entry": Entries.held?(job.entries, job.path).to_s}
     Logger.debug("check started", opened)
   end
@@ -118,7 +118,7 @@ export def check(job: Job) -> Result[Void]
   refreshed = Analysis.refresh(Entries.restored(job.entries, job.session, job.path), job.path)
   checked = Analysis.check(refreshed, job.path)
   Entries.publish(job.entries, refreshed, job.path)
-  if Logger.enabled?(LogLevel.Debug)
+  if Logger.enabled?(Logger.Level.Debug)
     fields = {
       "uri": job.uri,
       "generation": job.generation.to_s,

@@ -22,7 +22,7 @@ end
 def refused?(message: String, prefixes: List[String]) -> Bool
   case Analysis.diagnostic(message)
     ok(found) ->
-      if prefixes.any? do |prefix| found.code.starts_with?(prefix) end
+      if prefixes.any? do |prefix| found.code.start_with?(prefix) end
         Logger.debug("the query was refused: #{found.code}")
         return true
       end

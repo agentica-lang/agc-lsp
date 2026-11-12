@@ -100,7 +100,8 @@ export def reap(plan: Plan) -> Change
 end
 
 def known?(plan: Plan, id: Json) -> Bool
-  return plan.running.filter do |running| same?(running.job.id, id) end.size > 0
+  matching = plan.running.filter do |running| same?(running.job.id, id) end
+  return matching.size > 0
 end
 
 def same?(a: Json, b: Json) -> Bool

@@ -33,7 +33,8 @@ end
 export def root_of(params: Json) -> String
   no_items: List[Json] = []
   folders = JSON.list(Fields.value(params, "workspaceFolders")).unwrap_or(no_items)
-  uris = folders.map do |folder| Fields.text(folder, "uri") end.push(Fields.text(params, "rootUri"))
+  folder_uris = folders.map do |folder| Fields.text(folder, "uri") end
+  uris = folder_uris.push(Fields.text(params, "rootUri"))
   for uri in uris
     case Uri.path_of(uri)
       ok(path) -> return Uri.trimmed(path)
@@ -85,7 +86,7 @@ end
 
 def without_files?(message: String) -> Bool
   case Analysis.diagnostic(message)
-    ok(found) -> return found.message.contains?(NO_FILES)
+    ok(found) -> return found.message.include?(NO_FILES)
     error(_) -> return false
   end
 end

@@ -36,7 +36,8 @@ end
 
 ## Returns the catalog that the agentica binary prints, or an error when it cannot be run or read.
 export def load(agentica: String) -> Result[Book]
-  helper = try Process.spawn_captured(agentica, ["--json", "help"], ".", LOAD_TIMEOUT_MS)
+  options = Process.Options(timeout_ms: LOAD_TIMEOUT_MS, chdir: ".")
+  helper = try Process.spawn_captured(agentica, ["--json", "help"], options)
   loaded = read(helper, Time.now_ms() + LOAD_TIMEOUT_MS)
   Process.close(helper)
   return loaded
@@ -96,7 +97,7 @@ end
 
 ## Returns the builtins of the namespace whose member starts with the prefix.
 export def functions_of(book: Book, namespace: String, prefix: String) -> List[Entry]
-  return book.ordered.filter do |entry| entry.namespace == namespace and entry.member.starts_with?(prefix) end
+  return book.ordered.filter do |entry| entry.namespace == namespace and entry.member.start_with?(prefix) end
 end
 
 ## Returns the builtins without namespace whose name starts with the prefix.
@@ -106,7 +107,7 @@ end
 
 ## Returns the namespaces that start with the prefix, in order.
 export def namespaces_starting(book: Book, prefix: String) -> List[String]
-  return book.namespaces.to_a.sort.filter do |name| name.starts_with?(prefix) end
+  return book.namespaces.to_a.sort.filter do |name| name.start_with?(prefix) end
 end
 
 def read(helper: Process, deadline: Int) -> Result[Book]

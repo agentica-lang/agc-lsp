@@ -15,7 +15,7 @@ LOWER_Z = 122
 
 ## Returns the path of a local file URI, or an error for another URI.
 export def path_of(uri: String) -> Result[String]
-  if !uri.starts_with?(FILE_SCHEME)
+  if !uri.start_with?(FILE_SCHEME)
     return error("not a file URI: #{uri}")
   end
 
@@ -27,7 +27,7 @@ export def path_of(uri: String) -> Result[String]
   end
 
   path = try decode(rest.slice(slash, rest.length - slash))
-  if path.starts_with?("/") and drive?(path.slice(1, path.length - 1))
+  if path.start_with?("/") and drive?(path.slice(1, path.length - 1))
     return ok(normal(path.slice(1, path.length - 1)))
   end
 
@@ -73,7 +73,7 @@ end
 
 ## Returns true when the path starts at the root of a drive or of the file system.
 export def absolute?(path: String) -> Bool
-  return path.starts_with?("/") or drive?(path)
+  return path.start_with?("/") or drive?(path)
 end
 
 ## Returns the absolute path of a file that agentica names relative to a folder (without a leading ./), or as it is.
@@ -87,11 +87,11 @@ export def resolve(folder: String, file: String) -> String
     relative = file.replace("\\", "/")
   end
 
-  while relative.starts_with?("./")
+  while relative.start_with?("./")
     relative = relative.slice(2, relative.length - 2)
   end
 
-  if folder.ends_with?("/")
+  if folder.end_with?("/")
     return "#{folder}#{relative}"
   end
 
@@ -101,7 +101,7 @@ end
 ## Returns the path without the slashes at its end, except the root.
 export def trimmed(path: String) -> String
   shorter = normal(path)
-  while shorter.length > 1 and shorter.ends_with?("/") and !drive_root?(shorter)
+  while shorter.length > 1 and shorter.end_with?("/") and !drive_root?(shorter)
     shorter = shorter.slice(0, shorter.length - 1)
   end
 
@@ -117,7 +117,7 @@ def normal(path: String) -> String
 end
 
 def drive_root?(path: String) -> Bool
-  return path.length == 3 and drive?(path) and path.ends_with?("/")
+  return path.length == 3 and drive?(path) and path.end_with?("/")
 end
 
 def drive?(text: String) -> Bool

@@ -300,13 +300,13 @@ def launcher_arguments(ctx: BDD.Context) -> List[String]
 end
 
 def launched(arguments: List[String]) -> Result[Json]
-  child = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
+  child = try Process.spawn_captured("env", arguments, Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
   return launcher_finished(child)
 end
 
 def launched_twice(arguments: List[String]) -> Result[Json]
-  first = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
-  second = try Process.spawn_captured("env", arguments, ".", TIMEOUT_MS)
+  first = try Process.spawn_captured("env", arguments, Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
+  second = try Process.spawn_captured("env", arguments, Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
   one = try launcher_finished(first)
   two = try launcher_finished(second)
   status = launched_status(one)
@@ -348,12 +348,12 @@ end
 
 def launcher_printed(ctx: BDD.Context, args: List[String]) -> BDD.Context
   stdout = JSON.string(launch_field(ctx, "stdout")).unwrap_or("")
-  return BDD.assert(ctx, stdout.contains?(args[0]), "#{args[0].inspect} is not in the output #{stdout.inspect}")
+  return BDD.assert(ctx, stdout.include?(args[0]), "#{args[0].inspect} is not in the output #{stdout.inspect}")
 end
 
 def launcher_reported(ctx: BDD.Context, args: List[String]) -> BDD.Context
   stderr = JSON.string(launch_field(ctx, "stderr")).unwrap_or("")
-  return BDD.assert(ctx, stderr.contains?(args[0]), "#{args[0].inspect} is not in the errors #{stderr.inspect}")
+  return BDD.assert(ctx, stderr.include?(args[0]), "#{args[0].inspect} is not in the errors #{stderr.inspect}")
 end
 
 def launch_field(ctx: BDD.Context, name: String) -> Json
@@ -363,7 +363,7 @@ end
 def cache_holds(ctx: BDD.Context, args: List[String]) -> BDD.Context
   no_items: List[String] = []
   names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(no_items).filter do |name|
-    name.ends_with?(COMPILED_SUFFIX)
+    name.end_with?(COMPILED_SUFFIX)
   end
 
   return BDD.assert(ctx, names.size == args[0].to_i!, "the cache holds #{names.size} compiled servers: #{names}")
@@ -372,7 +372,7 @@ end
 def cache_holds_no_partial(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   no_items: List[String] = []
   names = Dir.list(file_path(ctx, "cache"), TIMEOUT_MS).unwrap_or(no_items).filter do |name|
-    name.ends_with?(PARTIAL_SUFFIX)
+    name.end_with?(PARTIAL_SUFFIX)
   end
 
   return BDD.assert(ctx, names.size == 0, "the cache holds unfinished compiles: #{names}")
@@ -796,7 +796,7 @@ def waits_for_files(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def awaiting(ctx: BDD.Context, name: String) -> BDD.Context
-  if name.ends_with?(".agc")
+  if name.end_with?(".agc")
     return add(ctx, JSON.object({"kind": JSON.from("await")}))
   end
 
@@ -924,7 +924,7 @@ end
 
 def warns(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
-    BDD.assert(done, stderr(done).contains?(args[0]), "no warning #{args[0].inspect} in #{stderr(done).inspect}")
+    BDD.assert(done, stderr(done).include?(args[0]), "no warning #{args[0].inspect} in #{stderr(done).inspect}")
   end
 end
 
@@ -948,7 +948,7 @@ end
 
 def never_logs(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
-    BDD.assert(done, !stderr(done).contains?(args[0]), "#{args[0].inspect} found in #{stderr(done).inspect}")
+    BDD.assert(done, !stderr(done).include?(args[0]), "#{args[0].inspect} found in #{stderr(done).inspect}")
   end
 end
 
@@ -969,7 +969,7 @@ end
 def gets_no_log_message_containing(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
     found = log_messages(done).filter do |message|
-      JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("").contains?(args[0])
+      JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("").include?(args[0])
     end
 
     BDD.assert(done, found.size == 0, "unexpected log messages #{JSON.array(found)}")
@@ -988,7 +988,7 @@ end
 
 def log_file_never_contains(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
-    BDD.assert(done, !log_text(done).contains?(args[1]), "#{args[1].inspect} found in #{log_text(done).inspect}")
+    BDD.assert(done, !log_text(done).include?(args[1]), "#{args[1].inspect} found in #{log_text(done).inspect}")
   end
 end
 
@@ -1012,13 +1012,13 @@ end
 
 def has_help(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return last_message(ctx, args[0]) do |done, message|
-    BDD.assert(done, message.contains?("\nhelp: "), "no help line in #{message.inspect}")
+    BDD.assert(done, message.include?("\nhelp: "), "no help line in #{message.inspect}")
   end
 end
 
 def points_to(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return last_message(ctx, args[0]) do |done, message|
-    BDD.assert(done, message.contains?("/#{args[1]}: "), "#{message.inspect} does not point to #{args[1]}")
+    BDD.assert(done, message.include?("/#{args[1]}: "), "#{message.inspect} does not point to #{args[1]}")
   end
 end
 
@@ -1044,7 +1044,7 @@ end
 def checks_started(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done|
     started = entries(stderr(done)).filter do |entry|
-      entry.text.contains?("check started") and entry.text.contains?("/#{args[1]} ")
+      entry.text.include?("check started") and entry.text.include?("/#{args[1]} ")
     end
 
     message = "the server started #{started.size} checks of #{args[1]}; expected #{args[0]}"
@@ -1116,8 +1116,8 @@ def hover_fenced(ctx: BDD.Context, line: String, column: String, width: Int) -> 
   case hover_value(ctx, line, column)
     ok(value) ->
       fence = List.repeat("`", width).join("")
-      opened = value.starts_with?("#{fence}agc\n") or value.contains?("\n#{fence}agc\n")
-      fenced = opened and value.ends_with?("\n#{fence}") and !value.ends_with?("`#{fence}")
+      opened = value.start_with?("#{fence}agc\n") or value.include?("\n#{fence}agc\n")
+      fenced = opened and value.end_with?("\n#{fence}") and !value.end_with?("`#{fence}")
       message = "the hover at #{line}:#{column} is not fenced with #{width} backticks: #{value.inspect}"
       return BDD.assert(ctx, fenced, message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1223,7 +1223,7 @@ def hover_shown(ctx: BDD.Context, line: String, column: String, names: List[Stri
       contents = at(result, ["contents"]).unwrap_or(JSON.null())
       kind = JSON.string(at(contents, ["kind"]).unwrap_or(JSON.null())).unwrap_or("")
       value = JSON.string(at(contents, ["value"]).unwrap_or(JSON.null())).unwrap_or("")
-      missing = names.filter do |name| !value.contains?("```agc\n#{name}(") end
+      missing = names.filter do |name| !value.include?("```agc\n#{name}(") end
       shown = kind == "markdown" and missing.size == 0
       return BDD.assert(ctx, shown, "the hover at #{line}:#{column} lacks #{missing.join(", ")} in #{result}")
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1250,7 +1250,7 @@ end
 def hover_typed_of(ctx: BDD.Context, key: String, line: String, column: String, type: String) -> BDD.Context
   case hover_value_of(ctx, key, line, column)
     ok(value) ->
-      shown = value.contains?(": #{type}\n```")
+      shown = value.include?(": #{type}\n```")
       message = "the hover at #{line}:#{column} does not show the type #{type} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1260,7 +1260,7 @@ end
 def hover_declared(ctx: BDD.Context, line: String, column: String, signature: String) -> BDD.Context
   case hover_value(ctx, line, column)
     ok(value) ->
-      shown = value.starts_with?("```agc\n#{signature}\n```\n")
+      shown = value.start_with?("```agc\n#{signature}\n```\n")
       message = "the hover at #{line}:#{column} does not start with the declaration #{signature} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1270,7 +1270,7 @@ end
 def hover_documented(ctx: BDD.Context, line: String, column: String, doc: String) -> BDD.Context
   case hover_value(ctx, line, column)
     ok(value) ->
-      shown = value.contains?("\n\n#{doc}\n\n") or value.ends_with?("\n\n#{doc}")
+      shown = value.include?("\n\n#{doc}\n\n") or value.end_with?("\n\n#{doc}")
       message = "the hover at #{line}:#{column} does not show the documentation #{doc} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1289,7 +1289,7 @@ end
 def hover_lacks(ctx: BDD.Context, line: String, column: String, name: String) -> BDD.Context
   case hover_value(ctx, line, column)
     ok(value) ->
-      found = value.contains?("```agc\n#{name}(")
+      found = value.include?("```agc\n#{name}(")
       return BDD.assert(ctx, !found, "the hover at #{line}:#{column} shows #{name} in #{value.inspect}")
     error(message) -> return BDD.assert(ctx, false, message)
   end
@@ -1386,8 +1386,10 @@ def references_listed(ctx: BDD.Context, line: String, column: String, rows: List
   case result_at(ctx, "references", line, column)
     ok(result) ->
       no_items: List[Json] = []
-      actual = JSON.list(result).unwrap_or(no_items).map do |found| location_row(ctx, found) end.sort
-      wanted = rows.map do |row| "#{row[0]} #{row[1]}" end.sort
+      shown = JSON.list(result).unwrap_or(no_items).map do |found| location_row(ctx, found) end
+      actual = shown.sort
+      listed = rows.map do |row| "#{row[0]} #{row[1]}" end
+      wanted = listed.sort
       message = "expected the references #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
       return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1407,8 +1409,10 @@ def workspace_symbols_listed(ctx: BDD.Context, name: String, rows: List[List[Str
   case reply(ctx, id, "result")
     ok(result) ->
       no_items: List[Json] = []
-      actual = JSON.list(result).unwrap_or(no_items).map do |found| symbol_row(ctx, found) end.sort
-      wanted = rows.map do |row| "#{row[0]} #{row[1]} #{row[2]} #{row[3]}" end.sort
+      shown = JSON.list(result).unwrap_or(no_items).map do |found| symbol_row(ctx, found) end
+      actual = shown.sort
+      listed = rows.map do |row| "#{row[0]} #{row[1]} #{row[2]} #{row[3]}" end
+      wanted = listed.sort
       message = "expected the workspace symbols #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
       return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
     error(message) -> return BDD.assert(ctx, false, message)
@@ -1437,7 +1441,7 @@ def location_row(ctx: BDD.Context, location: Json) -> String
   prefix = uri(ctx, "")
   found = JSON.string(at(location, ["uri"]).unwrap_or(JSON.null())).unwrap_or("")
   file = found
-  if found.starts_with?(prefix)
+  if found.start_with?(prefix)
     file = found.slice(prefix.length, found.length - prefix.length)
   end
 
@@ -1595,7 +1599,8 @@ def completion_empty(ctx: BDD.Context, line: String, column: String) -> BDD.Cont
 end
 
 def offers?(items: List[Json], row: List[String]) -> Bool
-  return items.filter do |item| item_matches?(item, row) end.size > 0
+  matching = items.filter do |item| item_matches?(item, row) end
+  return matching.size > 0
 end
 
 def item_matches?(item: Json, row: List[String]) -> Bool
@@ -1607,7 +1612,7 @@ def item_matches?(item: Json, row: List[String]) -> Bool
     return false
   end
 
-  return row[2] == "" or (detail.starts_with?("#{row[2]}(") and documentation.length > 0)
+  return row[2] == "" or (detail.start_with?("#{row[2]}(") and documentation.length > 0)
 end
 
 def labels(result: Json) -> List[String]
@@ -1630,7 +1635,7 @@ def entries(text: String) -> List[Entry]
 end
 
 def entry_of(line: String) -> Result[Entry]
-  if line.starts_with?("{")
+  if line.start_with?("{")
     parsed = try JSON.parse(line)
     level = try JSON.string(try JSON.get(parsed, "level"))
     return ok(Entry(level: level, text: line))
@@ -1645,11 +1650,13 @@ def entry_of(line: String) -> Result[Entry]
 end
 
 def has_line?(found: List[Entry], level: String, text: String) -> Bool
-  return found.filter do |entry| entry.level == level and entry.text.contains?(text) end.size > 0
+  matching = found.filter do |entry| entry.level == level and entry.text.include?(text) end
+  return matching.size > 0
 end
 
 def has_level?(found: List[Entry], level: String) -> Bool
-  return found.filter do |entry| entry.level == level end.size > 0
+  matching = found.filter do |entry| entry.level == level end
+  return matching.size > 0
 end
 
 def only_json(ctx: BDD.Context, text: String) -> BDD.Context
@@ -1674,7 +1681,7 @@ def logged_to_editor?(ctx: BDD.Context, level: String, text: String) -> Bool
   matching = log_messages(ctx).filter do |message|
     kind = JSON.int(at(message, ["params", "type"]).unwrap_or(JSON.null())).unwrap_or(0)
     shown = JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("")
-    kind == wanted and shown.contains?(text)
+    kind == wanted and shown.include?(text)
   end
 
   return matching.size > 0
@@ -2030,7 +2037,7 @@ def session(
   actions: List[Json],
   wait_ms: Int,
 ) -> Result[Session]
-  server = try Process.spawn_captured(command, arguments, start_in, wait_ms)
+  server = try Process.spawn_captured(command, arguments, Process.Options(timeout_ms: wait_ms, chdir: start_in))
   received: List[Json] = []
   arrivals: List[Int] = []
   sent: Map[String, Json] = {}
@@ -2137,7 +2144,7 @@ def read_until_log(server: Process, text: String, wait_ms: Int) -> Result[Heard]
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     shown = JSON.string(at(message, ["params", "message"]).unwrap_or(JSON.null())).unwrap_or("")
-    if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(LOG_MESSAGE).to_s and shown.contains?(text)
+    if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(LOG_MESSAGE).to_s and shown.include?(text)
       return ok(Heard(messages: received, arrivals: arrivals))
     end
   end
@@ -2163,7 +2170,7 @@ end
 
 def read_body(server: Process, header: String, wait_ms: Int) -> Result[Json]
   prefix = "Content-Length: "
-  if !header.starts_with?(prefix)
+  if !header.start_with?(prefix)
     return error("expected a Content-Length header; got #{header.inspect}")
   end
 
@@ -2178,7 +2185,7 @@ def read_body(server: Process, header: String, wait_ms: Int) -> Result[Json]
 end
 
 def link(target: String, path: String) -> Result[Void]
-  linker = try Process.spawn_captured("ln", ["-s", target, path], ".", TIMEOUT_MS)
+  linker = try Process.spawn_captured("ln", ["-s", target, path], Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
   status = try Process.wait(linker, TIMEOUT_MS)
   if status != 0
     return error("ln exited with status #{status}")

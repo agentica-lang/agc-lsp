@@ -31,7 +31,7 @@ export def locate(documents: Map[String, String], params: Json, encoding: String
   end
 
   text = lines[line]
-  if text.ends_with?("\r")
+  if text.end_with?("\r")
     text = text.slice(0, text.length - 1)
   end
 

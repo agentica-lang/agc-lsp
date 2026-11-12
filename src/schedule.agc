@@ -162,7 +162,8 @@ def newest(queued: Pending, pending: Pending) -> Pending
 end
 
 def waiting?(plan: Plan, uri: String) -> Bool
-  return plan.queue.filter do |pending| pending.uri == uri end.size > 0
+  matching = plan.queue.filter do |pending| pending.uri == uri end
+  return matching.size > 0
 end
 
 def launch(plan: Plan, pending: Pending, basis: Basis) -> Plan
