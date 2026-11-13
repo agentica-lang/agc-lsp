@@ -14,7 +14,7 @@ Syntax highlighting is not part of this extension; it will come from
    ```sh
    npm install
    npx @vscode/vsce package
-   code --install-extension agentica-lsp-0.2.0.vsix
+   code --install-extension agentica-lsp-0.3.0.vsix
    ```
 
    `vsce package` copies the repository `LICENSE` into this folder first (git ignores the copy), so it needs no
