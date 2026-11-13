@@ -33,7 +33,7 @@ def main() -> Void
 
   case prepared(args[0], args[1])
     ok(program) -> puts(program)
-    error(message) -> fail(message)
+    error(e) -> fail(e.message)
   end
 end
 

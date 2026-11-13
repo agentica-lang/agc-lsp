@@ -9,10 +9,8 @@ import Logger from "std/logger"
 import Symbols from "symbols"
 import Workspace from "workspace"
 
-SEND_TIMEOUT_MS = 10_000
-
 ## Holds the outcome of one check of a file, for the generation that started it.
-export struct Report
+struct Report
   ## Is the URI of the checked file.
   uri: String
   ## Is the generation of the check, to tell newer checks from older.
@@ -22,15 +20,15 @@ export struct Report
 end
 
 ## Holds the answer to a request that needed a query, for the request with that id.
-export struct Answer
+struct Answer
   ## Is the id of the request.
-  id: Json
+  id: JSON.Value
   ## Is the result to send, null when there is nothing to show.
-  result: Json
+  result: JSON.Value
 end
 
 ## Names what the server loop receives: input, a finished check, an answer, the catalog or a log line.
-export enum Event
+enum Event
   ## Is a message or a framing problem from the input.
   Input(Rpc.Incoming)
   ## Is a finished check.
@@ -44,7 +42,7 @@ export enum Event
 end
 
 ## Holds what a check task needs: the session, the shared entries, the file and the channel for the result.
-export struct Job
+struct Job
   ## Is the channel that receives the report.
   events: Channel[Event]
   ## Is the session with the text of every open document.
@@ -60,7 +58,7 @@ export struct Job
 end
 
 ## Is what a query asks.
-export enum Question
+enum Question
   ## Is a question about a document and a position in it: definition, hover or document symbols.
   Document(Lookup.Request)
   ## Is a question about the uses of the name at a position, with true to include its declaration.
@@ -70,13 +68,13 @@ export enum Question
 end
 
 ## Holds what the task of a definition, references, hover, document symbol or workspace symbol request needs.
-export struct QueryJob
+struct QueryJob
   ## Is the channel that receives the answer.
   events: Channel[Event]
   ## Is the table of the entries that the tasks share, from which a question about a document starts.
   entries: Entries.Table
   ## Is the id of the request.
-  id: Json
+  id: JSON.Value
   ## Is the method of the request.
   method: String
   ## Is what a newer request of the same method replaces: the path of the document, or the folder of the workspace.
@@ -86,7 +84,7 @@ export struct QueryJob
 end
 
 ## Holds what the catalog task needs.
-export struct CatalogJob
+struct CatalogJob
   ## Is the channel that receives the catalog.
   events: Channel[Event]
   ## Is the executable that prints the catalog.
@@ -94,7 +92,7 @@ export struct CatalogJob
 end
 
 ## Sends each incoming message to the channel until the input ends, and returns ok.
-export def read_input(events: Channel[Event]) -> Result[Void]
+def read_input(events: Channel[Event]) -> Result[Void]
   while true
     incoming = Rpc.read()
     deliver(events, Event.Input(incoming))
@@ -108,7 +106,7 @@ end
 
 ## Refreshes the file of the job from its shared entry, checks it, publishes its new entry and sends the report to the
 ## channel, returning ok.
-export def check(job: Job) -> Result[Void]
+def check(job: Job) -> Result[Void]
   started = Time.now_ms()
   if Logger.enabled?(Logger.Level.Debug)
     opened = {"uri": job.uri, "generation": job.generation.to_s, "entry": Entries.held?(job.entries, job.path).to_s}
@@ -138,11 +136,11 @@ export def check(job: Job) -> Result[Void]
 end
 
 ## Loads the catalog and sends it to the channel, returning ok.
-export def load_catalog(job: CatalogJob) -> Result[Void]
+def load_catalog(job: CatalogJob) -> Result[Void]
   outcome = Catalog.load(job.agentica)
   case outcome
     ok(book) -> Logger.info("loaded the builtin catalog", {"builtins": book.entries.size.to_s})
-    error(message) -> Logger.warning("cannot load the builtin catalog from #{job.agentica}: #{message}")
+    error(failure) -> Logger.warning("cannot load the builtin catalog from #{job.agentica}: #{failure.message}")
   end
 
   deliver(job.events, Event.Cataloged(outcome))
@@ -150,7 +148,7 @@ export def load_catalog(job: CatalogJob) -> Result[Void]
 end
 
 ## Answers a query and sends the answer to the channel, returning ok.
-export def answer_query(job: QueryJob) -> Result[Void]
+def answer_query(job: QueryJob) -> Result[Void]
   case job.question
     Question.Document(request) -> return answer_document(job, request)
     Question.References(request, with_declaration) ->
@@ -159,6 +157,10 @@ export def answer_query(job: QueryJob) -> Result[Void]
       return settle(job.events, job.id, "workspace symbols", Workspace.answer(request))
   end
 end
+
+private
+
+SEND_TIMEOUT_MS = 10_000
 
 def answer_document(job: QueryJob, request: Lookup.Request) -> Result[Void]
   case job.method
@@ -175,11 +177,11 @@ def started_from(job: QueryJob, request: Lookup.Request) -> Lookup.Request
   return request.with(session: Entries.restored(job.entries, request.session, request.path))
 end
 
-def settle(events: Channel[Event], id: Json, what: String, outcome: Result[Json]) -> Result[Void]
+def settle(events: Channel[Event], id: JSON.Value, what: String, outcome: Result[JSON.Value]) -> Result[Void]
   result = JSON.null()
   case outcome
     ok(found) -> result = found
-    error(message) -> Logger.warning("cannot answer the request for the #{what}: #{message}")
+    error(failure) -> Logger.warning("cannot answer the request for the #{what}: #{failure.message}")
   end
 
   deliver(events, Event.Answered(Answer(id: id, result: result)))

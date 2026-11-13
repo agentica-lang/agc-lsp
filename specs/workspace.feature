@@ -7,12 +7,12 @@ Feature: Workspace symbols
     And the language server has started
     And the file "shapes.agc" contains:
       """
-      export struct Point
+      struct Point
         x: Int
         y: Int
       end
 
-      export def area(point: Point) -> Int
+      def area(point: Point) -> Int
         return point.x * point.y
       end
       """
@@ -20,15 +20,15 @@ Feature: Workspace symbols
       """
       LIMIT = 3
 
-      export def area(name: String) -> Int
+      def area(name: String) -> Int
         return name.length * LIMIT
       end
       """
     When the editor searches the workspace for "area"
     Then the workspace symbols for "area" are:
       | symbol | kind     | file           | at        |
-      | area   | Function | shapes.agc     | 6:12-6:16 |
-      | area   | Function | text/names.agc | 3:12-3:16 |
+      | area   | Function | shapes.agc     | 6:5-6:9 |
+      | area   | Function | text/names.agc | 3:5-3:9 |
 
     Examples:
       | offered           |
@@ -43,7 +43,7 @@ Feature: Workspace symbols
       """
       LIMIT = 3
 
-      export struct Point
+      struct Point
         x: Int
         y: Int
       end
@@ -53,7 +53,7 @@ Feature: Workspace symbols
     And the editor searches the workspace for "LIMIT"
     Then the workspace symbols for "Point" are:
       | symbol | kind   | file       | at        |
-      | Point  | Struct | shapes.agc | 3:15-3:20 |
+      | Point  | Struct | shapes.agc | 3:8-3:13 |
     And the workspace symbols for "Point.y" are:
       | symbol  | kind  | file       | at      |
       | Point.y | Field | shapes.agc | 5:3-5:4 |
@@ -66,21 +66,21 @@ Feature: Workspace symbols
     And the language server has started in the folder of the project
     And the file "text/names.agc" contains:
       """
-      export def area(name: String) -> Int
+      def area(name: String) -> Int
         return name.length
       end
       """
     When the editor searches the workspace for "area"
     Then the workspace symbols for "area" are:
       | symbol | kind     | file           | at        |
-      | area   | Function | text/names.agc | 1:12-1:16 |
+      | area   | Function | text/names.agc | 1:5-1:9 |
 
   Scenario: a name that is not declared in full has no symbols
     Given the editor offers the workspace as "workspace folders"
     And the language server has started
     And the file "shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
@@ -97,7 +97,7 @@ Feature: Workspace symbols
     Given the language server has started
     And the file "shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
@@ -110,7 +110,7 @@ Feature: Workspace symbols
     And the language server has started with the arguments "--log-level debug"
     And the file "shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
@@ -132,7 +132,7 @@ Feature: Workspace symbols
     And the language server has started with the arguments "--log-level debug"
     And the file "shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
@@ -145,7 +145,7 @@ Feature: Workspace symbols
     When the editor searches the workspace for "area"
     Then the workspace symbols for "area" are:
       | symbol | kind     | file       | at        |
-      | area   | Function | shapes.agc | 1:12-1:16 |
+      | area   | Function | shapes.agc | 1:5-1:9 |
     And the server logs a "debug" line containing "broken.agc"
 
   Scenario: a file that is open is searched as the editor shows it
@@ -153,31 +153,31 @@ Feature: Workspace symbols
     And the language server has started
     And the file "shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
     When the editor opens "shapes.agc" with:
       """
-      export def surface(side: Int) -> Int
+      def surface(side: Int) -> Int
         return side * side
       end
 
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
     And the editor opens "fresh.agc" with:
       """
-      export def area(width: Int) -> Int
+      def area(width: Int) -> Int
         return width
       end
       """
     And the editor searches the workspace for "area"
     Then the workspace symbols for "area" are:
       | symbol | kind     | file       | at        |
-      | area   | Function | fresh.agc  | 1:12-1:16 |
-      | area   | Function | shapes.agc | 5:12-5:16 |
+      | area   | Function | fresh.agc  | 1:5-1:9 |
+      | area   | Function | shapes.agc | 5:5-5:9 |
 
   Scenario: a newer search supersedes the older ones, which are answered with null
     Given the editor offers the workspace as "workspace folders"
@@ -185,7 +185,7 @@ Feature: Workspace symbols
     And the file "heavy.agc" is a module of 5000 functions
     And the file "shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
@@ -193,4 +193,4 @@ Feature: Workspace symbols
     Then the earlier requests in a row are answered with null
     And the workspace symbols for "area" are:
       | symbol | kind     | file       | at        |
-      | area   | Function | shapes.agc | 1:12-1:16 |
+      | area   | Function | shapes.agc | 1:5-1:9 |

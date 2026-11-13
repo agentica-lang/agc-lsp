@@ -21,21 +21,9 @@ import Uri from "uri"
 import Words from "words"
 import Workspace from "workspace"
 
-PARSE_ERROR = -32_700
-INVALID_REQUEST = -32_600
-REQUEST_CANCELLED = -32_800
-METHOD_NOT_FOUND = -32_601
-SERVER_NOT_INITIALIZED = -32_002
-FULL_SYNC = 1
-AGENTICA_EXTENSION = ".agc"
-EVENT_CAPACITY = 256
-WAIT_MS = 1000
-READER_CHECK_MS = 1
-CHANGE_DELAY_MS = 200
-
 ## Holds the state of the server: its options, the open documents and the session that holds their text, the entries
 ## that the tasks share, the plan of the checks and the catalog.
-export struct State
+struct State
   ## Holds the command-line options.
   options: Options.Options
   ## Is the position encoding that the session uses.
@@ -71,13 +59,8 @@ export struct State
   root: String
 end
 
-enum Next
-  Continue(State)
-  Exit(Int)
-end
-
 ## Returns the state of a server that has not been initialized.
-export def start(options: Options.Options) -> State
+def start(options: Options.Options) -> State
   events: Channel[Events.Event] = Channel.new(EVENT_CAPACITY)
   pointing: Map[String, String] = {}
   open: Map[String, String] = {}
@@ -104,7 +87,7 @@ export def start(options: Options.Options) -> State
 end
 
 ## Runs the server loop until the editor exits or the input ends, and returns the exit status.
-export def serve(state: State) -> Int
+def serve(state: State) -> Int
   reader = Task.spawn(&Events.read_input, state.events)
   current = state
   while true
@@ -126,6 +109,35 @@ export def serve(state: State) -> Int
   end
 
   return finish(current, reader, exit_status(current))
+end
+
+private
+
+PARSE_ERROR = -32_700
+
+INVALID_REQUEST = -32_600
+
+REQUEST_CANCELLED = -32_800
+
+METHOD_NOT_FOUND = -32_601
+
+SERVER_NOT_INITIALIZED = -32_002
+
+FULL_SYNC = 1
+
+AGENTICA_EXTENSION = ".agc"
+
+EVENT_CAPACITY = 256
+
+WAIT_MS = 1000
+
+READER_CHECK_MS = 1
+
+CHANGE_DELAY_MS = 200
+
+enum Next
+  Continue(State)
+  Exit(Int)
 end
 
 def basis(state: State) -> Schedule.Basis
@@ -247,7 +259,7 @@ def point(pointing: Map[String, String], uri: String, target: String) -> Map[Str
   end
 end
 
-def handle(state: State, message: Json) -> Next
+def handle(state: State, message: JSON.Value) -> Next
   if !object?(message)
     Rpc.fail(JSON.null(), INVALID_REQUEST, "a message must be a JSON object")
     return Next.Continue(state)
@@ -273,7 +285,7 @@ def handle(state: State, message: Json) -> Next
   end
 end
 
-def request(state: State, id: Json, method: String, params: Json) -> State
+def request(state: State, id: JSON.Value, method: String, params: JSON.Value) -> State
   if !state.initialized and method != "initialize"
     Rpc.fail(id, SERVER_NOT_INITIALIZED, "the server is not initialized")
     return state
@@ -303,7 +315,7 @@ def request(state: State, id: Json, method: String, params: Json) -> State
   end
 end
 
-def initialize(state: State, id: Json, params: Json) -> State
+def initialize(state: State, id: JSON.Value, params: JSON.Value) -> State
   if state.initialized
     Rpc.fail(id, INVALID_REQUEST, "the server is already initialized")
     return state
@@ -340,7 +352,7 @@ def initialize(state: State, id: Json, params: Json) -> State
   return state.with(encoding: encoding, initialized: true, loaders: [loader], root: Workspace.root_of(params))
 end
 
-def hover(state: State, id: Json, params: Json) -> State
+def hover(state: State, id: JSON.Value, params: JSON.Value) -> State
   case Cursor.locate(state.documents, params, state.encoding)
     ok(cursor) ->
       if Hover.settled?(state.catalog, cursor)
@@ -355,7 +367,7 @@ def hover(state: State, id: Json, params: Json) -> State
   end
 end
 
-def definition(state: State, id: Json, params: Json) -> State
+def definition(state: State, id: JSON.Value, params: JSON.Value) -> State
   case Cursor.locate(state.documents, params, state.encoding)
     ok(cursor) if Words.name_at?(cursor.chars, cursor.index) ->
       return ask(state, id, "textDocument/definition", params, cursor)
@@ -368,7 +380,7 @@ def definition(state: State, id: Json, params: Json) -> State
   end
 end
 
-def symbols(state: State, id: Json, params: Json) -> State
+def symbols(state: State, id: JSON.Value, params: JSON.Value) -> State
   if state.documents.get(agentica_path(document_uri(params))).none?
     Rpc.respond(id, JSON.null())
     return state
@@ -377,7 +389,7 @@ def symbols(state: State, id: Json, params: Json) -> State
   return ask(state, id, "textDocument/documentSymbol", params, Cursor.start(state.encoding))
 end
 
-def references(state: State, id: Json, params: Json) -> State
+def references(state: State, id: JSON.Value, params: JSON.Value) -> State
   case Cursor.locate(state.documents, params, state.encoding)
     ok(cursor) if Words.name_at?(cursor.chars, cursor.index) ->
       return ask(state, id, "textDocument/references", params, cursor)
@@ -390,10 +402,10 @@ def references(state: State, id: Json, params: Json) -> State
   end
 end
 
-def workspace_symbols(state: State, id: Json, params: Json) -> State
+def workspace_symbols(state: State, id: JSON.Value, params: JSON.Value) -> State
   name = Fields.text(params, "query").strip
   if state.root == "" or name == "" or name.start_with?("-")
-    no_items: List[Json] = []
+    no_items: List[JSON.Value] = []
     Rpc.respond(id, JSON.array(no_items))
     return state
   end
@@ -417,16 +429,16 @@ def workspace_symbols(state: State, id: Json, params: Json) -> State
   return dropped_answer(state, Asks.submit(state.asks, job))
 end
 
-def completion(state: State, params: Json) -> Json
+def completion(state: State, params: JSON.Value) -> JSON.Value
   case Cursor.locate(state.documents, params, state.encoding)
     ok(cursor) -> return Completion.answer(state.catalog, cursor)
     error(_) ->
-      no_items: List[Json] = []
+      no_items: List[JSON.Value] = []
       return JSON.array(no_items)
   end
 end
 
-def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cursor) -> State
+def ask(state: State, id: JSON.Value, method: String, params: JSON.Value, cursor: Cursor.Cursor) -> State
   uri = document_uri(params)
   case Uri.path_of(uri)
     ok(path) ->
@@ -454,7 +466,7 @@ def ask(state: State, id: Json, method: String, params: Json, cursor: Cursor.Cur
   end
 end
 
-def question_of(method: String, request: Lookup.Request, params: Json) -> Events.Question
+def question_of(method: String, request: Lookup.Request, params: JSON.Value) -> Events.Question
   if method == "textDocument/references"
     return Events.Question.References(request, with_declaration?(params))
   end
@@ -462,12 +474,12 @@ def question_of(method: String, request: Lookup.Request, params: Json) -> Events
   return Events.Question.Document(request)
 end
 
-def with_declaration?(params: Json) -> Bool
+def with_declaration?(params: JSON.Value) -> Bool
   context = Fields.value(params, "context")
   return JSON.bool(Fields.value(context, "includeDeclaration")).unwrap_or(true)
 end
 
-def cancelled(state: State, params: Json) -> State
+def cancelled(state: State, params: JSON.Value) -> State
   change = Asks.cancel(state.asks, JSON.get(params, "id").unwrap_or(JSON.null()))
   for id in change.dropped
     Rpc.fail(id, REQUEST_CANCELLED, "request cancelled")
@@ -476,7 +488,7 @@ def cancelled(state: State, params: Json) -> State
   return state.with(asks: change.plan)
 end
 
-def notification(state: State, method: String, params: Json) -> State
+def notification(state: State, method: String, params: JSON.Value) -> State
   if !state.initialized or state.shut_down
     return state
   end
@@ -486,8 +498,8 @@ def notification(state: State, method: String, params: Json) -> State
     "textDocument/didChange" ->
       case changed_text(params)
         ok(text) -> return edited(state, document_uri(params), text)
-        error(message) ->
-          Logger.warning(message)
+        error(failure) ->
+          Logger.warning(failure.message)
           return state
       end
 
@@ -498,18 +510,18 @@ def notification(state: State, method: String, params: Json) -> State
   end
 end
 
-def opened(state: State, uri: String, params: Json) -> State
+def opened(state: State, uri: String, params: JSON.Value) -> State
   case Uri.path_of(uri)
     ok(_) ->
       case document_text(params)
         ok(text) -> return keep(state, uri, text, 0)
-        error(message) ->
-          Logger.warning("#{message}: #{uri}")
+        error(failure) ->
+          Logger.warning("#{failure.message}: #{uri}")
           return state
       end
 
-    error(message) ->
-      Logger.warning(message)
+    error(failure) ->
+      Logger.warning(failure.message)
       return state
   end
 end
@@ -586,8 +598,8 @@ def closed(state: State, uri: String) -> State
   path = ""
   case Uri.path_of(uri)
     ok(found) -> path = found
-    error(message) ->
-      Logger.warning(message)
+    error(failure) ->
+      Logger.warning(failure.message)
       return state
   end
 
@@ -595,7 +607,7 @@ def closed(state: State, uri: String) -> State
     return state
   end
 
-  no_items: List[Json] = []
+  no_items: List[JSON.Value] = []
   publish(uri, no_items)
   remaining = state.open.delete(uri)
   dropped = state.with(
@@ -624,17 +636,17 @@ def agentica_path(uri: String) -> String
   return ""
 end
 
-def publish(uri: String, found: List[Json]) -> Void
+def publish(uri: String, found: List[JSON.Value]) -> Void
   Rpc.notify("textDocument/publishDiagnostics", JSON.object({
     "uri": JSON.from(uri),
     "diagnostics": JSON.array(found),
   }))
 end
 
-def offered(params: Json) -> List[String]
+def offered(params: JSON.Value) -> List[String]
   capabilities = JSON.get(params, "capabilities").unwrap_or(JSON.null())
   general = JSON.get(capabilities, "general").unwrap_or(JSON.null())
-  no_items: List[Json] = []
+  no_items: List[JSON.Value] = []
   encodings = JSON.list(JSON.get(general, "positionEncodings").unwrap_or(JSON.null())).unwrap_or(no_items)
   names: List[String] = []
   for encoding in encodings
@@ -644,7 +656,7 @@ def offered(params: Json) -> List[String]
   return names
 end
 
-def document_text(params: Json) -> Result[String]
+def document_text(params: JSON.Value) -> Result[String]
   document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
   case JSON.get(document, "text")
     ok(text) -> return JSON.string(text)
@@ -652,8 +664,8 @@ def document_text(params: Json) -> Result[String]
   end
 end
 
-def changed_text(params: Json) -> Result[String]
-  no_items: List[Json] = []
+def changed_text(params: JSON.Value) -> Result[String]
+  no_items: List[JSON.Value] = []
   changes = JSON.list(JSON.get(params, "contentChanges").unwrap_or(JSON.null())).unwrap_or(no_items)
   if changes.size == 0
     return error("a change without contentChanges")
@@ -667,12 +679,12 @@ def changed_text(params: Json) -> Result[String]
   return JSON.string(JSON.get(last, "text").unwrap_or(JSON.null()))
 end
 
-def document_uri(params: Json) -> String
+def document_uri(params: JSON.Value) -> String
   document = JSON.get(params, "textDocument").unwrap_or(JSON.null())
   return JSON.string(JSON.get(document, "uri").unwrap_or(JSON.null())).unwrap_or("")
 end
 
-def log_received(message: Json, method: String) -> Void
+def log_received(message: JSON.Value, method: String) -> Void
   if !Logger.enabled?(Logger.Level.Debug)
     return
   end
@@ -683,15 +695,15 @@ def log_received(message: Json, method: String) -> Void
   end
 end
 
-def response?(message: Json) -> Bool
+def response?(message: JSON.Value) -> Bool
   return JSON.get(message, "result").ok? or JSON.get(message, "error").ok?
 end
 
-def object?(message: Json) -> Bool
+def object?(message: JSON.Value) -> Bool
   return JSON.kind(message) == "object"
 end
 
-def params(message: Json) -> Json
+def params(message: JSON.Value) -> JSON.Value
   return JSON.get(message, "params").unwrap_or(JSON.null())
 end
 

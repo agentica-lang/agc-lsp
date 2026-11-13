@@ -33,6 +33,79 @@ Feature: Diagnostics in the editor
       | at       | severity | code               |
       | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
 
+  Scenario: export before a declaration is refused, and the server relays PARSE-UNEXPECTED-TOKEN
+    Given the language server has started
+    And the file "old.agc" contains:
+      """
+      export def answer() -> Int
+        return 1
+      end
+
+      """
+    When the editor opens "old.agc"
+    Then "old.agc" gets these diagnostics:
+      | at      | severity | code                   |
+      | 1:1-1:7 | error    | PARSE-UNEXPECTED-TOKEN |
+
+  Scenario: a name below private in an imported file is not importable
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      def open() -> Int = connect()
+
+      private
+
+      def connect() -> Int = 1
+      """
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.open())
+        puts(Lib.connect())
+      end
+
+      """
+    When the editor opens "app.agc"
+    Then "app.agc" gets these diagnostics:
+      | at       | severity | code              |
+      | 5:8-5:21 | error    | CHECK-IMPORT-NAME |
+
+  Scenario: a private field of a struct is refused outside the file that declares it
+    Given the language server has started
+    And the file "conn.agc" contains:
+      """
+      struct Conn
+        id: Int
+
+        private
+
+        socket: Int
+      end
+
+      def open(id: Int) -> Conn = Conn(id: id, socket: 3)
+
+      def socket_of(conn: Conn) -> Int = conn.socket
+      """
+    And the file "app.agc" contains:
+      """
+      import Conn from "conn"
+
+      def main() -> Void
+        conn = Conn.open(1)
+        puts(conn.id)
+        puts(conn.socket)
+      end
+
+      """
+    When the editor opens "conn.agc"
+    And the editor opens "app.agc"
+    Then "conn.agc" gets no diagnostics
+    And "app.agc" gets these diagnostics:
+      | at        | severity | code                |
+      | 6:13-6:19 | error    | CHECK-PRIVATE-FIELD |
+
   Scenario: the help of a diagnostic follows its message
     Given the language server has started
     And the file "types.agc" contains:
@@ -111,7 +184,7 @@ Feature: Diagnostics in the editor
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -358,7 +431,7 @@ Feature: Diagnostics in the editor
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "quick.agc, slow.agc"
     And the editor waits 1500 milliseconds
     Then "slow.agc" gets these diagnostics:
       | at       | severity | code               |
@@ -396,7 +469,7 @@ Feature: Diagnostics in the editor
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "quick.agc, slow.agc"
     Then "quick.agc" gets no diagnostics
     And "quick.agc" gets these diagnostics:
       | at       | severity | code               |
@@ -427,7 +500,7 @@ Feature: Diagnostics in the editor
 
       """
     When the editor opens the files "quick.agc, slow.agc" without waiting
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "quick.agc, slow.agc"
     Then "quick.agc" gets these diagnostics:
       | at       | severity | code               |
       | 2:8-2:13 | error    | CHECK-UNKNOWN-NAME |
@@ -440,7 +513,7 @@ Feature: Diagnostics in the editor
     Given the language server has started
     And the file "helpers.agc" contains:
       """
-      export def double(n: Int) -> Int
+      def double(n: Int) -> Int
         return n * 2
       end
 
@@ -452,7 +525,7 @@ Feature: Diagnostics in the editor
     Given the language server has started
     And the file "helpers.agc" contains:
       """
-      export def double(n: Int) -> Int
+      def double(n: Int) -> Int
         return "x"
       end
       """

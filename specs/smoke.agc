@@ -22,7 +22,7 @@ end
 def finish(result: Result[Void], done: String) -> Void
   case result
     ok(_) -> puts(done)
-    error(message) -> fail(message)
+    error(e) -> fail(e.message)
   end
 end
 
@@ -57,7 +57,7 @@ def verify(path: String) -> Result[Void]
   return ok()
 end
 
-def request(id: Int, method: String, params: Json) -> String
+def request(id: Int, method: String, params: JSON.Value) -> String
   return JSON.encode(JSON.object({
     "jsonrpc": JSON.from("2.0"),
     "id": JSON.from(id),
@@ -78,7 +78,7 @@ def frame(body: String) -> String
   return "#{LENGTH_PREFIX}#{body.bytes.size}\r\n\r\n#{body}"
 end
 
-def reply(messages: List[Json], id: Int) -> Result[Json]
+def reply(messages: List[JSON.Value], id: Int) -> Result[JSON.Value]
   for message in messages
     if JSON.get(message, "id").unwrap_or(JSON.null()).to_s == JSON.from(id).to_s
       return ok(message)
@@ -88,8 +88,8 @@ def reply(messages: List[Json], id: Int) -> Result[Json]
   return error("no reply to request #{id} among #{messages.size} messages")
 end
 
-def read_messages(file: FileHandle) -> Result[List[Json]]
-  messages: List[Json] = []
+def read_messages(file: File.Handle) -> Result[List[JSON.Value]]
+  messages: List[JSON.Value] = []
   while true
     header = File.read_line(file, TIMEOUT_MS)
     if !header.ok?
@@ -102,7 +102,7 @@ def read_messages(file: FileHandle) -> Result[List[Json]]
   return ok(messages)
 end
 
-def read_message(file: FileHandle, header: String) -> Result[Json]
+def read_message(file: File.Handle, header: String) -> Result[JSON.Value]
   if !header.start_with?(LENGTH_PREFIX)
     return error("expected a Content-Length header; got #{header.inspect}")
   end

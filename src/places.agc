@@ -5,10 +5,8 @@ import {UTF16, utf16_width} from "columns"
 import Analysis from "std/analysis"
 import Uri from "uri"
 
-READ_TIMEOUT_MS = 10_000
-
 ## Returns the LSP range of a region in the lines of a file.
-export def range(lines: List[String], region: Analysis.Region, encoding: String) -> Json
+def range(lines: List[String], region: Analysis.Region, encoding: String) -> JSON.Value
   return JSON.object({
     "start": position(region.start, lines, encoding),
     "end": position(region.stop, lines, encoding),
@@ -16,22 +14,26 @@ export def range(lines: List[String], region: Analysis.Region, encoding: String)
 end
 
 ## Returns the LSP position of the start of a file.
-export def origin() -> Json
+def origin() -> JSON.Value
   return JSON.object({"line": JSON.from(0), "character": JSON.from(0)})
 end
 
 ## Returns the lines of a file as the editor shows them when it is open, else as they are on disk, or a single empty
 ## line when it cannot be read.
-export def lines_of(documents: Map[String, String], path: String) -> List[String]
+def lines_of(documents: Map[String, String], path: String) -> List[String]
   return text_of(documents, path).split("\n")
 end
 
 ## Returns true when the file is open in the editor or can be read from disk.
-export def known?(documents: Map[String, String], path: String) -> Bool
+def known?(documents: Map[String, String], path: String) -> Bool
   return held(documents, path).ok? or File.stat(path, READ_TIMEOUT_MS).ok?
 end
 
-def position(at: Analysis.Position, lines: List[String], encoding: String) -> Json
+private
+
+READ_TIMEOUT_MS = 10_000
+
+def position(at: Analysis.Position, lines: List[String], encoding: String) -> JSON.Value
   line = not_negative(at.line - 1)
   character = not_negative(at.column - 1)
   if encoding == UTF16 and line < lines.size

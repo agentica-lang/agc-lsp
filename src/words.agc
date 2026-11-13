@@ -1,19 +1,7 @@
 ## Scans the words of a line given as a list of characters.
 
-DIGIT_FIRST = 48
-DIGIT_LAST = 57
-UPPER_FIRST = 65
-UPPER_LAST = 90
-LOWER_FIRST = 97
-LOWER_LAST = 122
-UNDERSCORE = 95
-KEYWORDS = Set.new([
-  "def", "end", "if", "elsif", "else", "case", "for", "while", "return", "struct", "enum", "import", "export",
-  "from", "type", "do", "in", "next", "break", "try", "and", "or", "not",
-])
-
 ## Holds a word, the characters from start up to stop.
-export struct Word
+struct Word
   ## Is the text of the word.
   text: String
   ## Is the index of its first character.
@@ -23,7 +11,7 @@ export struct Word
 end
 
 ## Returns the word that covers the index, with a trailing ? or !, or an error when there is none.
-export def at(chars: List[String], index: Int) -> Result[Word]
+def at(chars: List[String], index: Int) -> Result[Word]
   if index < 0 or index >= chars.size
     return error("no character at #{index}")
   end
@@ -51,7 +39,7 @@ export def at(chars: List[String], index: Int) -> Result[Word]
 end
 
 ## Returns the index where the word that ends at the index starts.
-export def word_start(chars: List[String], index: Int) -> Int
+def word_start(chars: List[String], index: Int) -> Int
   start = index
   while start > 0 and word_char?(chars[start - 1])
     start -= 1
@@ -61,12 +49,12 @@ export def word_start(chars: List[String], index: Int) -> Int
 end
 
 ## Returns true when a dot comes right before the index.
-export def dotted?(chars: List[String], start: Int) -> Bool
+def dotted?(chars: List[String], start: Int) -> Bool
   return start > 0 and chars[start - 1] == "."
 end
 
 ## Returns the word before the dot that precedes the index, or an error when there is none.
-export def receiver(chars: List[String], start: Int) -> Result[Word]
+def receiver(chars: List[String], start: Int) -> Result[Word]
   if !dotted?(chars, start)
     return error("no dot before the word at #{start}")
   end
@@ -81,7 +69,7 @@ export def receiver(chars: List[String], start: Int) -> Result[Word]
 end
 
 ## Returns the word after the dot at the index, or an error when there is none.
-export def member(chars: List[String], stop: Int) -> Result[Word]
+def member(chars: List[String], stop: Int) -> Result[Word]
   if stop >= chars.size or chars[stop] != "."
     return error("no dot after the word at #{stop}")
   end
@@ -90,27 +78,27 @@ export def member(chars: List[String], stop: Int) -> Result[Word]
 end
 
 ## Returns true when an opening parenthesis comes at the index.
-export def called?(chars: List[String], stop: Int) -> Bool
+def called?(chars: List[String], stop: Int) -> Bool
   return stop < chars.size and chars[stop] == "("
 end
 
 ## Returns true when the text is a keyword of the language, which names no expression.
-export def keyword?(text: String) -> Bool
+def keyword?(text: String) -> Bool
   return KEYWORDS.include?(text)
 end
 
 ## Returns true when the text starts with a capital letter.
-export def type_name?(text: String) -> Bool
+def type_name?(text: String) -> Bool
   return text.length > 0 and String.code(text.at(0)) >= UPPER_FIRST and String.code(text.at(0)) <= UPPER_LAST
 end
 
 ## Returns true when the index is right after the ? or ! that ends a name.
-export def after_suffix?(chars: List[String], index: Int) -> Bool
+def after_suffix?(chars: List[String], index: Int) -> Bool
   return index > 1 and index <= chars.size and suffix?(chars[index - 1]) and word_char?(chars[index - 2])
 end
 
 ## Returns true when a word that is not a keyword is at the index, in code and not in a string or a comment.
-export def name_at?(chars: List[String], index: Int) -> Bool
+def name_at?(chars: List[String], index: Int) -> Bool
   if !code?(chars, index + 1)
     return false
   end
@@ -122,7 +110,7 @@ export def name_at?(chars: List[String], index: Int) -> Bool
 end
 
 ## Returns true when the index of the line is neither in a string nor in a comment.
-export def code?(chars: List[String], upto: Int) -> Bool
+def code?(chars: List[String], upto: Int) -> Bool
   in_string = false
   index = 0
   while index < upto and index < chars.size
@@ -142,6 +130,27 @@ export def code?(chars: List[String], upto: Int) -> Bool
 
   return !in_string
 end
+
+private
+
+DIGIT_FIRST = 48
+
+DIGIT_LAST = 57
+
+UPPER_FIRST = 65
+
+UPPER_LAST = 90
+
+LOWER_FIRST = 97
+
+LOWER_LAST = 122
+
+UNDERSCORE = 95
+
+KEYWORDS = Set.new([
+  "def", "end", "if", "elsif", "else", "case", "for", "while", "return", "struct", "enum", "import", "export",
+  "from", "type", "do", "in", "next", "break", "try", "and", "or", "not",
+])
 
 def word_char?(char: String) -> Bool
   code = String.code(char)

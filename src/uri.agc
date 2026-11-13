@@ -5,16 +5,8 @@
 ## the drive `a:`. That is accepted so that one code path serves all systems and the Unix scenarios can exercise it.
 ## Only the letter is folded when paths are compared, so the rest of a path of an unsaved file must match in case.
 
-FILE_SCHEME = "file://"
-LOCALHOST = "localhost"
-HEX_DIGITS = "0123456789abcdef"
-HEX_UPPER = "0123456789ABCDEF"
-ASCII_LIMIT = 128
-LOWER_A = 97
-LOWER_Z = 122
-
 ## Returns the path of a local file URI, or an error for another URI.
-export def path_of(uri: String) -> Result[String]
+def path_of(uri: String) -> Result[String]
   if !uri.start_with?(FILE_SCHEME)
     return error("not a file URI: #{uri}")
   end
@@ -35,7 +27,7 @@ export def path_of(uri: String) -> Result[String]
 end
 
 ## Returns the file URI of a path, with percent escapes for spaces, marks and non-ASCII characters.
-export def of_path(path: String) -> String
+def of_path(path: String) -> String
   parts: List[String] = []
   if drive?(path)
     parts = parts.push("/")
@@ -55,7 +47,7 @@ export def of_path(path: String) -> String
 end
 
 ## Returns true when both paths are the same file, resolving links when both exist.
-export def same_path?(a: String, b: String) -> Bool
+def same_path?(a: String, b: String) -> Bool
   if normal(a) == normal(b)
     return true
   end
@@ -72,12 +64,12 @@ export def same_path?(a: String, b: String) -> Bool
 end
 
 ## Returns true when the path starts at the root of a drive or of the file system.
-export def absolute?(path: String) -> Bool
+def absolute?(path: String) -> Bool
   return path.start_with?("/") or drive?(path)
 end
 
 ## Returns the absolute path of a file that agentica names relative to a folder (without a leading ./), or as it is.
-export def resolve(folder: String, file: String) -> String
+def resolve(folder: String, file: String) -> String
   if absolute?(file)
     return normal(file)
   end
@@ -99,7 +91,7 @@ export def resolve(folder: String, file: String) -> String
 end
 
 ## Returns the path without the slashes at its end, except the root.
-export def trimmed(path: String) -> String
+def trimmed(path: String) -> String
   shorter = normal(path)
   while shorter.length > 1 and shorter.end_with?("/") and !drive_root?(shorter)
     shorter = shorter.slice(0, shorter.length - 1)
@@ -107,6 +99,22 @@ export def trimmed(path: String) -> String
 
   return shorter
 end
+
+private
+
+FILE_SCHEME = "file://"
+
+LOCALHOST = "localhost"
+
+HEX_DIGITS = "0123456789abcdef"
+
+HEX_UPPER = "0123456789ABCDEF"
+
+ASCII_LIMIT = 128
+
+LOWER_A = 97
+
+LOWER_Z = 122
 
 def normal(path: String) -> String
   if !drive?(path)

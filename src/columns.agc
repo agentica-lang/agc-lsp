@@ -1,11 +1,11 @@
 ## Converts between code point counts and UTF-16 code unit counts of a line.
 
-export UTF16 = "utf-16"
-export UTF32 = "utf-32"
-SURROGATE_START = 65_536
+UTF16 = "utf-16"
+
+UTF32 = "utf-32"
 
 ## Returns the UTF-16 width of the first characters of a line.
-export def utf16_width(line: String, characters: Int) -> Int
+def utf16_width(line: String, characters: Int) -> Int
   chars = line.split("")
   width = 0
   for char in chars.take(smaller(characters, chars.size))
@@ -20,7 +20,7 @@ export def utf16_width(line: String, characters: Int) -> Int
 end
 
 ## Returns how many characters of a line fit in the UTF-16 units.
-export def characters_in(line: String, units: Int) -> Int
+def characters_in(line: String, units: Int) -> Int
   chars = line.split("")
   used = 0
   index = 0
@@ -35,6 +35,10 @@ export def characters_in(line: String, units: Int) -> Int
 
   return index
 end
+
+private
+
+SURROGATE_START = 65_536
 
 def units_of(char: String) -> Int
   if String.code(char) >= SURROGATE_START

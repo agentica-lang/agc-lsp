@@ -9,7 +9,7 @@ Feature: Errors that come from another file
     Given the language server has started with the position encodings "<offered>"
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         names = ["😀", oops]
         return 1
       end
@@ -39,7 +39,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "né/my lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -105,7 +105,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -122,12 +122,12 @@ Feature: Errors that come from another file
     When the editor opens "app.agc"
     And the editor saves "lib.agc" without waiting as:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "app.agc"
     Then "app.agc" gets these diagnostics:
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
@@ -138,7 +138,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -155,13 +155,13 @@ Feature: Errors that come from another file
     When the editor opens "app.agc"
     And the editor saves "lib.agc" without waiting as:
       """
-      export def answer() -> Int
+      def answer() -> Int
         puts("x")
         return "b"
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "app.agc"
     Then "app.agc" gets these diagnostics:
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
@@ -174,7 +174,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
@@ -190,7 +190,7 @@ Feature: Errors that come from another file
       """
     When the editor opens "lib.agc" with:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -208,7 +208,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -226,12 +226,12 @@ Feature: Errors that come from another file
     And the editor opens "app.agc"
     And the editor types in "lib.agc" without waiting:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "lib.agc, app.agc"
     Then "lib.agc" gets these diagnostics:
       | at        | severity | code                |
       | 2:10-2:13 | error    | CHECK-TYPE-MISMATCH |
@@ -246,7 +246,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
@@ -262,14 +262,14 @@ Feature: Errors that come from another file
       """
     When the editor opens "lib.agc" with:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
       """
     And the editor opens "app.agc"
     And the editor closes "lib.agc" without waiting
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "app.agc"
     Then "app.agc" gets these diagnostics:
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
@@ -280,7 +280,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
@@ -297,7 +297,7 @@ Feature: Errors that come from another file
     When the editor opens "lib.agc" through a localhost URI
     And the editor opens "lib.agc" with:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -315,7 +315,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -342,12 +342,12 @@ Feature: Errors that come from another file
       """
     And the editor saves "lib.agc" without waiting as:
       """
-      export def answer() -> String
+      def answer() -> String
         return "a"
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "app.agc"
     Then "app.agc" gets these diagnostics:
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
@@ -389,7 +389,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -404,15 +404,15 @@ Feature: Errors that come from another file
 
       """
     When the editor opens the files "first.agc, second.agc" without waiting
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "first.agc, second.agc"
     And the editor saves "lib.agc" without waiting as:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
       """
-    And the editor waits for the diagnostics of 3 files
+    And the editor waits for the diagnostics of "first.agc, second.agc"
     Then "first.agc" gets these diagnostics:
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
@@ -426,7 +426,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -465,7 +465,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -483,7 +483,7 @@ Feature: Errors that come from another file
     And the editor closes "app.agc"
     And the editor saves "lib.agc" as:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
@@ -499,7 +499,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -523,7 +523,7 @@ Feature: Errors that come from another file
       """
     And the editor saves "lib.agc" as:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
@@ -539,7 +539,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "né/my #lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -556,12 +556,12 @@ Feature: Errors that come from another file
     When the editor opens "app.agc"
     And the editor saves "né/my #lib.agc" without waiting as:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return 1
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "app.agc"
     Then "app.agc" gets these diagnostics:
       | at      | severity | code                |
       | 1:1-1:1 | error    | CHECK-TYPE-MISMATCH |
@@ -571,7 +571,7 @@ Feature: Errors that come from another file
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 
@@ -580,7 +580,7 @@ Feature: Errors that come from another file
       """
       import Lib from "lib"
 
-      export def twice() -> Int
+      def twice() -> Int
         return Lib.answer() * 2
       end
 

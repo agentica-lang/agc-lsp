@@ -6,12 +6,9 @@ import Places from "places"
 import Analysis from "std/analysis"
 import Uri from "uri"
 
-SEVERITY_ERROR = 1
-RELATED_MESSAGE = "the error is here"
-
 ## Holds what the diagnostic of a check needs to be placed: the file, the open documents, the working folder and the
 ## position encoding.
-export struct Placing
+struct Placing
   ## Is the path of the checked file.
   path: String
   ## Maps the path of each open document to its text.
@@ -23,7 +20,7 @@ export struct Placing
 end
 
 ## Returns the first problem of the check as LSP diagnostics, or an empty list when the check passes.
-export def diagnostics(checked: Analysis.Checked, placing: Placing) -> List[Json]
+def diagnostics(checked: Analysis.Checked, placing: Placing) -> List[JSON.Value]
   if checked.diagnostics.size == 0
     return []
   end
@@ -32,7 +29,7 @@ export def diagnostics(checked: Analysis.Checked, placing: Placing) -> List[Json
 end
 
 ## Returns the URI that the related location of the first diagnostic points into, or an empty text.
-export def points_into(found: List[Json]) -> String
+def points_into(found: List[JSON.Value]) -> String
   if found.size == 0
     return ""
   end
@@ -46,13 +43,19 @@ export def points_into(found: List[Json]) -> String
   return Fields.text(location, "uri")
 end
 
-def diagnostic(found: Analysis.Diagnostic, placing: Placing) -> Json
+private
+
+SEVERITY_ERROR = 1
+
+RELATED_MESSAGE = "the error is here"
+
+def diagnostic(found: Analysis.Diagnostic, placing: Placing) -> JSON.Value
   message = found.message
   if found.help != ""
     message = "#{message}\nhelp: #{found.help}"
   end
 
-  fields: Map[String, Json] = {
+  fields: Map[String, JSON.Value] = {
     "severity": JSON.from(SEVERITY_ERROR),
     "code": JSON.from(found.code),
     "source": JSON.from("agentica"),
@@ -72,7 +75,7 @@ def diagnostic(found: Analysis.Diagnostic, placing: Placing) -> Json
   return JSON.object(fields.put("message", JSON.from(message)))
 end
 
-def related(found: Analysis.Diagnostic, file: String, placing: Placing) -> Json
+def related(found: Analysis.Diagnostic, file: String, placing: Placing) -> JSON.Value
   range = JSON.object({"start": Places.origin(), "end": Places.origin()})
   if found.key_path == "" and found.range.start.line > 0
     range = Places.range(Places.lines_of(placing.documents, file), found.range, placing.encoding)

@@ -5,17 +5,8 @@ import {DEFAULT_CLIENT_LEVEL, DEFAULT_LEVEL, Options, level?} from "options"
 import Rpc from "rpc"
 import Logger from "std/logger"
 
-MAIN_TASK = 1
-FILE_TIMEOUT_MS = 1000
-SEND_TIMEOUT_MS = 1000
-
-struct Chosen
-  level: Logger.Level
-  problem: String
-end
-
 ## Returns the options with an unwritable log file dropped, after installing the destinations.
-export def start(options: Options) -> Options
+def start(options: Options) -> Options
   usable = writable(options)
   level = choose(usable.level, JSON.null(), "logLevel", DEFAULT_LEVEL).level
   install(usable, level)
@@ -29,7 +20,7 @@ export def start(options: Options) -> Options
 end
 
 ## Attaches the editor as a log destination, with the levels it asked for or the options give.
-export def attach_editor(options: Options, events: Channel[Events.Event], asked: Json) -> Void
+def attach_editor(options: Options, events: Channel[Events.Event], asked: JSON.Value) -> Void
   stderr = choose(options.level, asked, "logLevel", DEFAULT_LEVEL)
   editor = choose(options.client_level, asked, "clientLogLevel", DEFAULT_CLIENT_LEVEL)
   install(options, stderr.level)
@@ -44,8 +35,21 @@ export def attach_editor(options: Options, events: Channel[Events.Event], asked:
 end
 
 ## Sends the log event to the editor as a window/logMessage notification.
-export def write_to_editor(event: Logger.Event) -> Void
+def write_to_editor(event: Logger.Event) -> Void
   Rpc.log_message(editor_type(event.level), editor_text(event))
+end
+
+private
+
+MAIN_TASK = 1
+
+FILE_TIMEOUT_MS = 1000
+
+SEND_TIMEOUT_MS = 1000
+
+struct Chosen
+  level: Logger.Level
+  problem: String
 end
 
 def writable(options: Options) -> Options
@@ -55,8 +59,8 @@ def writable(options: Options) -> Options
 
   case File.append_text(options.file, "", FILE_TIMEOUT_MS)
     ok(_) -> return options
-    error(message) ->
-      problem = "cannot write the log file #{options.file}: #{message}"
+    error(failure) ->
+      problem = "cannot write the log file #{options.file}: #{failure.message}"
       return options.with(file: "", problems: options.problems.push(problem))
   end
 end
@@ -87,7 +91,7 @@ def to_editor(events: Channel[Events.Event], event: Logger.Event) -> Void
   end
 end
 
-def choose(given: String, asked: Json, key: String, default: String) -> Chosen
+def choose(given: String, asked: JSON.Value, key: String, default: String) -> Chosen
   fallback = level_named(default)
   if given != ""
     return Chosen(level: level_named(given), problem: "")

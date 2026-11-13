@@ -2,15 +2,10 @@
 
 import Logger from "std/logger"
 
-CHUNK_BYTES = 1_048_576
-LENGTH_HEADER = "content-length:"
-LOG_METHOD = "window/logMessage"
-JSONRPC_VERSION = "2.0"
-
 ## Names what the input holds next: a message, bytes that are not JSON, a lost framing or the end.
-export enum Incoming
+enum Incoming
   ## Is a parsed JSON message.
-  Message(Json)
+  Message(JSON.Value)
   ## Is a framed body that is not JSON, with the reason.
   Malformed(String)
   ## Is a lost framing, with the reason.
@@ -19,20 +14,8 @@ export enum Incoming
   End
 end
 
-struct Response
-  jsonrpc: String
-  id: Json
-  result: Json
-end
-
-struct Notification
-  jsonrpc: String
-  method: String
-  params: Json
-end
-
 ## Returns the next incoming item, waiting for it on standard input.
-export def read() -> Incoming
+def read() -> Incoming
   length = -1
   while true
     case IO.gets()
@@ -57,15 +40,15 @@ export def read() -> Incoming
     ok(text) ->
       case JSON.parse(text)
         ok(message) -> return Incoming.Message(message)
-        error(message) -> return Incoming.Malformed(message)
+        error(failure) -> return Incoming.Malformed(failure.message)
       end
 
-    error(message) -> return Incoming.Malformed(message)
+    error(failure) -> return Incoming.Malformed(failure.message)
   end
 end
 
 ## Sends the result as the response to the request id.
-export def respond(id: Json, result: Json) -> Void
+def respond(id: JSON.Value, result: JSON.Value) -> Void
   send(JSON.encode(Response(jsonrpc: JSONRPC_VERSION, id: id, result: result)))
   if Logger.enabled?(Logger.Level.Debug)
     Logger.debug("sent a response", {"id": JSON.encode(id)})
@@ -73,8 +56,8 @@ export def respond(id: Json, result: Json) -> Void
 end
 
 ## Sends an error response with the code and the message to the request id.
-export def fail(id: Json, code: Int, message: String) -> Void
-  failure: Map[String, Json] = {
+def fail(id: JSON.Value, code: Int, message: String) -> Void
+  failure: Map[String, JSON.Value] = {
     "jsonrpc": JSON.from(JSONRPC_VERSION),
     "id": id,
     "error": JSON.object({"code": JSON.from(code), "message": JSON.from(message)}),
@@ -86,15 +69,37 @@ export def fail(id: Json, code: Int, message: String) -> Void
 end
 
 ## Sends a notification to the editor.
-export def notify(method: String, params: Json) -> Void
+def notify(method: String, params: JSON.Value) -> Void
   send(JSON.encode(Notification(jsonrpc: JSONRPC_VERSION, method: method, params: params)))
   Logger.debug("sent a notification", {"method": method})
 end
 
 ## Sends a window/logMessage notification with the message type and text.
-export def log_message(kind: Int, message: String) -> Void
+def log_message(kind: Int, message: String) -> Void
   params = JSON.object({"type": JSON.from(kind), "message": JSON.from(message)})
   send(JSON.encode(Notification(jsonrpc: JSONRPC_VERSION, method: LOG_METHOD, params: params)))
+end
+
+private
+
+CHUNK_BYTES = 1_048_576
+
+LENGTH_HEADER = "content-length:"
+
+LOG_METHOD = "window/logMessage"
+
+JSONRPC_VERSION = "2.0"
+
+struct Response
+  jsonrpc: String
+  id: JSON.Value
+  result: JSON.Value
+end
+
+struct Notification
+  jsonrpc: String
+  method: String
+  params: JSON.Value
 end
 
 def body(length: Int) -> Result[String]

@@ -141,7 +141,7 @@ Feature: Unsaved buffers
     Given the language server has started
     And the file "app/lib.agc" contains:
       """
-      export def answer() -> Int
+      def answer() -> Int
         return "a"
       end
 

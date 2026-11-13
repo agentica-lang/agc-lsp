@@ -1,10 +1,7 @@
 ## Loads the catalog of Agentica builtins that `agentica --json help` prints.
 
-LOAD_TIMEOUT_MS = 10_000
-SHORTEST_WAIT_MS = 1
-
 ## Describes a builtin: its qualified name, its namespace and member, its signatures and its description.
-export struct Entry
+struct Entry
   ## Is the qualified name, such as String.split.
   name: String
   ## Is the part before the dot, or empty for a bare function.
@@ -18,7 +15,7 @@ export struct Entry
 end
 
 ## Holds the entries by name, in name order, and the set of namespaces.
-export struct Book
+struct Book
   ## Maps each qualified name to its entry.
   entries: Map[String, Entry]
   ## Lists the entries in name order.
@@ -28,14 +25,14 @@ export struct Book
 end
 
 ## Returns a catalog without entries.
-export def empty() -> Book
+def empty() -> Book
   entries: Map[String, Entry] = {}
   namespaces: Set[String] = Set.new([])
   return Book(entries: entries, ordered: [], namespaces: namespaces)
 end
 
 ## Returns the catalog that the agentica binary prints, or an error when it cannot be run or read.
-export def load(agentica: String) -> Result[Book]
+def load(agentica: String) -> Result[Book]
   options = Process.Options(timeout_ms: LOAD_TIMEOUT_MS, chdir: ".")
   helper = try Process.spawn_captured(agentica, ["--json", "help"], options)
   loaded = read(helper, Time.now_ms() + LOAD_TIMEOUT_MS)
@@ -44,8 +41,8 @@ export def load(agentica: String) -> Result[Book]
 end
 
 ## Returns the catalog of the JSON text of `help`, or an error when it has no builtins.
-export def parse(text: String) -> Result[Book]
-  found: List[Json] = try JSON.list(try JSON.parse(text))
+def parse(text: String) -> Result[Book]
+  found: List[JSON.Value] = try JSON.list(try JSON.parse(text))
   book = empty()
   for item in found
     name = field(item, "name")
@@ -76,39 +73,45 @@ export def parse(text: String) -> Result[Book]
 end
 
 ## Returns the entry of the object that `agentica --json help NAME` prints for a builtin.
-export def from_help(item: Json) -> Entry
+def from_help(item: JSON.Value) -> Entry
   return entry_of(item, field(item, "name"))
 end
 
 ## Returns the builtin with the qualified name, or an error when there is none.
-export def find(book: Book, name: String) -> Result[Entry]
+def find(book: Book, name: String) -> Result[Entry]
   return book.entries.get(name).to_result("no builtin #{name}")
 end
 
 ## Returns true when the name is a namespace of builtins, such as String.
-export def namespace?(book: Book, name: String) -> Bool
+def namespace?(book: Book, name: String) -> Bool
   return book.namespaces.include?(name)
 end
 
 ## Returns the namespaced builtins whose member has the name.
-export def methods_named(book: Book, member: String) -> List[Entry]
+def methods_named(book: Book, member: String) -> List[Entry]
   return book.ordered.filter do |entry| entry.namespace != "" and entry.member == member end
 end
 
 ## Returns the builtins of the namespace whose member starts with the prefix.
-export def functions_of(book: Book, namespace: String, prefix: String) -> List[Entry]
+def functions_of(book: Book, namespace: String, prefix: String) -> List[Entry]
   return book.ordered.filter do |entry| entry.namespace == namespace and entry.member.start_with?(prefix) end
 end
 
 ## Returns the builtins without namespace whose name starts with the prefix.
-export def bare_starting(book: Book, prefix: String) -> List[Entry]
+def bare_starting(book: Book, prefix: String) -> List[Entry]
   return functions_of(book, "", prefix)
 end
 
 ## Returns the namespaces that start with the prefix, in order.
-export def namespaces_starting(book: Book, prefix: String) -> List[String]
+def namespaces_starting(book: Book, prefix: String) -> List[String]
   return book.namespaces.to_a.sort.filter do |name| name.start_with?(prefix) end
 end
+
+private
+
+LOAD_TIMEOUT_MS = 10_000
+
+SHORTEST_WAIT_MS = 1
 
 def read(helper: Process, deadline: Int) -> Result[Book]
   try Process.close_stdin(helper, remaining(deadline))
@@ -121,7 +124,7 @@ def read(helper: Process, deadline: Int) -> Result[Book]
   return parse(output.stdout)
 end
 
-def entry_of(item: Json, name: String) -> Entry
+def entry_of(item: JSON.Value, name: String) -> Entry
   namespace = ""
   member = name
   dot = name.index_of(".").unwrap_or(-1)
@@ -139,8 +142,8 @@ def entry_of(item: Json, name: String) -> Entry
   )
 end
 
-def signatures_of(item: Json) -> List[String]
-  no_items: List[Json] = []
+def signatures_of(item: JSON.Value) -> List[String]
+  no_items: List[JSON.Value] = []
   overloads = JSON.list(JSON.get(item, "overloads").unwrap_or(JSON.null())).unwrap_or(no_items)
   if overloads.size == 0
     return [field(item, "signature")]
@@ -149,7 +152,7 @@ def signatures_of(item: Json) -> List[String]
   return overloads.map do |overload| field(overload, "signature") end
 end
 
-def field(item: Json, key: String) -> String
+def field(item: JSON.Value, key: String) -> String
   return JSON.string(JSON.get(item, key).unwrap_or(JSON.null())).unwrap_or("")
 end
 
