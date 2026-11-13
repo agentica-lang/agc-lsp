@@ -8,6 +8,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-13
+
 Needs Agentica 0.31.0 or later.
 
 ### Changed
@@ -142,7 +144,8 @@ First release. Needs Agentica 0.7.0 or later.
 - The `bin/agc-lsp` launcher, a Neovim 0.11+ config and a minimal VS Code
   extension (same version as the server).
 
-[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.2.0...HEAD
+[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/agentica-lang/agc-lsp/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/agentica-lang/agc-lsp/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/agentica-lang/agc-lsp/compare/0.0.2...0.1.0
 [0.0.2]: https://github.com/agentica-lang/agc-lsp/compare/0.0.1...0.0.2
