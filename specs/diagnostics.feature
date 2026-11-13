@@ -33,7 +33,7 @@ Feature: Diagnostics in the editor
       | at       | severity | code               |
       | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
 
-  Scenario: export before a declaration is refused, since a declaration is public unless it follows private
+  Scenario: export before a declaration is refused, and the server relays PARSE-UNEXPECTED-TOKEN
     Given the language server has started
     And the file "old.agc" contains:
       """
@@ -431,7 +431,7 @@ Feature: Diagnostics in the editor
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "quick.agc, slow.agc"
     And the editor waits 1500 milliseconds
     Then "slow.agc" gets these diagnostics:
       | at       | severity | code               |
@@ -469,7 +469,7 @@ Feature: Diagnostics in the editor
       end
 
       """
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "quick.agc, slow.agc"
     Then "quick.agc" gets no diagnostics
     And "quick.agc" gets these diagnostics:
       | at       | severity | code               |
@@ -500,7 +500,7 @@ Feature: Diagnostics in the editor
 
       """
     When the editor opens the files "quick.agc, slow.agc" without waiting
-    And the editor waits for the diagnostics of 2 files
+    And the editor waits for the diagnostics of "quick.agc, slow.agc"
     Then "quick.agc" gets these diagnostics:
       | at       | severity | code               |
       | 2:8-2:13 | error    | CHECK-UNKNOWN-NAME |

@@ -218,14 +218,14 @@ Feature: Hover on builtins
     When the editor opens "app.agc" with:
       """
       def main() -> Void
-        puts(File.stat("a"))
+        puts(JSON.at(JSON.null(), 0))
         puts(JSON.null())
       end
 
       """
     And the editor hovers over "app.agc" at 2:10
     And the editor hovers over "app.agc" at 3:8
-    Then the hover at 2:10 shows the declaration "File.stat(path: String, timeout_ms: Int = 30000) -> Result[File.Info]"
+    Then the hover at 2:10 shows the declaration "JSON.at(json: JSON.Value, index: Int) -> Result[JSON.Value]"
     And the hover at 3:8 shows the declaration "JSON.null() -> JSON.Value"
 
   Scenario: a method of the error of a Result shows the builtin of the Error type

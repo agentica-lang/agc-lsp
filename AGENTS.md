@@ -64,12 +64,12 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
 - Before writing `.agc` or `.feature` files, load the `agentica-programming` skill (`.agents/skills/`).
 - Before writing or reviewing `.agc` code, load the `agentica-code-guidelines` skill too (`.agents/skills/`) and follow
   `site/content/style.md` of Agentica.
-- The `agentica.toml` at the root holds `agentica` (the oldest Agentica that runs the server) and `[style]` (`blank_line_after_end` and `max_line_width`, which `agentica
-  check` and `agentica run` enforce on every file below it, so the launcher fails on badly laid out sources) and no
-  `[package]` or dependencies. Agentica creates a self-ignored `_build/` next to it. `agentica check` reads the first
-  manifest it finds in the folders above a file, so the scenarios must not sit below the repo: their folders live
-  outside it (under `TMPDIR` or `/tmp`), and `with_folder` in `specs/steps.agc` fails if an `agentica.toml` exists in
-  any folder above them.
+- The `agentica.toml` at the root holds `agentica` (the oldest Agentica that runs the server) and `[style]`
+  (`blank_line_after_end` and `max_line_width`, which `agentica check` and `agentica run` enforce on every file below
+  it, so the launcher fails on badly laid out sources) and no `[package]` or dependencies. Agentica creates a
+  self-ignored `_build/` next to it. `agentica check` reads the first manifest it finds in the folders above a file,
+  so the scenarios must not sit below the repo: their folders live outside it (under `TMPDIR` or `/tmp`), and
+  `with_folder` in `specs/steps.agc` fails if an `agentica.toml` exists in any folder above them.
 
 ## Design notes
 

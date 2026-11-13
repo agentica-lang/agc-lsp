@@ -17,16 +17,13 @@ Needs Agentica 0.31.0 or later.
   the version (`agentica = "0.31.0"`), so an older Agentica stops with `PKG-AGENTICA-TOO-OLD`.
 - CI runs on Agentica 0.31.0.
 
-### Fixed
+### Added
 
 - The scenarios that save, close or type in an imported file wait for the publish of the file they assert on, not for
   a count of publishes of any file, so a loaded machine no longer ends the session before the importer is checked
   again (#22).
-
-### Added
-
 - Scenarios for one-line defs, guards, named arguments, `private` and private fields (symbols, definition and
-  diagnostics), the nested builtin names `File.Info` and `JSON.Value` in hover, and the `Error` methods (#26).
+  diagnostics), the nested builtin name `JSON.Value` in the signature of a hover, and the `Error` methods (#26).
 
 ## [0.2.0] - 2026-11-12
 

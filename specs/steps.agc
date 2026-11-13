@@ -797,7 +797,8 @@ def waits_for_files(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 ## Waits until each of the named files has been published once after the steps before, whatever else the server
-## publishes meanwhile: a count of publishes would be met by files that the scenario does not assert on.
+## publishes meanwhile: a count of publishes would be met by files that the scenario does not assert on. Every
+## earlier publish of these files must already be read by an earlier step, or that old publish ends the wait.
 def waits_for_publishes(ctx: BDD.Context, args: List[String]) -> BDD.Context
   ready = with_folder(ctx)
   targets = names(args[0]).map do |name| JSON.from(uri(ready, name)) end
@@ -2124,7 +2125,12 @@ def read_until_diagnostics(server: Process, uris: List[String], wait_ms: Int) ->
   arrivals: List[Int] = []
   waiting = uris
   while true
-    message = try read_body(server, try Process.read_line(server, wait_ms), wait_ms)
+    line = Process.read_line(server, wait_ms)
+    if !line.ok? and waiting.size > 0
+      return error("no diagnostics for #{waiting.join(", ")} within #{wait_ms} ms: #{line.message}")
+    end
+
+    message = try read_body(server, try line, wait_ms)
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
