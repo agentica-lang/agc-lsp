@@ -1,15 +1,15 @@
 ## Parses the command-line options of the server and holds their defaults.
 
-export DEFAULT_AGENTICA = "agentica"
-export DEFAULT_LEVEL = "warning"
-export DEFAULT_CLIENT_LEVEL = "error"
-export DEFAULT_FORMAT = "text"
-LEVELS = Set.new(["debug", "info", "warning", "error"])
-FORMATS = Set.new(["text", "json"])
-VALUE_OPTIONS = Set.new(["--agentica", "--log-level", "--client-log-level", "--log-format", "--log-file"])
+DEFAULT_AGENTICA = "agentica"
+
+DEFAULT_LEVEL = "warning"
+
+DEFAULT_CLIENT_LEVEL = "error"
+
+DEFAULT_FORMAT = "text"
 
 ## Holds the options given on the command line, with the problems found while reading them.
-export struct Options
+struct Options
   ## Is the executable that runs the checks.
   agentica: String
   ## Is the log level of stderr and the log file, or empty for the default.
@@ -25,7 +25,7 @@ export struct Options
 end
 
 ## Returns the options of the arguments, with a problem for each argument that is ignored or rejected.
-export def parse(args: List[String]) -> Options
+def parse(args: List[String]) -> Options
   options = Options(agentica: DEFAULT_AGENTICA, level: "", client_level: "", format: "", file: "", problems: [])
   index = 0
   while index < args.size
@@ -48,9 +48,17 @@ export def parse(args: List[String]) -> Options
 end
 
 ## Returns true when the name is a log level.
-export def level?(name: String) -> Bool
+def level?(name: String) -> Bool
   return LEVELS.include?(name)
 end
+
+private
+
+LEVELS = Set.new(["debug", "info", "warning", "error"])
+
+FORMATS = Set.new(["text", "json"])
+
+VALUE_OPTIONS = Set.new(["--agentica", "--log-level", "--client-log-level", "--log-format", "--log-file"])
 
 def takes_value?(word: String) -> Bool
   return VALUE_OPTIONS.include?(word)

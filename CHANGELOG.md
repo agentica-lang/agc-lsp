@@ -8,6 +8,26 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Needs Agentica 0.31.0 or later.
+
+### Changed
+
+- **Breaking:** the server needs Agentica 0.31.0 or later: its sources use `private` instead of `export`, `JSON.Value`
+  and `File.Handle`, and the `Error` record of a failed Result, which older releases do not have. `agentica.toml` names
+  the version (`agentica = "0.31.0"`), so an older Agentica stops with `PKG-AGENTICA-TOO-OLD`.
+- CI runs on Agentica 0.31.0.
+
+### Fixed
+
+- The scenarios that save, close or type in an imported file wait for the publish of the file they assert on, not for
+  a count of publishes of any file, so a loaded machine no longer ends the session before the importer is checked
+  again (#22).
+
+### Added
+
+- Scenarios for one-line defs, guards, named arguments, `private` and private fields (symbols, definition and
+  diagnostics), the nested builtin names `File.Info` and `JSON.Value` in hover, and the `Error` methods (#26).
+
 ## [0.2.0] - 2026-11-12
 
 Needs Agentica 0.30.1 or later.

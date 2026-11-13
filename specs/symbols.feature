@@ -45,6 +45,48 @@ Feature: Document symbols
       | double       | Function      | 17:5-17:11 |
       | main         | Function      | 21:5-21:9  |
 
+  Scenario: one-line defs, a guard and the declarations below private are listed, the private fields are not
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      LIMIT = 3
+
+      struct Conn
+        id: Int
+
+        private
+
+        socket: Int
+      end
+
+      def double(x: Int) -> Int = x * 2
+
+      def triple(x: Int) -> Int = x * 3
+
+      def clamp(x: Int) -> Int
+        return LIMIT if x > LIMIT
+        return x
+      end
+
+      private
+
+      SECRET = 1
+
+      def hidden() -> Int = SECRET
+
+      """
+    And the editor asks for the symbols of "app.agc"
+    Then the symbols of "app.agc" are:
+      | symbol  | kind     | at         |
+      | LIMIT   | Constant | 1:1-1:6    |
+      | Conn    | Struct   | 3:8-3:12   |
+      | Conn.id | Field    | 4:3-4:5    |
+      | double  | Function | 11:5-11:11 |
+      | triple  | Function | 13:5-13:11 |
+      | clamp   | Function | 15:5-15:10 |
+      | SECRET  | Constant | 22:1-22:7  |
+      | hidden  | Function | 24:5-24:11 |
+
   Scenario: a file that does not check still lists its symbols and one that does not parse lists none
     Given the language server has started
     When the editor opens "typed.agc" with:

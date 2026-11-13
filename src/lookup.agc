@@ -10,15 +10,8 @@ import Analysis from "std/analysis"
 import Uri from "uri"
 import Words from "words"
 
-SHORT_TEXT_CHARS = 60
-MIN_FENCE = 3
-SECTION_BREAK = "\n\n---\n\n"
-LOCAL_KINDS = Set.new(["local", "parameter", "loop", "pattern"])
-TYPE_KIND = "type"
-BUILTIN_KIND = "builtin"
-
 ## Holds what a definition, references or hover request needs: the session, the document and the cursor.
-export struct Request
+struct Request
   ## Is the session with the text of every open document at the time of the request.
   session: Analysis.Session
   ## Is the URI of the document, as the editor wrote it.
@@ -34,6 +27,54 @@ export struct Request
   ## Is the catalog of builtins, which answers a hover when the program gives no type.
   book: Catalog.Book
 end
+
+## Returns the location of the declaration of the name under the cursor, or null when there is none.
+def definition(request: Request) -> Result[JSON.Value]
+  typed = try subject_at(request)
+  case typed
+    Typed.Refused -> return ok(JSON.null())
+    Typed.Found(found) ->
+      case origin_of(found)
+        Origin.Declared(declared) -> return ok(location(request, declared.file, declared.name_range))
+        Origin.Builtin(_) -> return ok(JSON.null())
+        Origin.Unknown -> return ok(JSON.null())
+      end
+  end
+end
+
+## Returns the locations of the uses of the name under the cursor, with its declaration when asked, or null when
+## agentica finds no name there. A file that is not open and not on disk has no locations.
+def references(request: Request, with_declaration: Bool) -> Result[JSON.Value]
+  found = try references_at(request)
+  case found
+    Referenced.Refused -> return ok(JSON.null())
+    Referenced.Found(uses) -> return ok(locations(request, places_of(uses, with_declaration)))
+  end
+end
+
+## Returns the hover of the name under the cursor: the builtin it is, or its declaration and the type of the
+## expression. A function with an error has no type, so the catalog answers, or else the result is null.
+def hover(request: Request) -> Result[JSON.Value]
+  typed = try subject_at(request)
+  case typed
+    Typed.Refused -> return ok(Hover.answer(request.book, request.cursor))
+    Typed.Found(found) -> return ok(answer(request, found))
+  end
+end
+
+private
+
+SHORT_TEXT_CHARS = 60
+
+MIN_FENCE = 3
+
+SECTION_BREAK = "\n\n---\n\n"
+
+LOCAL_KINDS = Set.new(["local", "parameter", "loop", "pattern"])
+
+TYPE_KIND = "type"
+
+BUILTIN_KIND = "builtin"
 
 struct Use
   file: String
@@ -56,46 +97,12 @@ enum Origin
   Builtin(Catalog.Entry)
 end
 
-## Returns the location of the declaration of the name under the cursor, or null when there is none.
-export def definition(request: Request) -> Result[Json]
-  typed = try subject_at(request)
-  case typed
-    Typed.Refused -> return ok(JSON.null())
-    Typed.Found(found) ->
-      case origin_of(found)
-        Origin.Declared(declared) -> return ok(location(request, declared.file, declared.name_range))
-        Origin.Builtin(_) -> return ok(JSON.null())
-        Origin.Unknown -> return ok(JSON.null())
-      end
-  end
-end
-
-## Returns the locations of the uses of the name under the cursor, with its declaration when asked, or null when
-## agentica finds no name there. A file that is not open and not on disk has no locations.
-export def references(request: Request, with_declaration: Bool) -> Result[Json]
-  found = try references_at(request)
-  case found
-    Referenced.Refused -> return ok(JSON.null())
-    Referenced.Found(uses) -> return ok(locations(request, places_of(uses, with_declaration)))
-  end
-end
-
-## Returns the hover of the name under the cursor: the builtin it is, or its declaration and the type of the
-## expression. A function with an error has no type, so the catalog answers, or else the result is null.
-export def hover(request: Request) -> Result[Json]
-  typed = try subject_at(request)
-  case typed
-    Typed.Refused -> return ok(Hover.answer(request.book, request.cursor))
-    Typed.Found(found) -> return ok(answer(request, found))
-  end
-end
-
 def subject_at(request: Request) -> Result[Typed]
   asked = Analysis.type_at_partial(request.session, request.path, request.cursor.line + 1, request.cursor.index + 1)
   case asked
     ok(found) -> return ok(Typed.Found(found))
-    error(message) if Refusals.at_position?(message) -> return ok(Typed.Refused)
-    error(message) -> return error(message)
+    error(failure) if Refusals.at_position?(failure.message) -> return ok(Typed.Refused)
+    error(failure) -> return error(failure)
   end
 end
 
@@ -103,8 +110,8 @@ def references_at(request: Request) -> Result[Referenced]
   asked = Analysis.refs_partial(request.session, request.path, request.cursor.line + 1, request.cursor.index + 1)
   case asked
     ok(found) -> return ok(Referenced.Found(found))
-    error(message) if Refusals.at_position?(message) -> return ok(Referenced.Refused)
-    error(message) -> return error(message)
+    error(failure) if Refusals.at_position?(failure.message) -> return ok(Referenced.Refused)
+    error(failure) -> return error(failure)
   end
 end
 
@@ -120,7 +127,7 @@ def origin_of(found: Analysis.TypeAt) -> Origin
   return Origin.Unknown
 end
 
-def location(request: Request, file: String, name_range: Analysis.Region) -> Json
+def location(request: Request, file: String, name_range: Analysis.Region) -> JSON.Value
   path = Uri.resolve(request.folder, file)
   if !Places.known?(request.documents, path)
     return JSON.null()
@@ -142,9 +149,9 @@ def places_of(uses: Analysis.Refs, with_declaration: Bool) -> List[Use]
   return declared.concat(found)
 end
 
-def locations(request: Request, places: List[Use]) -> Json
+def locations(request: Request, places: List[Use]) -> JSON.Value
   lines = lines_by_file(request, places)
-  found: List[Json] = []
+  found: List[JSON.Value] = []
   for place in places
     path = Uri.resolve(request.folder, place.file)
     case lines.get(path)
@@ -241,7 +248,7 @@ def typed_sections(found: Analysis.TypeAt) -> List[String]
   return [typed(found)]
 end
 
-def covered(request: Request, found: Analysis.TypeAt) -> Json
+def covered(request: Request, found: Analysis.TypeAt) -> JSON.Value
   case origin_of(found)
     Origin.Builtin(entry) ->
       case Words.at(request.cursor.chars, request.cursor.index)
@@ -275,12 +282,12 @@ def qualified(chars: List[String], entry: Catalog.Entry, word: Words.Word) -> Wo
   end
 end
 
-def span_range(request: Request, found: Analysis.TypeAt) -> Json
+def span_range(request: Request, found: Analysis.TypeAt) -> JSON.Value
   lines = Places.lines_of(request.documents, request.path)
   return Places.range(lines, found.range, request.cursor.encoding)
 end
 
-def answer(request: Request, found: Analysis.TypeAt) -> Json
+def answer(request: Request, found: Analysis.TypeAt) -> JSON.Value
   shown = sections(found)
   if shown.size == 0
     return Hover.answer(request.book, request.cursor)

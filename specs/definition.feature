@@ -24,7 +24,7 @@ Feature: Go to definition
     And the file "lib.agc" contains:
       """
       ## Returns a greeting.
-      export def greet(name: String) -> String
+      def greet(name: String) -> String
         return "hello #{name}"
       end
 
@@ -39,13 +39,13 @@ Feature: Go to definition
 
       """
     And the editor asks for the definition in "app.agc" at 4:12
-    Then the definition at 4:12 is in "lib.agc" at 2:12-2:17
+    Then the definition at 4:12 is in "lib.agc" at 2:5-2:10
 
   Scenario: a module in another folder is found through its path
     Given the language server has started
     And the file "shared/names.agc" contains:
       """
-      export def shout(name: String) -> String
+      def shout(name: String) -> String
         return name.upcase
       end
 
@@ -60,13 +60,13 @@ Feature: Go to definition
 
       """
     And the editor asks for the definition in "app.agc" at 4:8
-    Then the definition at 4:8 is in "shared/names.agc" at 1:12-1:17
+    Then the definition at 4:8 is in "shared/names.agc" at 1:5-1:10
 
   Scenario: the files below the folder where the server started are found at their place
     Given the language server has started in the folder of the project
     And the file "shared/names.agc" contains:
       """
-      export def shout(name: String) -> String
+      def shout(name: String) -> String
         return name.upcase
       end
 
@@ -81,7 +81,7 @@ Feature: Go to definition
 
       """
     And the editor asks for the definition in "app.agc" at 4:8
-    Then the definition at 4:8 is in "shared/names.agc" at 1:12-1:17
+    Then the definition at 4:8 is in "shared/names.agc" at 1:5-1:10
 
   Scenario: a function of a std module has no definition
     Given the language server has started
@@ -102,7 +102,7 @@ Feature: Go to definition
     Given the language server has started
     And the file "models.agc" contains:
       """
-      export struct User
+      struct User
         name: String
       end
 
@@ -128,14 +128,14 @@ Feature: Go to definition
     And the editor asks for the definition in "app.agc" at 7:36
     And the editor asks for the definition in "app.agc" at 7:45
     Then the definition at 7:17 is in "app.agc" at 3:8-3:12
-    And the definition at 7:36 is in "models.agc" at 1:15-1:19
+    And the definition at 7:36 is in "models.agc" at 1:8-1:12
     And the definition at 7:45 is in "app.agc" at 3:8-3:12
 
   Scenario: a folder of the project named std is found like any other
     Given the language server has started
     And the file "std/names.agc" contains:
       """
-      export def shout(name: String) -> String
+      def shout(name: String) -> String
         return name.upcase
       end
 
@@ -150,7 +150,7 @@ Feature: Go to definition
 
       """
     And the editor asks for the definition in "app.agc" at 4:8
-    Then the definition at 4:8 is in "std/names.agc" at 1:12-1:17
+    Then the definition at 4:8 is in "std/names.agc" at 1:5-1:10
 
   Scenario: a local, a parameter, a loop name and a pattern name are found where they are declared
     Given the language server has started
@@ -186,6 +186,56 @@ Feature: Go to definition
     And the definition at 6:10 is in "app.agc" at 2:3-2:6
     And the definition at 6:17 is in "app.agc" at 1:11-1:16
     And the definition at 11:26 is in "app.agc" at 11:8-11:13
+
+  Scenario: a one-line def, a constant in a guard and a private field are found where they are declared
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      LIMIT = 3
+
+      struct Conn
+        id: Int
+
+        private
+
+        socket: Int
+      end
+
+      def double(x: Int) -> Int = x * 2
+
+      def socket_of(conn: Conn) -> Int
+        return LIMIT if conn.id > LIMIT
+        return conn.socket
+      end
+
+      def main() -> Void
+        puts(double(socket_of(Conn(id: 1, socket: 2))))
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 14:12
+    And the editor asks for the definition in "app.agc" at 15:16
+    And the editor asks for the definition in "app.agc" at 19:8
+    Then the definition at 14:12 is in "app.agc" at 1:1-1:6
+    And the definition at 15:16 is in "app.agc" at 8:3-8:9
+    And the definition at 19:8 is in "app.agc" at 11:5-11:11
+
+  Scenario: a named argument is found at its parameter
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def greet(name: String, loud: Bool = false) -> String
+        return name.upcase if loud
+        return name
+      end
+
+      def main() -> Void
+        puts(greet("ana", loud: true))
+      end
+
+      """
+    And the editor asks for the definition in "app.agc" at 7:22
+    Then the definition at 7:22 is in "app.agc" at 1:25-1:29
 
   Scenario: a builtin and a comment have no definition
     Given the language server has started

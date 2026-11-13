@@ -4,15 +4,8 @@ import Catalog from "catalog"
 import Cursor from "cursor"
 import Words from "words"
 
-struct Found
-  entries: List[Catalog.Entry]
-  start: Int
-  stop: Int
-  by_receiver: Bool
-end
-
 ## Returns the hover of the builtin under the cursor, or null when there is none.
-export def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> Json
+def answer(book: Catalog.Book, cursor: Cursor.Cursor) -> JSON.Value
   if !Words.code?(cursor.chars, cursor.index + 1)
     return JSON.null()
   end
@@ -31,7 +24,7 @@ end
 
 ## Returns true when the hover needs no question to the compiler: nothing is there, or a builtin is named
 ## without a receiver, since the type of a receiver decides which builtin a method call is.
-export def settled?(book: Catalog.Book, cursor: Cursor.Cursor) -> Bool
+def settled?(book: Catalog.Book, cursor: Cursor.Cursor) -> Bool
   if !Words.name_at?(cursor.chars, cursor.index)
     return true
   end
@@ -43,9 +36,18 @@ export def settled?(book: Catalog.Book, cursor: Cursor.Cursor) -> Bool
 end
 
 ## Returns the markdown of a builtin: its signatures in code blocks, then its description.
-export def describe(entry: Catalog.Entry) -> String
+def describe(entry: Catalog.Entry) -> String
   signatures = entry.signatures.map do |signature| "```agc\n#{signature}\n```" end
   return "#{signatures.join("\n")}\n\n#{entry.description}"
+end
+
+private
+
+struct Found
+  entries: List[Catalog.Entry]
+  start: Int
+  stop: Int
+  by_receiver: Bool
 end
 
 def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]

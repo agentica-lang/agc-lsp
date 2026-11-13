@@ -120,14 +120,14 @@ Feature: Hover on builtins
 
       """
     And the editor hovers over "app.agc" at 2:16
-    Then the hover at 2:16 shows the declaration "String.upcase(s: String) -> String"
+    Then the hover at 2:16 shows the declaration "String.upcase(string: String) -> String"
     And the hover at 2:16 covers 2:8-2:21
 
   Scenario: a call of a function of the code shows the type of the expression
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def greet(name: String) -> String
+      def greet(name: String) -> String
         return "hello #{name}"
       end
 
@@ -159,7 +159,7 @@ Feature: Hover on builtins
       ## Returns a greeting for a name.
       ##
       ## The name is used as given.
-      export def greet(name: String) -> String
+      def greet(name: String) -> String
         return "hello #{name}"
       end
 
@@ -191,6 +191,58 @@ Feature: Hover on builtins
       ```
       """
     And the hover at 4:12 covers 4:8-4:24
+
+  Scenario: one-line defs show their signature, their doc and the type of the call
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      ## Doubles a number.
+      def double(x: Int) -> Int = x * 2
+
+      def triple(x: Int) -> Int = x * 3
+
+      def main() -> Void
+        puts(double(triple(7)))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 7:9
+    And the editor hovers over "app.agc" at 7:16
+    Then the hover at 7:9 shows the declaration "double(x: Int) -> Int"
+    And the hover at 7:9 shows the documentation "Doubles a number."
+    And the hover at 7:9 shows the type "Int"
+    And the hover at 7:16 shows the declaration "triple(x: Int) -> Int"
+
+  Scenario: the names nested in a builtin type show in the signature of the builtins that use them
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        puts(File.stat("a"))
+        puts(JSON.null())
+      end
+
+      """
+    And the editor hovers over "app.agc" at 2:10
+    And the editor hovers over "app.agc" at 3:8
+    Then the hover at 2:10 shows the declaration "File.stat(path: String, timeout_ms: Int = 30000) -> Result[File.Info]"
+    And the hover at 3:8 shows the declaration "JSON.null() -> JSON.Value"
+
+  Scenario: a method of the error of a Result shows the builtin of the Error type
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        case "x".to_i
+          ok(n) -> puts(n)
+          error(e) -> puts(e.is_a?("argument"))
+        end
+      end
+
+      """
+    And the editor hovers over "app.agc" at 4:27
+    Then the hover at 4:27 shows "Error.is_a?"
+    And the hover at 4:27 covers 4:24-4:29
 
   Scenario: a field, a struct and a variant show their declaration and their doc
     Given the language server has started
@@ -233,7 +285,7 @@ Feature: Hover on builtins
     And the file "models.agc" contains:
       """
       ## Holds a user.
-      export struct User
+      struct User
         name: String
       end
 
@@ -364,7 +416,7 @@ Feature: Hover on builtins
     Given the language server has loaded the builtin catalog
     And the file "parts.agc" contains:
       """
-      export def split(text: String) -> List[String]
+      def split(text: String) -> List[String]
         return text.split(",")
       end
 

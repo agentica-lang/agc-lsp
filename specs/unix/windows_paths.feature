@@ -9,39 +9,39 @@ Feature: Paths of a Windows drive
     And the language server has started in the folder of the project
     And the file "c:/proj/shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
     When the editor opens "C:/proj/fresh.agc" with:
       """
-      export def area(width: Int) -> Int
+      def area(width: Int) -> Int
         return width
       end
       """
     And the editor searches the workspace for "area"
     Then the workspace symbols for "area" are:
       | symbol | kind     | file                       | at        |
-      | area   | Function | file:///c:/proj/fresh.agc  | 1:12-1:16 |
-      | area   | Function | file:///c:/proj/shapes.agc | 1:12-1:16 |
+      | area   | Function | file:///c:/proj/fresh.agc  | 1:5-1:9 |
+      | area   | Function | file:///c:/proj/shapes.agc | 1:5-1:9 |
 
   Scenario: a file named by the URI of VS Code is the same file as under the lower case letter
     Given the editor offers the workspace as "root path of a Windows drive"
     And the language server has started in the folder of the project
     And the file "c:/proj/shapes.agc" contains:
       """
-      export def area(side: Int) -> Int
+      def area(side: Int) -> Int
         return side * side
       end
       """
     When the editor opens the URI "file:///C%3A/proj/fresh.agc" with:
       """
-      export def area(width: Int) -> Int
+      def area(width: Int) -> Int
         return width
       end
       """
     And the editor searches the workspace for "area"
     Then the workspace symbols for "area" are:
       | symbol | kind     | file                       | at        |
-      | area   | Function | file:///c:/proj/fresh.agc  | 1:12-1:16 |
-      | area   | Function | file:///c:/proj/shapes.agc | 1:12-1:16 |
+      | area   | Function | file:///c:/proj/fresh.agc  | 1:5-1:9 |
+      | area   | Function | file:///c:/proj/shapes.agc | 1:5-1:9 |

@@ -48,9 +48,9 @@ ERROR_CODES = {
 }
 
 struct Session
-  messages: List[Json]
+  messages: List[JSON.Value]
   arrivals: List[Int]
-  sent: Map[String, Json]
+  sent: Map[String, JSON.Value]
   exit_code: Int
   stderr: String
   log: String
@@ -62,7 +62,7 @@ struct Entry
 end
 
 struct Heard
-  messages: List[Json]
+  messages: List[JSON.Value]
   arrivals: List[Int]
 end
 
@@ -146,6 +146,7 @@ def main() -> Void
     BDD.step("the editor waits for diagnostics", &waits_for_diagnostics),
     BDD.step("the editor waits for a log message containing {string}", &waits_for_log),
     BDD.step("the editor waits for the diagnostics of {int} files", &waits_for_files),
+    BDD.step("the editor waits for the diagnostics of {string}", &waits_for_publishes),
     BDD.step("the editor sends {string} before initializing", &sends_request),
     BDD.step("the editor sends the request {string}", &sends_request),
     BDD.step("the editor sends a message that is not JSON", &sends_garbage),
@@ -283,14 +284,14 @@ end
 def launcher_runs(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   case launched(launcher_arguments(ctx))
     ok(done) -> return BDD.set(ctx, "launch", done)
-    error(message) -> return BDD.assert(ctx, false, "cannot run the launcher: #{message}")
+    error(e) -> return BDD.assert(ctx, false, "cannot run the launcher: #{e.message}")
   end
 end
 
 def launcher_runs_twice(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   case launched_twice(launcher_arguments(ctx))
     ok(done) -> return BDD.set(ctx, "launch", done)
-    error(message) -> return BDD.assert(ctx, false, "cannot run the launcher: #{message}")
+    error(e) -> return BDD.assert(ctx, false, "cannot run the launcher: #{e.message}")
   end
 end
 
@@ -299,12 +300,12 @@ def launcher_arguments(ctx: BDD.Context) -> List[String]
   return ["AGC_LSP_CACHE=#{file_path(ctx, "cache")}", "bash", script]
 end
 
-def launched(arguments: List[String]) -> Result[Json]
+def launched(arguments: List[String]) -> Result[JSON.Value]
   child = try Process.spawn_captured("env", arguments, Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
   return launcher_finished(child)
 end
 
-def launched_twice(arguments: List[String]) -> Result[Json]
+def launched_twice(arguments: List[String]) -> Result[JSON.Value]
   first = try Process.spawn_captured("env", arguments, Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
   second = try Process.spawn_captured("env", arguments, Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
   one = try launcher_finished(first)
@@ -321,15 +322,15 @@ def launched_twice(arguments: List[String]) -> Result[Json]
   }))
 end
 
-def launched_status(done: Json) -> Int
+def launched_status(done: JSON.Value) -> Int
   return JSON.int(JSON.get(done, "status").unwrap_or(JSON.null())).unwrap_or(-1)
 end
 
-def launched_text(done: Json, name: String) -> String
+def launched_text(done: JSON.Value, name: String) -> String
   return JSON.string(JSON.get(done, name).unwrap_or(JSON.null())).unwrap_or("")
 end
 
-def launcher_finished(child: Process) -> Result[Json]
+def launcher_finished(child: Process) -> Result[JSON.Value]
   try Process.close_stdin(child, TIMEOUT_MS)
   output = try Process.output(child, TIMEOUT_MS)
   status = try Process.wait(child, TIMEOUT_MS)
@@ -356,7 +357,7 @@ def launcher_reported(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return BDD.assert(ctx, stderr.include?(args[0]), "#{args[0].inspect} is not in the errors #{stderr.inspect}")
 end
 
-def launch_field(ctx: BDD.Context, name: String) -> Json
+def launch_field(ctx: BDD.Context, name: String) -> JSON.Value
   return at(BDD.get(ctx, "launch").unwrap_or(JSON.null()), [name]).unwrap_or(JSON.null())
 end
 
@@ -442,7 +443,7 @@ end
 
 def function_source(n: Int) -> String
   return <<~TEXT
-    export def slow#{n}(n: Int) -> Int
+    def slow#{n}(n: Int) -> Int
       total = n * 2
       for x in [1, 2, 3]
         total += x + total
@@ -650,7 +651,7 @@ end
 
 def asks_references_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Context
   sent = ctx
-  ids: List[Json] = []
+  ids: List[JSON.Value] = []
   for _ in 0...3
     sent = put_references(sent, args, true)
     ids = ids.push(BDD.get(sent, "references #{args[1]}:#{args[2]}").unwrap!)
@@ -683,7 +684,7 @@ end
 
 def searches_workspace_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Context
   sent = ctx
-  ids: List[Json] = []
+  ids: List[JSON.Value] = []
   for _ in 0...3
     sent = search(sent, args[0])
     ids = ids.push(BDD.get(sent, "search #{args[0]}").unwrap!)
@@ -713,7 +714,7 @@ def put_question(ctx: BDD.Context, key: String, method: String, args: List[Strin
   return BDD.set(sent, "#{key} #{args[1]}:#{args[2]}", id)
 end
 
-def wait_for(ctx: BDD.Context, ids: List[Json]) -> BDD.Context
+def wait_for(ctx: BDD.Context, ids: List[JSON.Value]) -> BDD.Context
   return add(ctx, JSON.object({"kind": JSON.from("replies"), "ids": JSON.array(ids)}))
 end
 
@@ -723,7 +724,7 @@ end
 
 def hovers_in_a_row(ctx: BDD.Context, args: List[String]) -> BDD.Context
   sent = ctx
-  ids: List[Json] = []
+  ids: List[JSON.Value] = []
   for _ in 0...3
     sent = put_question(sent, "hover", HOVER, args, "")
     ids = ids.push(BDD.get(sent, "hover #{args[1]}:#{args[2]}").unwrap!)
@@ -734,7 +735,7 @@ end
 
 def hovers_over_each(ctx: BDD.Context, args: List[String]) -> BDD.Context
   sent = ctx
-  ids: List[Json] = []
+  ids: List[JSON.Value] = []
   for name in names(args[0])
     sent = put_question(sent, "hover", HOVER, [name, args[1], args[2]], "")
     id = BDD.get(sent, "hover #{args[1]}:#{args[2]}").unwrap!
@@ -795,6 +796,14 @@ def waits_for_files(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return waited
 end
 
+## Waits until each of the named files has been published once after the steps before, whatever else the server
+## publishes meanwhile: a count of publishes would be met by files that the scenario does not assert on.
+def waits_for_publishes(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  targets = names(args[0]).map do |name| JSON.from(uri(ready, name)) end
+  return add(ready, JSON.object({"kind": JSON.from("await"), "uris": JSON.array(targets)}))
+end
+
 def awaiting(ctx: BDD.Context, name: String) -> BDD.Context
   if name.end_with?(".agc")
     return add(ctx, JSON.object({"kind": JSON.from("await")}))
@@ -831,7 +840,7 @@ def hangs_up(ctx: BDD.Context, _args: List[String]) -> BDD.Context
 end
 
 def run_session(ctx: BDD.Context, _args: List[String]) -> BDD.Context
-  actions: List[Json] = []
+  actions: List[JSON.Value] = []
   for line in BDD.doc_string(ctx).split("\n")
     if line.strip.length > 0
       actions = actions.push(JSON.object({"kind": JSON.from("send"), "body": JSON.from(line)}))
@@ -914,7 +923,7 @@ def answers_within(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def gets_none(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  no_items: List[Json] = []
+  no_items: List[JSON.Value] = []
   return next_publish(ctx, uri(ctx, args[0]), JSON.array(no_items))
 end
 
@@ -1096,7 +1105,7 @@ def earlier_hovers_are_null(ctx: BDD.Context, _args: List[String]) -> BDD.Contex
 end
 
 def earlier_are_null(ctx: BDD.Context) -> BDD.Context
-  no_items: List[Json] = []
+  no_items: List[JSON.Value] = []
   ids = JSON.list(BDD.get(ctx, "in a row").unwrap!).unwrap_or(no_items)
   checked = ctx
   for id in ids.take(ids.size - 1)
@@ -1120,7 +1129,7 @@ def hover_fenced(ctx: BDD.Context, line: String, column: String, width: Int) -> 
       fenced = opened and value.end_with?("\n#{fence}") and !value.end_with?("`#{fence}")
       message = "the hover at #{line}:#{column} is not fenced with #{width} backticks: #{value.inspect}"
       return BDD.assert(ctx, fenced, message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1212,7 +1221,7 @@ def exits_with(ctx: BDD.Context, args: List[String]) -> BDD.Context
   end
 end
 
-def result_at(ctx: BDD.Context, key: String, line: String, column: String) -> Result[Json]
+def result_at(ctx: BDD.Context, key: String, line: String, column: String) -> Result[JSON.Value]
   id = try JSON.int(try BDD.get(ctx, "#{key} #{line}:#{column}"))
   return reply(ctx, id, "result")
 end
@@ -1226,7 +1235,7 @@ def hover_shown(ctx: BDD.Context, line: String, column: String, names: List[Stri
       missing = names.filter do |name| !value.include?("```agc\n#{name}(") end
       shown = kind == "markdown" and missing.size == 0
       return BDD.assert(ctx, shown, "the hover at #{line}:#{column} lacks #{missing.join(", ")} in #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1253,7 +1262,7 @@ def hover_typed_of(ctx: BDD.Context, key: String, line: String, column: String, 
       shown = value.include?(": #{type}\n```")
       message = "the hover at #{line}:#{column} does not show the type #{type} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1263,7 +1272,7 @@ def hover_declared(ctx: BDD.Context, line: String, column: String, signature: St
       shown = value.start_with?("```agc\n#{signature}\n```\n")
       message = "the hover at #{line}:#{column} does not start with the declaration #{signature} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1273,7 +1282,7 @@ def hover_documented(ctx: BDD.Context, line: String, column: String, doc: String
       shown = value.include?("\n\n#{doc}\n\n") or value.end_with?("\n\n#{doc}")
       message = "the hover at #{line}:#{column} does not show the documentation #{doc} in #{value.inspect}"
       return BDD.assert(ctx, shown, message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1282,7 +1291,7 @@ def hover_read(ctx: BDD.Context, line: String, column: String, expected: String)
     ok(value) ->
       message = "the hover at #{line}:#{column} reads #{value.inspect}; expected #{expected.inspect}"
       return BDD.assert(ctx, value == expected, message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1291,7 +1300,7 @@ def hover_lacks(ctx: BDD.Context, line: String, column: String, name: String) ->
     ok(value) ->
       found = value.include?("```agc\n#{name}(")
       return BDD.assert(ctx, !found, "the hover at #{line}:#{column} shows #{name} in #{value.inspect}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1312,7 +1321,7 @@ def located_at(ctx: BDD.Context, args: List[String], authority: String) -> BDD.C
       wanted = canonical(JSON.encode(JSON.object({"uri": JSON.from(uri(ctx, args[2], authority)), "range": range})))
       actual = canonical(JSON.encode(result))
       return BDD.assert(ctx, actual == wanted, "expected the location #{wanted}; actual #{actual}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1320,7 +1329,7 @@ def definition_absent(ctx: BDD.Context, line: String, column: String) -> BDD.Con
   case result_at(ctx, "definition", line, column)
     ok(result) ->
       return BDD.assert(ctx, result.to_s == "null", "expected no definition at #{line}:#{column}; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1328,7 +1337,7 @@ def symbols_listed(ctx: BDD.Context, name: String, rows: List[List[String]]) -> 
   id = JSON.int(BDD.get(ctx, "symbols #{name}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) ->
-      no_items: List[Json] = []
+      no_items: List[JSON.Value] = []
       top = JSON.list(result).unwrap_or(no_items)
       listed = flattened(top, "")
       actual = JSON.encode(listed.map do |row| row.take(3) end)
@@ -1336,7 +1345,7 @@ def symbols_listed(ctx: BDD.Context, name: String, rows: List[List[String]]) -> 
       misplaced = listed.filter do |row| row[3] != "" end
       checked = BDD.assert(ctx, misplaced.size == 0, "a name is outside its range: #{misplaced}")
       return BDD.assert(checked, actual == wanted, "expected the symbols #{wanted}; actual #{actual}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1344,7 +1353,7 @@ def symbol_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
   id = JSON.int(BDD.get(ctx, "symbols #{args[1]}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) ->
-      no_items: List[Json] = []
+      no_items: List[JSON.Value] = []
       found = JSON.list(result).unwrap_or(no_items).filter do |symbol|
         JSON.string(at(symbol, ["name"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
       end
@@ -1356,7 +1365,7 @@ def symbol_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
       actual = span_text(at(found[0], ["range"]).unwrap_or(JSON.null()))
       wanted = "#{args[2]}:#{args[3]}-#{args[4]}:#{args[5]}"
       return BDD.assert(ctx, actual == wanted, "expected the range #{wanted}; actual #{actual}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1385,14 +1394,14 @@ end
 def references_listed(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context
   case result_at(ctx, "references", line, column)
     ok(result) ->
-      no_items: List[Json] = []
+      no_items: List[JSON.Value] = []
       shown = JSON.list(result).unwrap_or(no_items).map do |found| location_row(ctx, found) end
       actual = shown.sort
       listed = rows.map do |row| "#{row[0]} #{row[1]}" end
       wanted = listed.sort
       message = "expected the references #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
       return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1400,7 +1409,7 @@ def references_absent(ctx: BDD.Context, line: String, column: String) -> BDD.Con
   case result_at(ctx, "references", line, column)
     ok(result) ->
       return BDD.assert(ctx, result.to_s == "null", "expected no references at #{line}:#{column}; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1408,14 +1417,14 @@ def workspace_symbols_listed(ctx: BDD.Context, name: String, rows: List[List[Str
   id = JSON.int(BDD.get(ctx, "search #{name}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) ->
-      no_items: List[Json] = []
+      no_items: List[JSON.Value] = []
       shown = JSON.list(result).unwrap_or(no_items).map do |found| symbol_row(ctx, found) end
       actual = shown.sort
       listed = rows.map do |row| "#{row[0]} #{row[1]} #{row[2]} #{row[3]}" end
       wanted = listed.sort
       message = "expected the workspace symbols #{JSON.encode(wanted)}; actual #{JSON.encode(actual)}"
       return BDD.assert(ctx, JSON.encode(actual) == JSON.encode(wanted), message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1425,7 +1434,7 @@ def workspace_symbols_absent(ctx: BDD.Context, name: String) -> BDD.Context
     ok(result) ->
       message = "expected an empty list for #{name.inspect}; actual #{result}"
       return BDD.assert(ctx, result.to_s == "[]", message)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1433,11 +1442,11 @@ def workspace_symbols_null(ctx: BDD.Context, name: String) -> BDD.Context
   id = JSON.int(BDD.get(ctx, "search #{name}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) -> return BDD.assert(ctx, result.to_s == "null", "expected null for #{name.inspect}; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
-def location_row(ctx: BDD.Context, location: Json) -> String
+def location_row(ctx: BDD.Context, location: JSON.Value) -> String
   prefix = uri(ctx, "")
   found = JSON.string(at(location, ["uri"]).unwrap_or(JSON.null())).unwrap_or("")
   file = found
@@ -1448,7 +1457,7 @@ def location_row(ctx: BDD.Context, location: Json) -> String
   return "#{file} #{span_text(at(location, ["range"]).unwrap_or(JSON.null()))}"
 end
 
-def symbol_row(ctx: BDD.Context, found: Json) -> String
+def symbol_row(ctx: BDD.Context, found: JSON.Value) -> String
   name = JSON.string(at(found, ["name"]).unwrap_or(JSON.null())).unwrap_or("")
   container = JSON.string(at(found, ["containerName"]).unwrap_or(JSON.null())).unwrap_or("")
   if container != ""
@@ -1464,11 +1473,11 @@ def symbols_absent(ctx: BDD.Context, name: String) -> BDD.Context
   id = JSON.int(BDD.get(ctx, "symbols #{name}").unwrap!).unwrap!
   case reply(ctx, id, "result")
     ok(result) -> return BDD.assert(ctx, result.to_s == "null", "expected no symbols; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
-def flattened(symbols: List[Json], parent: String) -> List[List[String]]
+def flattened(symbols: List[JSON.Value], parent: String) -> List[List[String]]
   rows: List[List[String]] = []
   for symbol in symbols
     name = JSON.string(at(symbol, ["name"]).unwrap_or(JSON.null())).unwrap_or("")
@@ -1485,7 +1494,7 @@ def flattened(symbols: List[Json], parent: String) -> List[List[String]]
     end
 
     rows = rows.push([qualified, kind_name(kind), span_text(selection), outside])
-    no_items: List[Json] = []
+    no_items: List[JSON.Value] = []
     children = JSON.list(at(symbol, ["children"]).unwrap_or(JSON.null())).unwrap_or(no_items)
     rows = rows.concat(flattened(children, qualified))
   end
@@ -1503,24 +1512,24 @@ def kind_name(kind: Int) -> String
   return kind.to_s
 end
 
-def span_text(range: Json) -> String
+def span_text(range: JSON.Value) -> String
   return "#{edge_text(range, "start")}-#{edge_text(range, "end")}"
 end
 
-def edge_text(range: Json, edge: String) -> String
+def edge_text(range: JSON.Value, edge: String) -> String
   line = JSON.int(at(range, [edge, "line"]).unwrap_or(JSON.null())).unwrap_or(-1)
   character = JSON.int(at(range, [edge, "character"]).unwrap_or(JSON.null())).unwrap_or(-1)
   return "#{line + 1}:#{character + 1}"
 end
 
-def inside?(outer: Json, inner: Json) -> Bool
+def inside?(outer: JSON.Value, inner: JSON.Value) -> Bool
   return (
     edge_value(outer, "start") <= edge_value(inner, "start") and
     edge_value(inner, "end") <= edge_value(outer, "end")
   )
 end
 
-def edge_value(range: Json, edge: String) -> Int
+def edge_value(range: JSON.Value, edge: String) -> Int
   line = JSON.int(at(range, [edge, "line"]).unwrap_or(JSON.null())).unwrap_or(-1)
   character = JSON.int(at(range, [edge, "character"]).unwrap_or(JSON.null())).unwrap_or(-1)
   return line * 1_000_000 + character
@@ -1530,7 +1539,7 @@ def hover_absent(ctx: BDD.Context, line: String, column: String) -> BDD.Context
   case result_at(ctx, "hover", line, column)
     ok(result) ->
       return BDD.assert(ctx, result.to_s == "null", "expected no hover at #{line}:#{column}; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1542,25 +1551,25 @@ def hover_covered(ctx: BDD.Context, args: List[String]) -> BDD.Context
       wanted = canonical(JSON.encode(JSON.object({"start": start, "end": stop})))
       actual = canonical(JSON.encode(at(result, ["range"]).unwrap_or(JSON.null())))
       return BDD.assert(ctx, actual == wanted, "expected the range #{wanted}; actual #{actual}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
 def completion_offered(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context
   case result_at(ctx, "completion", line, column)
     ok(result) ->
-      no_items: List[Json] = []
+      no_items: List[JSON.Value] = []
       items = JSON.list(result).unwrap_or(no_items)
       missing = rows.filter do |row| !offers?(items, row) end
       return BDD.assert(ctx, missing.size == 0, "the completion at #{line}:#{column} lacks #{missing} in #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
 def completion_replaced(ctx: BDD.Context, args: List[String]) -> BDD.Context
   case result_at(ctx, "completion", args[1], args[2])
     ok(result) ->
-      no_items: List[Json] = []
+      no_items: List[JSON.Value] = []
       items = JSON.list(result).unwrap_or(no_items).filter do |item|
         JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("") == args[0]
       end
@@ -1576,7 +1585,7 @@ def completion_replaced(ctx: BDD.Context, args: List[String]) -> BDD.Context
       wanted = canonical(JSON.encode(JSON.object({"range": range, "newText": JSON.from(args[0])})))
       actual = canonical(JSON.encode(edit))
       return BDD.assert(ctx, actual == wanted, "expected the edit #{wanted}; actual #{actual}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1585,7 +1594,7 @@ def completion_lacks(ctx: BDD.Context, line: String, column: String, label: Stri
     ok(result) ->
       found = labels(result).filter do |offered| offered == label end
       return BDD.assert(ctx, found.size == 0, "the completion at #{line}:#{column} offers #{label}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1594,16 +1603,16 @@ def completion_empty(ctx: BDD.Context, line: String, column: String) -> BDD.Cont
     ok(result) ->
       empty = JSON.list(result).ok? and labels(result).size == 0
       return BDD.assert(ctx, empty, "expected an empty list at #{line}:#{column}; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
-def offers?(items: List[Json], row: List[String]) -> Bool
+def offers?(items: List[JSON.Value], row: List[String]) -> Bool
   matching = items.filter do |item| item_matches?(item, row) end
   return matching.size > 0
 end
 
-def item_matches?(item: Json, row: List[String]) -> Bool
+def item_matches?(item: JSON.Value, row: List[String]) -> Bool
   label = JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("")
   kind = JSON.int(at(item, ["kind"]).unwrap_or(JSON.null())).unwrap_or(0)
   detail = JSON.string(at(item, ["detail"]).unwrap_or(JSON.null())).unwrap_or("")
@@ -1615,8 +1624,8 @@ def item_matches?(item: Json, row: List[String]) -> Bool
   return row[2] == "" or (detail.start_with?("#{row[2]}(") and documentation.length > 0)
 end
 
-def labels(result: Json) -> List[String]
-  no_items: List[Json] = []
+def labels(result: JSON.Value) -> List[String]
+  no_items: List[JSON.Value] = []
   return JSON.list(result).unwrap_or(no_items).map do |item|
     JSON.string(at(item, ["label"]).unwrap_or(JSON.null())).unwrap_or("")
   end
@@ -1670,7 +1679,7 @@ def only_json(ctx: BDD.Context, text: String) -> BDD.Context
   return BDD.assert(ctx, lines.size > 0, "no lines in #{text.inspect}")
 end
 
-def log_messages(ctx: BDD.Context) -> List[Json]
+def log_messages(ctx: BDD.Context) -> List[JSON.Value]
   return messages(ctx).filter do |message|
     at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(LOG_MESSAGE).to_s
   end
@@ -1687,8 +1696,8 @@ def logged_to_editor?(ctx: BDD.Context, level: String, text: String) -> Bool
   return matching.size > 0
 end
 
-def related_is(ctx: BDD.Context, found: Json, expected: Json) -> BDD.Context
-  no_items: List[Json] = []
+def related_is(ctx: BDD.Context, found: JSON.Value, expected: JSON.Value) -> BDD.Context
+  no_items: List[JSON.Value] = []
   entries = JSON.list(at(found, ["relatedInformation"]).unwrap_or(JSON.null())).unwrap_or(no_items)
   if entries.size != 1
     return BDD.assert(ctx, false, "expected one related location in #{found}")
@@ -1731,7 +1740,7 @@ end
 def answer_is(ctx: BDD.Context, id: Int, expected: String) -> BDD.Context
   case reply(ctx, id, "result")
     ok(result) -> return BDD.assert(ctx, result.to_s == expected, "expected #{expected}; actual #{result}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1741,7 +1750,7 @@ def encoding_is(ctx: BDD.Context, expected: String) -> BDD.Context
       actual = at(result, ["capabilities", "positionEncoding"]).unwrap_or(JSON.null()).to_s
       wanted = JSON.from(expected).to_s
       return BDD.assert(ctx, actual == wanted, "expected #{wanted}; actual #{actual}")
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1752,7 +1761,7 @@ end
 def id_failed(ctx: BDD.Context, id: Int, name: String) -> BDD.Context
   case reply(ctx, id, "error")
     ok(found) -> return expect_error(ctx, found, name)
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
@@ -1771,9 +1780,9 @@ def reported(ctx: BDD.Context, name: String) -> BDD.Context
   return BDD.assert(ctx, false, "no error without an id among #{JSON.array(messages(ctx))}")
 end
 
-def initialize(ctx: BDD.Context, capabilities: Json) -> BDD.Context
-  params: Map[String, Json] = {"capabilities": capabilities}
-  options: Map[String, Json] = {}
+def initialize(ctx: BDD.Context, capabilities: JSON.Value) -> BDD.Context
+  params: Map[String, JSON.Value] = {"capabilities": capabilities}
+  options: Map[String, JSON.Value] = {}
   for pair in [["asked log level", "logLevel"], ["asked client log level", "clientLogLevel"]]
     case BDD.get(ctx, pair[0])
       ok(level) -> options = options.put(pair[1], level)
@@ -1788,7 +1797,7 @@ def initialize(ctx: BDD.Context, capabilities: Json) -> BDD.Context
   return request(ctx, "initialize", JSON.object(workspace_params(ctx, params)))
 end
 
-def workspace_params(ctx: BDD.Context, params: Map[String, Json]) -> Map[String, Json]
+def workspace_params(ctx: BDD.Context, params: Map[String, JSON.Value]) -> Map[String, JSON.Value]
   case BDD.get(ctx, "workspace")
     ok(offered) ->
       root = file_uri(folder(ctx), "")
@@ -1806,11 +1815,11 @@ def workspace_params(ctx: BDD.Context, params: Map[String, Json]) -> Map[String,
   end
 end
 
-def request(ctx: BDD.Context, method: String, params: Json) -> BDD.Context
+def request(ctx: BDD.Context, method: String, params: JSON.Value) -> BDD.Context
   id = JSON.int(BDD.get(ctx, "next_id").unwrap_or(JSON.from(1))).unwrap!
   tracked = BDD.set(ctx, "request #{method}", JSON.from(id))
   counted = BDD.set(tracked, "next_id", JSON.from(id + 1))
-  body: Map[String, Json] = {
+  body: Map[String, JSON.Value] = {
     "jsonrpc": JSON.from("2.0"),
     "id": JSON.from(id),
     "method": JSON.from(method),
@@ -1819,8 +1828,8 @@ def request(ctx: BDD.Context, method: String, params: Json) -> BDD.Context
   return send(counted, JSON.encode(body))
 end
 
-def notify(ctx: BDD.Context, method: String, params: Json) -> BDD.Context
-  body: Map[String, Json] = {"jsonrpc": JSON.from("2.0"), "method": JSON.from(method), "params": params}
+def notify(ctx: BDD.Context, method: String, params: JSON.Value) -> BDD.Context
+  body: Map[String, JSON.Value] = {"jsonrpc": JSON.from("2.0"), "method": JSON.from(method), "params": params}
   return send(ctx, JSON.encode(body))
 end
 
@@ -1828,8 +1837,8 @@ def send(ctx: BDD.Context, body: String) -> BDD.Context
   return add(ctx, JSON.object({"kind": JSON.from("send"), "body": JSON.from(body)}))
 end
 
-def add(ctx: BDD.Context, action: Json) -> BDD.Context
-  no_items: List[Json] = []
+def add(ctx: BDD.Context, action: JSON.Value) -> BDD.Context
+  no_items: List[JSON.Value] = []
   actions = JSON.list(BDD.get(ctx, "script").unwrap_or(JSON.array(no_items))).unwrap!
   return BDD.set(ctx, "script", JSON.array(actions.push(action)))
 end
@@ -1839,7 +1848,7 @@ def finished(ctx: BDD.Context, check: Fn[BDD.Context, BDD.Context]) -> BDD.Conte
     return check.call(ctx)
   end
 
-  no_items: List[Json] = []
+  no_items: List[JSON.Value] = []
   base = ctx
   if !BDD.get(ctx, "ended").ok?
     base = notify(request(ctx, "shutdown", JSON.null()), "exit", JSON.null())
@@ -1863,15 +1872,15 @@ def record(ctx: BDD.Context, ran: Result[Session]) -> BDD.Context
       with_exit = BDD.set(with_sent, "exit", JSON.from(done.exit_code))
       with_stderr = BDD.set(with_exit, "stderr", JSON.from(done.stderr))
       return BDD.set(with_stderr, "log", JSON.from(done.log))
-    error(message) -> return BDD.assert(ctx, false, message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
   end
 end
 
-def next_publish(ctx: BDD.Context, target: String, expected: Json) -> BDD.Context
+def next_publish(ctx: BDD.Context, target: String, expected: JSON.Value) -> BDD.Context
   return finished(ctx) do |done| publish_is(done, target, expected) end
 end
 
-def publish_is(ctx: BDD.Context, target: String, expected: Json) -> BDD.Context
+def publish_is(ctx: BDD.Context, target: String, expected: JSON.Value) -> BDD.Context
   key = "seen #{target}"
   seen = JSON.int(BDD.get(ctx, key).unwrap_or(JSON.from(0))).unwrap!
   lists = published(ctx, target)
@@ -1891,7 +1900,7 @@ def last_message(ctx: BDD.Context, name: String, check: Fn[BDD.Context, String, 
   end
 end
 
-def last_diagnostic(ctx: BDD.Context, name: String, check: Fn[BDD.Context, Json, BDD.Context]) -> BDD.Context
+def last_diagnostic(ctx: BDD.Context, name: String, check: Fn[BDD.Context, JSON.Value, BDD.Context]) -> BDD.Context
   return finished(ctx) do |done| diagnostic_of(done, name, check) end
 end
 
@@ -1905,7 +1914,7 @@ def nothing_published(ctx: BDD.Context) -> BDD.Context
   return BDD.assert(ctx, true, "")
 end
 
-def diagnostic_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, Json, BDD.Context]) -> BDD.Context
+def diagnostic_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, JSON.Value, BDD.Context]) -> BDD.Context
   lists = published(ctx, uri(ctx, name))
   if lists.size == 0 or lists[lists.size - 1].size == 0
     return BDD.assert(ctx, false, "#{name} has no diagnostic")
@@ -1914,9 +1923,9 @@ def diagnostic_of(ctx: BDD.Context, name: String, check: Fn[BDD.Context, Json, B
   return check.call(ctx, lists[lists.size - 1][0])
 end
 
-def published(ctx: BDD.Context, sent: String) -> List[List[Json]]
+def published(ctx: BDD.Context, sent: String) -> List[List[JSON.Value]]
   target = JSON.from(sent).to_s
-  lists: List[List[Json]] = []
+  lists: List[List[JSON.Value]] = []
   for message in messages(ctx)
     method = at(message, ["method"]).unwrap_or(JSON.null()).to_s
     if method == JSON.from(PUBLISH).to_s and at(message, ["params", "uri"]).unwrap_or(JSON.null()).to_s == target
@@ -1927,7 +1936,7 @@ def published(ctx: BDD.Context, sent: String) -> List[List[Json]]
   return lists
 end
 
-def expected_diagnostic(row: List[String]) -> Json
+def expected_diagnostic(row: List[String]) -> JSON.Value
   edges = row[0].split("-")
   return JSON.object({
     "range": JSON.object({"start": position(edges[0]), "end": position(edges[1])}),
@@ -1937,7 +1946,7 @@ def expected_diagnostic(row: List[String]) -> Json
   })
 end
 
-def position(text: String) -> Json
+def position(text: String) -> JSON.Value
   parts = text.split(":")
   return JSON.object({
     "line": JSON.from(parts[0].to_i! - 1),
@@ -1945,8 +1954,8 @@ def position(text: String) -> Json
   })
 end
 
-def without_message(found: Json) -> Json
-  fields: Map[String, Json] = {}
+def without_message(found: JSON.Value) -> JSON.Value
+  fields: Map[String, JSON.Value] = {}
   for key in ["range", "severity", "code", "source"]
     case JSON.get(found, key)
       ok(value) -> fields = fields.put(key, value)
@@ -1957,15 +1966,15 @@ def without_message(found: Json) -> Json
   return JSON.object(fields)
 end
 
-def expect_error(ctx: BDD.Context, found: Json, name: String) -> BDD.Context
+def expect_error(ctx: BDD.Context, found: JSON.Value, name: String) -> BDD.Context
   expected = ERROR_CODES.get(name).unwrap!.to_s
   actual = at(found, ["code"]).unwrap_or(JSON.null()).to_s
   return BDD.assert(ctx, actual == expected, "expected the error #{name} (#{expected}); actual #{found}")
 end
 
-def run(ctx: BDD.Context, actions: List[Json]) -> Result[Session]
+def run(ctx: BDD.Context, actions: List[JSON.Value]) -> Result[Session]
   dir = folder(ctx)
-  no_items: List[Json] = []
+  no_items: List[JSON.Value] = []
   extra = JSON.list(BDD.get(ctx, "arguments").unwrap_or(JSON.array(no_items))).unwrap!
   words = extra.map do |word| JSON.string(word).unwrap! end
   log_path = ""
@@ -2034,13 +2043,13 @@ def session(
   start_in: String,
   command: String,
   arguments: List[String],
-  actions: List[Json],
+  actions: List[JSON.Value],
   wait_ms: Int,
 ) -> Result[Session]
   server = try Process.spawn_captured(command, arguments, Process.Options(timeout_ms: wait_ms, chdir: start_in))
-  received: List[Json] = []
+  received: List[JSON.Value] = []
   arrivals: List[Int] = []
-  sent: Map[String, Json] = {}
+  sent: Map[String, JSON.Value] = {}
   for action in actions
     sent = noted(sent, action)
     heard = try perform(server, dir, action, wait_ms)
@@ -2062,7 +2071,7 @@ def session(
   ))
 end
 
-def noted(sent: Map[String, Json], action: Json) -> Map[String, Json]
+def noted(sent: Map[String, JSON.Value], action: JSON.Value) -> Map[String, JSON.Value]
   kind = JSON.string(JSON.get(action, "kind").unwrap_or(JSON.null())).unwrap_or("")
   if kind != "send"
     return sent
@@ -2075,7 +2084,7 @@ def noted(sent: Map[String, Json], action: Json) -> Map[String, Json]
   end
 end
 
-def perform(server: Process, dir: String, action: Json, wait_ms: Int) -> Result[Heard]
+def perform(server: Process, dir: String, action: JSON.Value, wait_ms: Int) -> Result[Heard]
   kind = try JSON.string(try JSON.get(action, "kind"))
   case kind
     "send" ->
@@ -2085,7 +2094,7 @@ def perform(server: Process, dir: String, action: Json, wait_ms: Int) -> Result[
     "raw" ->
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), wait_ms)
       return ok(nothing_heard())
-    "await" -> return read_until_diagnostics(server, wait_ms)
+    "await" -> return read_until_diagnostics(server, awaited(action), wait_ms)
     "replies" -> return read_until_replies(server, try JSON.list(try JSON.get(action, "ids")), wait_ms)
     "log" -> return read_until_log(server, try JSON.string(try JSON.get(action, "text")), wait_ms)
     "pause" ->
@@ -2103,23 +2112,35 @@ def nothing_heard() -> Heard
   return Heard(messages: [], arrivals: [])
 end
 
-def read_until_diagnostics(server: Process, wait_ms: Int) -> Result[Heard]
-  received: List[Json] = []
+## Returns the URIs an await action names, as JSON text; none means any one publish ends the wait.
+def awaited(action: JSON.Value) -> List[String]
+  no_items: List[JSON.Value] = []
+  listed = JSON.list(JSON.get(action, "uris").unwrap_or(JSON.array(no_items))).unwrap_or(no_items)
+  return listed.map do |target| target.to_s end
+end
+
+def read_until_diagnostics(server: Process, uris: List[String], wait_ms: Int) -> Result[Heard]
+  received: List[JSON.Value] = []
   arrivals: List[Int] = []
+  waiting = uris
   while true
     message = try read_body(server, try Process.read_line(server, wait_ms), wait_ms)
     received = received.push(message)
     arrivals = arrivals.push(Time.now_ms())
     if at(message, ["method"]).unwrap_or(JSON.null()).to_s == JSON.from(PUBLISH).to_s
-      return ok(Heard(messages: received, arrivals: arrivals))
+      published_uri = at(message, ["params", "uri"]).unwrap_or(JSON.null()).to_s
+      waiting = waiting.filter do |target| target != published_uri end
+      if waiting.size == 0
+        return ok(Heard(messages: received, arrivals: arrivals))
+      end
     end
   end
 
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_until_replies(server: Process, ids: List[Json], wait_ms: Int) -> Result[Heard]
-  received: List[Json] = []
+def read_until_replies(server: Process, ids: List[JSON.Value], wait_ms: Int) -> Result[Heard]
+  received: List[JSON.Value] = []
   arrivals: List[Int] = []
   waiting = ids.map do |id| id.to_s end
   while waiting.size > 0
@@ -2137,7 +2158,7 @@ def read_until_replies(server: Process, ids: List[Json], wait_ms: Int) -> Result
 end
 
 def read_until_log(server: Process, text: String, wait_ms: Int) -> Result[Heard]
-  received: List[Json] = []
+  received: List[JSON.Value] = []
   arrivals: List[Int] = []
   while true
     message = try read_body(server, try Process.read_line(server, wait_ms), wait_ms)
@@ -2153,7 +2174,7 @@ def read_until_log(server: Process, text: String, wait_ms: Int) -> Result[Heard]
 end
 
 def read_rest(server: Process, wait_ms: Int) -> Result[Heard]
-  received: List[Json] = []
+  received: List[JSON.Value] = []
   arrivals: List[Int] = []
   while true
     header = Process.read_line(server, wait_ms)
@@ -2168,7 +2189,7 @@ def read_rest(server: Process, wait_ms: Int) -> Result[Heard]
   return ok(Heard(messages: received, arrivals: arrivals))
 end
 
-def read_body(server: Process, header: String, wait_ms: Int) -> Result[Json]
+def read_body(server: Process, header: String, wait_ms: Int) -> Result[JSON.Value]
   prefix = "Content-Length: "
   if !header.start_with?(prefix)
     return error("expected a Content-Length header; got #{header.inspect}")
@@ -2202,7 +2223,7 @@ def canonical(text: String) -> String
   return JSON.parse(text).unwrap!.to_s
 end
 
-def reply(ctx: BDD.Context, id: Int, field: String) -> Result[Json]
+def reply(ctx: BDD.Context, id: Int, field: String) -> Result[JSON.Value]
   for message in messages(ctx)
     if at(message, ["id"]).unwrap_or(JSON.null()).to_s == id.to_s
       return JSON.get(message, field)
@@ -2212,7 +2233,7 @@ def reply(ctx: BDD.Context, id: Int, field: String) -> Result[Json]
   return error("no reply to request #{id} among #{JSON.array(messages(ctx))}; stderr #{stderr(ctx)}")
 end
 
-def at(value: Json, keys: List[String]) -> Result[Json]
+def at(value: JSON.Value, keys: List[String]) -> Result[JSON.Value]
   found = value
   for key in keys
     found = try JSON.get(found, key)
@@ -2313,7 +2334,7 @@ def encoded(path: String) -> String
   return parts.join("")
 end
 
-def messages(ctx: BDD.Context) -> List[Json]
+def messages(ctx: BDD.Context) -> List[JSON.Value]
   return JSON.list(BDD.get(ctx, "messages").unwrap!).unwrap!
 end
 

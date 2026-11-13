@@ -50,11 +50,11 @@ Feature: Find references
     Given the language server has started
     And the file "lib.agc" contains:
       """
-      export def greet(name: String) -> String
+      def greet(name: String) -> String
         return "hello #{name}"
       end
 
-      export def twice(name: String) -> String
+      def twice(name: String) -> String
         return greet(greet(name))
       end
 
@@ -71,7 +71,7 @@ Feature: Find references
     And the editor asks for the references in "app.agc" at 4:12
     Then the references at 4:12 are:
       | file    | at        |
-      | lib.agc | 1:12-1:17 |
+      | lib.agc | 1:5-1:10  |
       | lib.agc | 6:10-6:15 |
       | lib.agc | 6:16-6:21 |
       | app.agc | 4:12-4:17 |

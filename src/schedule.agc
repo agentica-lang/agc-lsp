@@ -6,12 +6,8 @@ import Events from "events"
 import Analysis from "std/analysis"
 import Logger from "std/logger"
 
-MAX_CHECKS = 4
-REAP_MS = 1
-OVERDUE_WAIT_MS = 1
-
 ## Holds a check that waits for its due time.
-export struct Pending
+struct Pending
   ## Is the URI of the file.
   uri: String
   ## Is the path of the file.
@@ -21,7 +17,7 @@ export struct Pending
 end
 
 ## Holds a check that runs.
-export struct Running
+struct Running
   ## Is the URI of the file.
   uri: String
   ## Is the path of the file.
@@ -31,7 +27,7 @@ export struct Running
 end
 
 ## Holds what a check starts with: the session and the shared entries.
-export struct Basis
+struct Basis
   ## Is the session with the text of every open document.
   session: Analysis.Session
   ## Is the table of the entries that the tasks share.
@@ -39,7 +35,7 @@ export struct Basis
 end
 
 ## Holds the queue of waiting checks, the running checks and the generation of each file.
-export struct Plan
+struct Plan
   ## Is the channel that receives the reports.
   events: Channel[Events.Event]
   ## Maps each URI to the generation of its latest check.
@@ -51,18 +47,18 @@ export struct Plan
 end
 
 ## Returns a plan without checks.
-export def start(events: Channel[Events.Event]) -> Plan
+def start(events: Channel[Events.Event]) -> Plan
   generations: Map[String, Int] = {}
   return Plan(events: events, generations: generations, queue: [], running: [])
 end
 
 ## Returns a check of the file that is due after the delay.
-export def delayed(uri: String, path: String, delay_ms: Int) -> Pending
+def delayed(uri: String, path: String, delay_ms: Int) -> Pending
   return Pending(uri: uri, path: path, due: Time.now_ms() + delay_ms)
 end
 
 ## Returns the plan with the check queued in place of any older check of the same file.
-export def request(plan: Plan, pending: Pending) -> Plan
+def request(plan: Plan, pending: Pending) -> Plan
   cancelled = cancel(plan, pending.uri)
   if waiting?(cancelled, pending.uri)
     return cancelled.with(queue: cancelled.queue.map do |queued| newest(queued, pending) end)
@@ -72,14 +68,14 @@ export def request(plan: Plan, pending: Pending) -> Plan
 end
 
 ## Returns the plan without the checks of the file.
-export def forget(plan: Plan, uri: String) -> Plan
+def forget(plan: Plan, uri: String) -> Plan
   cancelled = cancel(plan, uri)
   return cancelled.with(queue: cancelled.queue.filter do |pending| pending.uri != uri end)
 end
 
 ## Returns the plan with the running check cancelled and queued again after the delay, for a session that changed
 ## under it.
-export def supersede(plan: Plan, delay_ms: Int) -> Plan
+def supersede(plan: Plan, delay_ms: Int) -> Plan
   current = plan
   for running in plan.running
     current = request(current, delayed(running.uri, running.path, delay_ms))
@@ -89,17 +85,17 @@ export def supersede(plan: Plan, delay_ms: Int) -> Plan
 end
 
 ## Returns true when the report comes from the latest check of its file.
-export def current?(plan: Plan, report: Events.Report) -> Bool
+def current?(plan: Plan, report: Events.Report) -> Bool
   return plan.generations.get(report.uri).unwrap_or(0) == report.generation
 end
 
 ## Returns the plan once the check of the file has been reported.
-export def settle(plan: Plan, uri: String) -> Plan
+def settle(plan: Plan, uri: String) -> Plan
   return plan.with(running: plan.running.filter do |running| running.uri != uri end)
 end
 
 ## Returns the plan with the checks that are due started, while fewer than four run.
-export def tick(plan: Plan, basis: Basis) -> Plan
+def tick(plan: Plan, basis: Basis) -> Plan
   current = reap(plan)
   now = Time.now_ms()
   while current.running.size < MAX_CHECKS
@@ -117,7 +113,7 @@ export def tick(plan: Plan, basis: Basis) -> Plan
 end
 
 ## Returns how many milliseconds to wait for an event before the next check is due, at most the limit.
-export def wait_ms(plan: Plan, limit: Int) -> Int
+def wait_ms(plan: Plan, limit: Int) -> Int
   now = Time.now_ms()
   wait = limit
   for pending in plan.queue
@@ -133,13 +129,21 @@ export def wait_ms(plan: Plan, limit: Int) -> Int
 end
 
 ## Returns the plan after cancelling the running checks.
-export def stop(plan: Plan) -> Plan
+def stop(plan: Plan) -> Plan
   for running in plan.running
     Task.cancel(running.task)
   end
 
   return plan.with(queue: [], running: [])
 end
+
+private
+
+MAX_CHECKS = 4
+
+REAP_MS = 1
+
+OVERDUE_WAIT_MS = 1
 
 def cancel(plan: Plan, uri: String) -> Plan
   for running in plan.running
