@@ -648,3 +648,27 @@ Feature: Hover on builtins
     And there is no definition at 2:6
     And there is no definition at 4:2
     And the server never logs "the query was refused"
+
+  Scenario: a function of an extern module shows its signature, its doc and the type of the call
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      extern module "stats"
+        ## The mean of the values.
+        def mean(values: List[Float]) -> Float
+      end
+
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.mean([1.0]))
+      end
+
+      """
+    And the editor hovers over "app.agc" at 4:12
+    Then the hover at 4:12 shows the declaration "mean(values: List[Float]) -> Float"
+    And the hover at 4:12 shows the documentation "The mean of the values."
+    And the hover at 4:12 shows the type "Float"

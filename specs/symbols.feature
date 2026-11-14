@@ -130,3 +130,25 @@ Feature: Document symbols
       | offered        | covers   |
       | utf-16         | 1:1-1:16 |
       | utf-16, utf-32 | 1:1-1:15 |
+
+  Scenario: the functions of an extern module are listed as functions
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      extern module "stats"
+        ## The mean of the values.
+        def mean(values: List[Float]) -> Float
+        def empty?(text: String) -> Bool
+      end
+
+      def main() -> Void
+        puts("hi")
+      end
+
+      """
+    And the editor asks for the symbols of "app.agc"
+    Then the symbols of "app.agc" are:
+      | symbol | kind     | at       |
+      | mean   | Function | 3:7-3:11 |
+      | empty? | Function | 4:7-4:13 |
+      | main   | Function | 7:5-7:9  |
