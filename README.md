@@ -43,6 +43,7 @@ the checks and the queries of every open file, imported files included. It asks 
   nothing yet.
 - References are those in the buffer and the files it links; a file that imports the module but is not imported by
   the buffer is not searched.
+- The server does not call `Analysis.bodies` (experimental) or `Analysis.native_modules`; the functions of an `extern module` have symbols and hover like any `def`, and the module itself is not a symbol.
 - A diagnostic in a library or package file has the prefix in its message but no related location.
 - Windows: CI runs the server, but neither editor extension has been tried there, and the VS Code extension has not
   been tested in VS Code. A UNC or `\\?\` path is not handled. Killing the editor hard can leave the server running as
