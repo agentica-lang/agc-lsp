@@ -1,0 +1,9 @@
+#!/bin/sh
+# An agentica whose `--json help` also lists the type rows of types.json, as Agentica 0.32.0 does.
+if [ "$1" = --json ] && [ "$2" = help ] && [ $# = 2 ]; then
+  agentica --json help | sed '$ s/]$//'
+  printf ','
+  sed '1 s/^\[//' "$(dirname "$0")/types.json"
+  exit
+fi
+exec agentica "$@"

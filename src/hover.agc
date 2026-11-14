@@ -57,15 +57,20 @@ def find(book: Catalog.Book, cursor: Cursor.Cursor) -> Result[Found]
     return after_dot(book, chars, word)
   end
 
-  if Catalog.namespace?(book, word.text)
-    return qualified(book, word.text, try Words.member(chars, word.stop), word.start)
+  case Words.member(chars, word.stop)
+    ok(member) if Catalog.namespace?(book, word.text) -> return qualified(book, word.text, member, word.start)
+    ok(_) -> return bare(book, chars, word)
+    error(_) -> return bare(book, chars, word)
   end
+end
 
-  if !Words.called?(chars, word.stop)
+## A bare function is a builtin only when it is called; a bare type, such as Error or TaskRef, is one anywhere.
+def bare(book: Catalog.Book, chars: List[String], word: Words.Word) -> Result[Found]
+  entry = try Catalog.find(book, word.text)
+  if !Catalog.type?(entry) and !Words.called?(chars, word.stop)
     return error("not a call: #{word.text}")
   end
 
-  entry = try Catalog.find(book, word.text)
   return ok(Found(entries: [entry], start: word.start, stop: word.stop, by_receiver: false))
 end
 
