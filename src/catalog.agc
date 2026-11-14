@@ -1,6 +1,7 @@
 ## Loads the catalog of Agentica builtins that `agentica --json help` prints.
 
-## Describes a builtin: its qualified name, its namespace and member, its signatures and its description.
+## Describes a builtin function or type: its qualified name, its namespace and member, its signatures and its
+## description.
 struct Entry
   ## Is the qualified name, such as String.split.
   name: String
@@ -8,7 +9,9 @@ struct Entry
   namespace: String
   ## Is the part after the dot.
   member: String
-  ## Lists the signatures, one for each overload.
+  ## Is struct, enum or opaque for a type, or empty for a function.
+  kind: String
+  ## Lists the signatures, one for each overload; a type has one, its declaration with its fields or variants.
   signatures: List[String]
   ## Is the description of the builtin.
   description: String
@@ -82,6 +85,11 @@ def find(book: Book, name: String) -> Result[Entry]
   return book.entries.get(name).to_result("no builtin #{name}")
 end
 
+## Returns true when the entry is a type, such as File.Info, rather than a function.
+def type?(entry: Entry) -> Bool
+  return entry.kind != ""
+end
+
 ## Returns true when the name is a namespace of builtins, such as String.
 def namespace?(book: Book, name: String) -> Bool
   return book.namespaces.include?(name)
@@ -89,17 +97,17 @@ end
 
 ## Returns the namespaced builtins whose member has the name.
 def methods_named(book: Book, member: String) -> List[Entry]
-  return book.ordered.filter do |entry| entry.namespace != "" and entry.member == member end
+  return book.ordered.filter do |entry| !type?(entry) and entry.namespace != "" and entry.member == member end
 end
 
 ## Returns the builtins of the namespace whose member starts with the prefix.
-def functions_of(book: Book, namespace: String, prefix: String) -> List[Entry]
+def members_of(book: Book, namespace: String, prefix: String) -> List[Entry]
   return book.ordered.filter do |entry| entry.namespace == namespace and entry.member.start_with?(prefix) end
 end
 
 ## Returns the builtins without namespace whose name starts with the prefix.
 def bare_starting(book: Book, prefix: String) -> List[Entry]
-  return functions_of(book, "", prefix)
+  return members_of(book, "", prefix)
 end
 
 ## Returns the namespaces that start with the prefix, in order.
@@ -133,18 +141,72 @@ def entry_of(item: JSON.Value, name: String) -> Entry
     member = name.slice(dot + 1, name.length - dot - 1)
   end
 
+  kind = field(item, "kind")
+  signatures = signatures_of(item)
+  if kind != ""
+    signatures = [declaration(item, kind)]
+  end
+
   return Entry(
     name: name,
     namespace: namespace,
     member: member,
-    signatures: signatures_of(item),
+    kind: kind,
+    signatures: signatures,
     description: field(item, "description"),
   )
 end
 
-def signatures_of(item: JSON.Value) -> List[String]
+def declaration(item: JSON.Value, kind: String) -> String
+  head = field(item, "signature")
+  lines = case kind
+    "struct" -> parts(item, "fields").flat_map do |part| documented(part, field_line(part)) end
+    "enum" -> parts(item, "variants").flat_map do |part| documented(part, variant_line(part)) end
+    _ -> []
+  end
+
+  if lines.size == 0
+    return head
+  end
+
+  return [head].concat(lines).push("end").join("\n")
+end
+
+def parts(item: JSON.Value, key: String) -> List[JSON.Value]
   no_items: List[JSON.Value] = []
-  overloads = JSON.list(JSON.get(item, "overloads").unwrap_or(JSON.null())).unwrap_or(no_items)
+  return JSON.list(JSON.get(item, key).unwrap_or(JSON.null())).unwrap_or(no_items)
+end
+
+def documented(part: JSON.Value, line: String) -> List[String]
+  doc = field(part, "doc")
+  if doc == ""
+    return ["  #{line}"]
+  end
+
+  return ["  ## #{doc}", "  #{line}"]
+end
+
+def field_line(part: JSON.Value) -> String
+  line = "#{field(part, "name")}: #{field(part, "type")}"
+  default = field(part, "default")
+  if default == ""
+    return line
+  end
+
+  return "#{line} = #{default}"
+end
+
+def variant_line(part: JSON.Value) -> String
+  payload = parts(part, "payload").map do |type| JSON.string(type).unwrap_or("") end
+  if payload.size == 0
+    return field(part, "name")
+  end
+
+  return "#{field(part, "name")}(#{payload.join(", ")})"
+end
+
+def signatures_of(item: JSON.Value) -> List[String]
+  overloads = parts(item, "overloads")
   if overloads.size == 0
     return [field(item, "signature")]
   end

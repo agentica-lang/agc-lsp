@@ -8,6 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Completion and hover of builtin types, such as `File.Info`, `JSON.Value` and `Error`, from Agentica 0.32.0 on:
+  completion offers them as types and hover shows their declaration with fields or variants. Older releases work as
+  before.
+
 ## [0.3.0] - 2026-11-13
 
 Needs Agentica 0.31.0 or later.

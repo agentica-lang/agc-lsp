@@ -14,7 +14,7 @@ src/asks.agc      which definition, references, hover, symbols and workspace sym
 src/schedule.agc  which checks run (at most 4, one per file), wait or are stale, per file, and the time each is due (changes wait 200 ms)
 src/entries.agc   the ATS table of std/analysis entries (`Analysis.entry`, `Analysis.adopt`) by path of the open file: start a session from one, publish one, drop those of closed files
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
-src/catalog.agc   the builtins from `agentica --json help`, the only process the server starts: loading, parsing, lookups by name, namespace and prefix
+src/catalog.agc   the builtins from `agentica --json help`, the only process the server starts: loading, parsing, lookups by name, namespace and prefix; a row with a `kind` is a type (Agentica 0.32.0 on), and its signature is its declaration
 src/columns.agc   character indexes of a line to and from UTF-16 code units
 src/words.agc     the words of one line: the word at an index, the receiver before a dot, strings and comments
 src/cursor.agc    a request position as the line, its characters and the character index, in the negotiated encoding
@@ -36,7 +36,7 @@ compose.yaml      Docker Compose service `wine`: the Windows build of agentica u
 docker/wine/      its Dockerfile (agentica.exe of `AGENTICA_VERSION`, verified against SHA256SUMS) and `smoke.sh`
 editors/nvim/     Neovim 0.11+ config (agentica.lua)
 editors/vscode/   minimal VS Code extension (language client over stdio)
-specs/            BDD features and their step program (steps.agc); smoke.agc is the session that `make smoke` and the Windows CI run; every scenario starts the server through the shell launcher bin/agc-lsp (Git Bash on Windows), with AGC_LSP_CACHE set to its own cache; bin/agc-lsp.bat is covered by smoke.agc only; specs/unix/ holds the features that need env, bash, ln or a folder called c: (the Windows CI skips them)
+specs/            BDD features and their step program (steps.agc); smoke.agc is the session that `make smoke` and the Windows CI run; every scenario starts the server through the shell launcher bin/agc-lsp (Git Bash on Windows), with AGC_LSP_CACHE set to its own cache; bin/agc-lsp.bat is covered by smoke.agc only; specs/unix/ holds the features that need env, bash, ln, a shell script as agentica or a folder called c: (the Windows CI skips them)
 VERSION           the release version; CHANGELOG.md lists what each release changed
 ```
 

@@ -35,7 +35,7 @@ SYMBOL_KINDS = {
   "EnumMember": 22,
   "Variable": 13,
 }
-COMPLETION_KINDS = {"Function": 3, "Module": 9}
+COMPLETION_KINDS = {"Function": 3, "Module": 9, "Struct": 22, "Enum": 13, "Class": 7}
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
 LOG_TYPES = {"error": 1, "warning": 2, "info": 3, "debug": 4}
 LOG_MESSAGE = "window/logMessage"
@@ -93,6 +93,7 @@ def main() -> Void
       "the language server has loaded the builtin catalog with the position encodings {string}",
       &started_with_catalog_and_encodings,
     ),
+    BDD.step("the language server has loaded the builtin catalog of {string}", &started_with_catalog_of),
     BDD.step("the editor asks for the log level {string}", &asks_log_level),
     BDD.step("the editor asks for the client log level {string}", &asks_client_log_level),
     BDD.step("the server writes its log to {string}", &writes_log_to),
@@ -222,6 +223,7 @@ def main() -> Void
     BDD.step("the completion at {int}:{int} offers:", &completion_offers),
     BDD.step("the completion at {int}:{int} does not offer {string}", &completion_does_not_offer),
     BDD.step("the completion at {int}:{int} offers nothing", &completion_offers_nothing),
+    BDD.step("the completion at {int}:{int} offers {string} once", &completion_offers_once),
     BDD.step("the completion item {string} at {int}:{int} replaces {int}:{int}-{int}:{int}", &completion_replaces),
     BDD.step("the server exits with code {int}", &exits_with),
   ])
@@ -396,6 +398,12 @@ end
 
 def started_with_catalog(ctx: BDD.Context, _args: List[String]) -> BDD.Context
   return catalog_loaded(initialize(BDD.set(ctx, "asked client log level", JSON.from("info")), JSON.object({})))
+end
+
+def started_with_catalog_of(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  asked = BDD.set(ctx, "asked client log level", JSON.from("info"))
+  arguments = BDD.set(asked, "arguments", JSON.array([JSON.from("--agentica"), JSON.from(args[0])]))
+  return catalog_loaded(initialize(arguments, JSON.object({})))
 end
 
 def started_with_catalog_and_encodings(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1207,6 +1215,10 @@ def completion_does_not_offer(ctx: BDD.Context, args: List[String]) -> BDD.Conte
   return finished(ctx) do |done| completion_lacks(done, args[0], args[1], args[2]) end
 end
 
+def completion_offers_once(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| completion_once(done, args[0], args[1], args[2]) end
+end
+
 def completion_offers_nothing(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| completion_empty(done, args[0], args[1]) end
 end
@@ -1599,6 +1611,15 @@ def completion_lacks(ctx: BDD.Context, line: String, column: String, label: Stri
   end
 end
 
+def completion_once(ctx: BDD.Context, line: String, column: String, label: String) -> BDD.Context
+  case result_at(ctx, "completion", line, column)
+    ok(result) ->
+      count = labels(result).filter { |found| found == label }.size
+      return BDD.assert(ctx, count == 1, "expected one #{label} at #{line}:#{column}; actual #{result}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
 def completion_empty(ctx: BDD.Context, line: String, column: String) -> BDD.Context
   case result_at(ctx, "completion", line, column)
     ok(result) ->
@@ -1622,7 +1643,9 @@ def item_matches?(item: JSON.Value, row: List[String]) -> Bool
     return false
   end
 
-  return row[2] == "" or (detail.start_with?("#{row[2]}(") and documentation.length > 0)
+  declared = detail.split("\n")[0].split(" ").last
+  named = detail.start_with?("#{row[2]}(") or declared == row[2] or declared.start_with?("#{row[2]}[")
+  return row[2] == "" or (named and documentation.length > 0)
 end
 
 def labels(result: JSON.Value) -> List[String]
