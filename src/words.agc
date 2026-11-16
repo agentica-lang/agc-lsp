@@ -109,6 +109,22 @@ def name_at?(chars: List[String], index: Int) -> Bool
   end
 end
 
+## Returns true when the text holds the name as a whole word, not inside a longer name.
+def mentions?(text: String, name: String) -> Bool
+  for line in text.split("\n")
+    if line.include?(name)
+      parts = " #{line} ".split(name)
+      for index in 1...parts.size
+        if !joined?(parts[index - 1], parts[index])
+          return true
+        end
+      end
+    end
+  end
+
+  return false
+end
+
 ## Returns true when the index of the line is neither in a string nor in a comment.
 def code?(chars: List[String], upto: Int) -> Bool
   in_string = false
@@ -152,6 +168,15 @@ KEYWORDS = Set.new([
   "from", "type", "do", "in", "next", "break", "try", "and", "or", "not",
   "true", "false", "nil", "extern",
 ])
+
+def joined?(before: String, after: String) -> Bool
+  return (
+    before == "" or
+    after == "" or
+    word_char?(before.at(before.length - 1)) or
+    word_char?(after.at(0))
+  )
+end
 
 def word_char?(char: String) -> Bool
   code = String.code(char)

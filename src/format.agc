@@ -78,7 +78,9 @@ end
 
 def folder_of(path: String) -> String
   parts = path.split("/")
-  if parts.size <= 2
+  if parts.size <= 2 and parts[0].end_with?(":")
+    return "#{parts[0]}/"
+  elsif parts.size <= 2
     return "/"
   end
 

@@ -10,6 +10,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `textDocument/rename` and `textDocument/prepareRename`, from the declaration and uses that `agentica refs` finds. A rename of a builtin, of a program with an error in a function, with a new name that does not suit the kind of name, or of a public name that another file of the workspace writes, is refused with a reason.
 - A file with errors in several functions publishes the diagnostic of each function that does not check, the first problem of the check first, not only the first problem.
 - `textDocument/formatting` runs `agentica fmt` on the text of the buffer, in the folder of the file, and answers one edit for the whole document; no edits for text that is formatted already or does not parse. The server advertises `documentFormattingProvider`.
 - `true`, `false`, `nil` and `extern` are keywords: no hover, definition or references query for them.

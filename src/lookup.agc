@@ -52,6 +52,16 @@ def references(request: Request, with_declaration: Bool) -> Result[JSON.Value]
   end
 end
 
+## Returns what `agentica refs` finds for the name under the cursor: the declaration and the uses, as far as the
+## program checks. It is none when agentica finds no name there.
+def uses(request: Request) -> Result[Optional[Analysis.Refs]]
+  found = try references_at(request)
+  case found
+    Referenced.Refused -> return ok(none)
+    Referenced.Found(found_uses) -> return ok(some(found_uses))
+  end
+end
+
 ## Returns the hover of the name under the cursor: the builtin it is, or its declaration and the type of the
 ## expression. A function with an error has no type, so the catalog answers, or else the result is null.
 def hover(request: Request) -> Result[JSON.Value]

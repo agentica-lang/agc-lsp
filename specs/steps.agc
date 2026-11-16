@@ -25,6 +25,8 @@ DEFINITION = "textDocument/definition"
 SYMBOLS = "textDocument/documentSymbol"
 REFERENCES = "textDocument/references"
 FORMATTING = "textDocument/formatting"
+PREPARE_RENAME = "textDocument/prepareRename"
+RENAME = "textDocument/rename"
 WORKSPACE_SYMBOLS = "workspace/symbol"
 SYMBOL_KINDS = {
   "Function": 12,
@@ -139,6 +141,12 @@ def main() -> Void
       "the editor asks for the references in {string} at {int}:{int} three times in a row",
       &asks_references_in_a_row,
     ),
+    BDD.step("the editor prepares the rename in {string} at {int}:{int}", &prepares_rename),
+    BDD.step("the editor renames in {string} at {int}:{int} to {string}", &renames),
+    BDD.step("the prepared rename at {int}:{int} covers {int}:{int}-{int}:{int} named {string}", &prepared_rename),
+    BDD.step("there is no prepared rename at {int}:{int}", &no_prepared_rename),
+    BDD.step("the rename at {int}:{int} edits:", &rename_edits),
+    BDD.step("the rename at {int}:{int} is refused with {string}", &rename_refused),
     BDD.step("the editor formats {string}", &formats),
     BDD.step("the editor formats {string} and cancels the request", &formats_and_cancels),
     BDD.step("the formatting of {string} replaces the document up to {int}:{int} with:", &formatting_replaces),
@@ -690,6 +698,22 @@ def put_references(ctx: BDD.Context, args: List[String], declaration: Bool) -> B
   sent = request(ready, REFERENCES, params)
   id = BDD.get(sent, "request #{REFERENCES}").unwrap!
   return BDD.set(sent, "references #{args[1]}:#{args[2]}", id)
+end
+
+def prepares_rename(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask(ctx, "prepare", PREPARE_RENAME, args)
+end
+
+def renames(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
+    "position": position("#{args[1]}:#{args[2]}"),
+    "newName": JSON.from(args[3]),
+  })
+  sent = request(ready, RENAME, params)
+  id = BDD.get(sent, "request #{RENAME}").unwrap!
+  return wait_for(BDD.set(sent, "rename #{args[1]}:#{args[2]}", id), [id])
 end
 
 def formats(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1431,6 +1455,85 @@ end
 
 def search_is_null(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| workspace_symbols_null(done, args[0]) end
+end
+
+def prepared_rename(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| rename_prepared(done, args) end
+end
+
+def no_prepared_rename(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    case result_at(done, "prepare", args[0], args[1])
+      ok(result) ->
+        BDD.assert(done, result.to_s == "null", "expected no rename at #{args[0]}:#{args[1]}; actual #{result}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def rename_edits(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  return finished(ctx) do |done| rename_edited(done, args, rows) end
+end
+
+def rename_refused(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| rename_failed(done, args) end
+end
+
+def rename_prepared(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  case result_at(ctx, "prepare", args[0], args[1])
+    ok(result) ->
+      covered = span_text(at(result, ["range"]).unwrap_or(JSON.null()))
+      placeholder = JSON.string(at(result, ["placeholder"]).unwrap_or(JSON.null())).unwrap_or("")
+      actual = "#{covered} #{placeholder}"
+      wanted = "#{args[2]}:#{args[3]}-#{args[4]}:#{args[5]} #{args[6]}"
+      return BDD.assert(ctx, actual == wanted, "expected the rename #{wanted}; actual #{actual} in #{result}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def rename_edited(ctx: BDD.Context, args: List[String], rows: List[List[String]]) -> BDD.Context
+  case result_at(ctx, "rename", args[0], args[1])
+    ok(result) ->
+      shown: List[String] = []
+      case JSON.node(at(result, ["changes"]).unwrap_or(JSON.null()))
+        JSON.Node.Object(changes) ->
+          for file_uri in changes.keys
+            shown = shown.concat(edit_rows(ctx, file_uri, changes.get(file_uri).unwrap_or(JSON.null())))
+          end
+
+        _ -> shown = shown
+      end
+
+      wanted = rows.map do |row| "#{row[0]} #{row[1]} #{row[2]}" end
+      message = "expected the edits #{JSON.encode(wanted.sort)}; actual #{JSON.encode(shown.sort)}"
+      return BDD.assert(ctx, JSON.encode(shown.sort) == JSON.encode(wanted.sort), message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def edit_rows(ctx: BDD.Context, file_uri: String, edits: JSON.Value) -> List[String]
+  no_items: List[JSON.Value] = []
+  rows: List[String] = []
+  for edit in JSON.list(edits).unwrap_or(no_items)
+    place = JSON.object({"uri": JSON.from(file_uri), "range": at(edit, ["range"]).unwrap_or(JSON.null())})
+    text = JSON.string(at(edit, ["newText"]).unwrap_or(JSON.null())).unwrap_or("")
+    rows = rows.push("#{location_row(ctx, place)} #{text}")
+  end
+
+  return rows
+end
+
+def rename_failed(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "rename #{args[0]}:#{args[1]}").unwrap!).unwrap!
+  case reply(ctx, id, "error")
+    ok(found) ->
+      message = JSON.string(at(found, ["message"]).unwrap_or(JSON.null())).unwrap_or("")
+      code = JSON.int(at(found, ["code"]).unwrap_or(JSON.null())).unwrap_or(0)
+      mismatch = "expected the error -32803 with #{args[2].inspect}; actual #{code} #{message.inspect}"
+      return BDD.assert(ctx, code == -32_803 and message.include?(args[2]), mismatch)
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
 end
 
 def formatting_replaces(ctx: BDD.Context, args: List[String]) -> BDD.Context

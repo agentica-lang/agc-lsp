@@ -21,6 +21,7 @@ Feature: Server lifecycle
           "referencesProvider": true,
           "workspaceSymbolProvider": true,
           "documentFormattingProvider": true,
+          "renameProvider": {"prepareProvider": true},
           "completionProvider": {"triggerCharacters": ["."]}
         },
         "serverInfo": {"name": "agc-lsp"}
@@ -59,8 +60,8 @@ Feature: Server lifecycle
 
   Scenario: an unknown request is not found
     Given the language server has started
-    When the editor sends the request "textDocument/rename"
-    Then the server answers "textDocument/rename" with the error "method not found"
+    When the editor sends the request "textDocument/foldingRange"
+    Then the server answers "textDocument/foldingRange" with the error "method not found"
     And the server exits with code 0
 
   Scenario: a second initialize is refused

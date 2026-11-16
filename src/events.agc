@@ -5,6 +5,7 @@ import Check from "check"
 import Entries from "entries"
 import Format from "format"
 import Lookup from "lookup"
+import Rename from "rename"
 import Rpc from "rpc"
 import Analysis from "std/analysis"
 import Logger from "std/logger"
@@ -29,6 +30,8 @@ struct Answer
   id: JSON.Value
   ## Is the result to send, null when there is nothing to show.
   result: JSON.Value
+  ## Is the reason that the request failed, or an empty text when it did not.
+  failure: String = ""
 end
 
 ## Names what the server loop receives: input, a finished check, an answer, the catalog or a log line.
@@ -71,6 +74,10 @@ enum Question
   Workspace(Workspace.Request)
   ## Is the formatting of a document.
   Format(Format.Request)
+  ## Is the question of where a name can be renamed, with the range it covers.
+  PrepareRename(Rename.Request)
+  ## Is the rename of a name.
+  Rename(Rename.Request)
 end
 
 ## Holds what the task of a definition, references, hover, document symbol or workspace symbol request needs.
@@ -164,6 +171,9 @@ def answer_query(job: QueryJob) -> Result[Void]
     Question.Workspace(request) ->
       return settle(job.events, job.id, "workspace symbols", Workspace.answer(request))
     Question.Format(request) -> return settle(job.events, job.id, "formatting", Format.answer(request))
+    Question.PrepareRename(request) ->
+      return settle(job.events, job.id, "prepare rename", Rename.prepare(started_in(job, request)))
+    Question.Rename(request) -> return refuse(job.events, job.id, Rename.rename(started_in(job, request)))
   end
 end
 
@@ -186,6 +196,10 @@ def started_from(job: QueryJob, request: Lookup.Request) -> Lookup.Request
   return request.with(session: Entries.restored(job.entries, request.session, request.path))
 end
 
+def started_in(job: QueryJob, request: Rename.Request) -> Rename.Request
+  return request.with(lookup: started_from(job, request.lookup))
+end
+
 def settle(events: Channel[Event], id: JSON.Value, what: String, outcome: Result[JSON.Value]) -> Result[Void]
   result = JSON.null()
   case outcome
@@ -194,6 +208,16 @@ def settle(events: Channel[Event], id: JSON.Value, what: String, outcome: Result
   end
 
   deliver(events, Event.Answered(Answer(id: id, result: result)))
+  return ok()
+end
+
+# A rename that cannot be done is an error for the editor to show, not a null.
+def refuse(events: Channel[Event], id: JSON.Value, outcome: Result[JSON.Value]) -> Result[Void]
+  case outcome
+    ok(found) -> deliver(events, Event.Answered(Answer(id: id, result: found)))
+    error(failure) -> deliver(events, Event.Answered(Answer(id: id, result: JSON.null(), failure: failure.message)))
+  end
+
   return ok()
 end
 
