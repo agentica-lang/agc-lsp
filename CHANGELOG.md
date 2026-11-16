@@ -8,6 +8,14 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-16
+
+Needs Agentica 0.33.0 or later.
+
+### Changed
+
+- **Breaking:** the server needs Agentica 0.33.0 or later (`agentica.toml` names it), for `agentica lint`, the method forms of the builtin catalog and the questions that completion, signature help and rename ask. An older Agentica stops with `PKG-AGENTICA-TOO-OLD`.
+
 ### Added
 
 - `textDocument/signatureHelp`: the signature of the function being called (of the program, an imported module or a builtin) and the active parameter, by commas or by the name of an argument.
@@ -166,7 +174,8 @@ First release. Needs Agentica 0.7.0 or later.
 - The `bin/agc-lsp` launcher, a Neovim 0.11+ config and a minimal VS Code
   extension (same version as the server).
 
-[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.3.0...HEAD
+[unreleased]: https://github.com/agentica-lang/agc-lsp/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/agentica-lang/agc-lsp/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/agentica-lang/agc-lsp/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/agentica-lang/agc-lsp/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/agentica-lang/agc-lsp/compare/0.0.2...0.1.0
