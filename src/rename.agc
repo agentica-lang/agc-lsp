@@ -5,7 +5,6 @@ import Imports from "imports"
 import Lookup from "lookup"
 import Places from "places"
 import Analysis from "std/analysis"
-import {UTF16, utf16_width} from "columns"
 import Uri from "uri"
 import Words from "words"
 
@@ -22,12 +21,9 @@ end
 ## Returns the range and the name that the editor shows before it asks for the new name, or null when the cursor is on
 ## no place of the name, or an error that says why the name cannot be renamed.
 def prepare(request: Request) -> Result[JSON.Value]
-  plan = try planned(request)
-  case named_at(request, plan.places)
-    some(place) ->
-      lines = Places.lines_of(request.lookup.documents, request.lookup.path)
-      range = Places.range(lines, place.range, request.lookup.cursor.encoding)
-      return ok(JSON.object({"range": range, "placeholder": JSON.from(plan.definition.name)}))
+  found = try Lookup.uses(request.lookup)
+  case found
+    some(uses) -> return prepare_from(request, uses)
     none -> return ok(JSON.null())
   end
 end
@@ -76,6 +72,17 @@ end
 struct Plan
   definition: Analysis.Symbol
   places: List[Place]
+end
+
+def prepare_from(request: Request, uses: Analysis.Refs) -> Result[JSON.Value]
+  plan = try planned_from(request, uses)
+  case named_at(request, plan.places)
+    some(place) ->
+      lines = Places.lines_of(request.lookup.documents, request.lookup.path)
+      range = Places.range(lines, place.range, request.lookup.cursor.encoding)
+      return ok(JSON.object({"range": range, "placeholder": JSON.from(plan.definition.name)}))
+    none -> return ok(JSON.null())
+  end
 end
 
 def planned(request: Request) -> Result[Plan]
@@ -177,8 +184,8 @@ def aliased_in(request: Request, definition: Analysis.Symbol, places: List[Place
   end
 
   for path in plan_files(request, places)
-    for site in import_sites(request, path, definition)
-      if site.aliased
+    for entry in import_entries(request, path, definition)
+      if entry.local != entry.name
         return path
       end
     end
@@ -199,11 +206,9 @@ def plan_files(request: Request, places: List[Place]) -> List[String]
   return paths
 end
 
-def import_sites(request: Request, path: String, definition: Analysis.Symbol) -> List[Imports.Site]
+def import_entries(request: Request, path: String, definition: Analysis.Symbol) -> List[Analysis.ImportName]
   module = Uri.resolve(request.lookup.folder, definition.module)
-  parts = module.split("/")
-  base = parts[parts.size - 1].replace(AGENTICA_EXTENSION, "")
-  return Imports.sites(Places.lines_of(request.lookup.documents, path), definition.name, base)
+  return Imports.entries(request.lookup.session, path, module, definition.name)
 end
 
 def mentions?(request: Request, path: String, name: String) -> Bool
@@ -304,9 +309,9 @@ def edits(request: Request, plan: Plan, name: String) -> Result[JSON.Value]
       end
     end
 
-    for site in import_sites(request, path, plan.definition)
-      if !declared?(plan.places, request, path, site)
-        found = found.push(edit_of(site_range(lines, site, plan.definition.name, lookup.cursor.encoding), name))
+    for entry in import_entries(request, path, plan.definition)
+      if !declared?(plan.places, request, path, entry)
+        found = found.push(edit_of(Places.range(lines, entry.range, lookup.cursor.encoding), name))
       end
     end
 
@@ -326,29 +331,16 @@ def edit_of(range: JSON.Value, name: String) -> JSON.Value
 end
 
 # A site that agentica reports as a use is renamed already.
-def declared?(places: List[Place], request: Request, path: String, site: Imports.Site) -> Bool
+def declared?(places: List[Place], request: Request, path: String, entry: Analysis.ImportName) -> Bool
   for place in places
     same = Uri.same_path?(Uri.resolve(request.lookup.folder, place.file), path)
-    if same and place.range.start.line == site.line + 1 and place.range.start.column == site.character + 1
+    start = entry.range.start
+    if same and place.range.start.line == start.line and place.range.start.column == start.column
       return true
     end
   end
 
   return false
-end
-
-def site_range(lines: List[String], site: Imports.Site, name: String, encoding: String) -> JSON.Value
-  start = site.character
-  stop = site.character + name.length
-  if encoding == UTF16
-    start = utf16_width(lines[site.line], start)
-    stop = utf16_width(lines[site.line], stop)
-  end
-
-  return JSON.object({
-    "start": JSON.object({"line": JSON.from(site.line), "character": JSON.from(start)}),
-    "end": JSON.object({"line": JSON.from(site.line), "character": JSON.from(stop)}),
-  })
 end
 
 def uri_of(request: Request, path: String) -> String

@@ -24,6 +24,16 @@ struct Options
   problems: List[String]
 end
 
+## Returns the path of the executable as a process that works in another folder can start it: a path with a slash
+## is made absolute.
+def executable(agentica: String) -> String
+  if agentica.include?("/") or agentica.include?("\\")
+    return Path.resolve(agentica).unwrap_or(agentica)
+  end
+
+  return agentica
+end
+
 ## Returns the options of the arguments, with a problem for each argument that is ignored or rejected.
 def parse(args: List[String]) -> Options
   options = Options(agentica: DEFAULT_AGENTICA, level: "", client_level: "", format: "", file: "", problems: [])

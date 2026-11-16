@@ -1,7 +1,9 @@
 ## Formats the text of a buffer with `agentica fmt -`, for textDocument/formatting.
 
 import {UTF16, utf16_width} from "columns"
+import Options from "options"
 import Logger from "std/logger"
+import Uri from "uri"
 
 ## Holds what a formatting needs.
 struct Request
@@ -35,6 +37,8 @@ private
 
 FORMAT_TIMEOUT_MS = 10_000
 
+LONGEST_TIMEOUT_MS = 120_000
+
 CHUNK_BYTES = 1_000_000
 
 MS_PER_KB = 60
@@ -42,9 +46,14 @@ MS_PER_KB = 60
 SHORTEST_WAIT_MS = 1
 
 def formatted(request: Request) -> Result[String]
-  limit = FORMAT_TIMEOUT_MS + request.text.length / 1000 * MS_PER_KB
-  options = Process.Options(timeout_ms: limit, chdir: folder_of(request.path))
-  helper = try Process.spawn_captured(executable(request.agentica), ["fmt", "-"], options)
+  scaled = FORMAT_TIMEOUT_MS + request.text.length / 1000 * MS_PER_KB
+  limit = scaled
+  if scaled > LONGEST_TIMEOUT_MS
+    limit = LONGEST_TIMEOUT_MS
+  end
+
+  options = Process.Options(timeout_ms: limit, chdir: Uri.folder_of(request.path))
+  helper = try Process.spawn_captured(Options.executable(request.agentica), ["fmt", "-"], options)
   outcome = run(helper, request.text, Time.now_ms() + limit)
   Process.close(helper)
   return outcome
@@ -111,25 +120,6 @@ def remaining(deadline: Int) -> Int
   end
 
   return left
-end
-
-def executable(agentica: String) -> String
-  if agentica.include?("/") or agentica.include?("\\")
-    return Path.resolve(agentica).unwrap_or(agentica)
-  end
-
-  return agentica
-end
-
-def folder_of(path: String) -> String
-  parts = path.split("/")
-  if parts.size <= 2 and parts[0].end_with?(":")
-    return "#{parts[0]}/"
-  elsif parts.size <= 2
-    return "/"
-  end
-
-  return parts.take(parts.size - 1).join("/")
 end
 
 def whole(request: Request) -> JSON.Value

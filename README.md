@@ -3,8 +3,8 @@
 A Language Server Protocol (LSP) server for [Agentica](https://github.com/agentica-lang/agentica), a language for AI agents,
 written in Agentica.
 
-> **Status:** early stage. Diagnostics, hover, completion, go to definition, find references, rename, formatting,
-> document symbols and workspace symbols.
+> **Status:** early stage. Diagnostics, hover, completion, signature help, code actions, go to definition, find
+> references, rename, formatting, document symbols and workspace symbols.
 
 ## Features
 
@@ -17,7 +17,18 @@ the checks and the queries of every open file, imported files included. It asks 
   `relatedInformation`. Typing in or saving a file checks again the open files whose error points into it.
 - Hover: a builtin (`String.split`, `puts(`, `xs.split(",")`) shows its signature and description; a function, struct,
   enum, variant, field, constant or type name shows its declaration and `##` doc; any expression also shows its type.
-- Completion (trigger `.`): the builtin namespaces and functions, after `String.` or at the start of a word.
+- Completion (trigger `.`): the builtin namespaces and functions, after `String.` or at the start of a word; the names
+  of your program (declarations, imported names, the parameters and variables of the function you are in); after a dot
+  the methods of the type of a value (`xs.`), the fields of a struct, the variants of an enum and the exports of an
+  imported module (`Lib.`); inside `import {…}` the exports of the module, and in the quotes of an import the `std/`
+  modules and the files and folders of the project. A line that does not parse yet is cut at the cursor and its open
+  brackets are closed, so the compiler can still answer.
+- Signature help (triggers `(` and `,`): the signature of a function of the program, an imported module or a builtin
+  (`xs.map(` shows the method form, without the receiver) and the parameter the cursor is on, by commas or by the name
+  of an argument written `name:`.
+- Code actions: quick fixes for the suggestions of `agentica lint` that have a plain fix, `LINT-BOOL-COMPARE`
+  (`done == true` becomes `done`) and `LINT-TO-S-CONCAT` (`"n=" + n.to_s` becomes `"n=#{n}"`). The server lints the text
+  of the buffer, through a temporary file; the other suggestions have no action.
 - Go to definition and find references of a function, struct, enum, variant, field, constant, type name, local,
   parameter, loop name or pattern name, in the file and the files it imports.
 - Formatting: `textDocument/formatting` runs `agentica fmt` on the text of the buffer, in the folder of the file (the
@@ -44,9 +55,11 @@ the checks and the queries of every open file, imported files included. It asks 
   the next check ends.
 - An error in an imported file is published on the opened file, never on the imported one. A file that imports it and
   showed no error is not checked again until it changes, is saved or is reopened.
-- Completion knows the builtins only (not your own names, imports or `std/` modules), and `xs.` completes nothing.
-  Strings and comments are found by scanning one line, so a heredoc, a string over several lines or code inside `#{}`
-  is not recognised. If the builtin catalog cannot be loaded, completion stays empty.
+- Completion of your own names reads the declarations of the file and of the modules it imports; the variables of a
+  function are found by their assignments and `for` loops above the cursor, not by block parameters or `case`
+  patterns. The list of `std/` modules is the one of Agentica 0.33.0. Strings and comments are found by scanning one
+  line, so a heredoc, a string over several lines or code inside `#{}` is not recognised, and a call that continues on
+  the next line is not repaired. If the builtin catalog cannot be loaded, the builtins are not offered.
 - A function with an error gives no type: definition, hover and references work in the other functions and on the names
   that resolve in that one, not on the expression that has the error. A `std/` module is not on disk, so a name
   declared there has hover but no location. The name of a variant in a `case` pattern (`Shape.Circle(r)`) gives

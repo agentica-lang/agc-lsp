@@ -1,7 +1,11 @@
-Feature: Completion of builtins
+Feature: Completion
   After a dot or at the start of a word, the editor offers the builtins of
-  Agentica. The type of a variable is not known, so nothing is offered after
-  the dot of a variable.
+  Agentica and the names of the program: its declarations, the names that its
+  imports bring in, the parameters and variables of the function the cursor is
+  in, the methods of a value, the fields of a struct, the variants of an enum
+  and the names of an imported module. In the path of an import it offers the
+  std modules and the files of the project. The buffer need not parse: the
+  line being typed is cut at the cursor to ask the compiler.
 
   Scenario: after a namespace and a dot the functions of that namespace are offered
     Given the language server has loaded the builtin catalog
@@ -93,27 +97,23 @@ Feature: Completion of builtins
       | label  | kind     | builtin               |
       | sha256 | Function | OpenSSL.Digest.sha256 |
 
-  Scenario: nothing is offered after a variable, in a comment, in a string or after a question mark
+  Scenario: nothing is offered in a comment, in a string or after a question mark
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:
       """
       def main() -> Void
-        xs = "a"
-        xs.
         # String.
         t = "Str"
         e = IO.eof?
       end
 
       """
-    And the editor asks for completion in "app.agc" at 3:6
-    And the editor asks for completion in "app.agc" at 4:12
-    And the editor asks for completion in "app.agc" at 5:11
-    And the editor asks for completion in "app.agc" at 6:14
-    Then the completion at 3:6 offers nothing
-    And the completion at 4:12 offers nothing
-    And the completion at 5:11 offers nothing
-    And the completion at 6:14 offers nothing
+    And the editor asks for completion in "app.agc" at 2:12
+    And the editor asks for completion in "app.agc" at 3:11
+    And the editor asks for completion in "app.agc" at 4:14
+    Then the completion at 2:12 offers nothing
+    And the completion at 3:11 offers nothing
+    And the completion at 4:14 offers nothing
 
   Scenario: a position past the end of the line offers what the end of the line offers
     Given the language server has loaded the builtin catalog with the position encodings "utf-16, utf-32"
@@ -153,3 +153,225 @@ Feature: Completion of builtins
     Given the language server has loaded the builtin catalog
     When the editor asks for completion in "ghost.agc" at 1:1
     Then the completion at 1:1 offers nothing
+
+  Scenario: the names of the function, the declarations and the imports are offered at the start of a word
+    Given the language server has loaded the builtin catalog
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {area} from "lib"
+      import Lib from "lib"
+
+      struct Point
+        x: Int
+        y: Int
+      end
+
+      def total(items: List[Int]) -> Int
+        count = 0
+        for item in items
+          count = count + item
+        end
+
+        cou
+        ite
+        Po
+        ar
+        Li
+        return count
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 15:6
+    And the editor asks for completion in "app.agc" at 16:6
+    And the editor asks for completion in "app.agc" at 17:5
+    And the editor asks for completion in "app.agc" at 18:5
+    And the editor asks for completion in "app.agc" at 19:5
+    Then the completion at 15:6 offers:
+      | label | kind     | builtin |
+      | count | Variable |         |
+    And the completion at 15:6 does not offer "items"
+    And the completion at 16:6 offers:
+      | label | kind     | builtin |
+      | items | Variable |         |
+      | item  | Variable |         |
+    And the completion at 17:5 offers:
+      | label | kind   | builtin |
+      | Point | Struct |         |
+    And the completion at 18:5 offers:
+      | label | kind     | builtin |
+      | area  | Function |         |
+    And the completion at 19:5 offers:
+      | label | kind   | builtin |
+      | Lib   | Module |         |
+
+  Scenario: after a dot the methods of the type, the fields of a struct, the variants of an enum and the exports of a module are offered
+    Given the language server has loaded the builtin catalog
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+
+      private
+
+      def hidden() -> Int = 1
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Lib from "lib"
+
+      struct Point
+        x: Int
+        y: Int
+      end
+
+      enum Color
+        Red
+        Green(Int)
+      end
+
+      def main() -> Void
+        xs = [1, 2]
+        p = Point(x: 1, y: 2)
+        puts(xs.size())
+        puts(p.x)
+        puts(Color.Red)
+        puts(Lib.area(1, 2))
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 16:11
+    And the editor asks for completion in "app.agc" at 17:10
+    And the editor asks for completion in "app.agc" at 18:14
+    And the editor asks for completion in "app.agc" at 19:12
+    Then the completion at 16:11 offers:
+      | label | kind   | builtin |
+      | map   | Method |         |
+      | size  | Method |         |
+    And the completion at 17:10 offers:
+      | label | kind  | builtin |
+      | x     | Field |         |
+      | y     | Field |         |
+    And the completion at 17:10 does not offer "map"
+    And the completion at 18:14 offers:
+      | label | kind       | builtin |
+      | Red   | EnumMember |         |
+      | Green | EnumMember |         |
+    And the completion at 19:12 offers:
+      | label | kind     | builtin |
+      | area  | Function |         |
+    And the completion at 19:12 does not offer "hidden"
+
+  Scenario: a line that does not parse is cut at the cursor, also after a call
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        xs = [1, 2]
+        puts(xs.map(->(n) { n }).
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 3:28
+    Then the completion at 3:28 offers:
+      | label | kind   | builtin |
+      | size  | Method |         |
+
+  Scenario: the fields of a struct are offered on a line that does not parse yet
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Point
+        x: Int
+        y: Int
+      end
+
+      def main() -> Void
+        p = Point(x: 1, y: 2)
+        z = p.
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 8:9
+    Then the completion at 8:9 offers:
+      | label | kind  | builtin |
+      | x     | Field |         |
+      | y     | Field |         |
+
+  Scenario: the methods follow the type of a variable that has no other use
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        name = "a"
+        name.
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 3:8
+    Then the completion at 3:8 offers:
+      | label  | kind   | builtin |
+      | upcase | Method |         |
+    And the completion at 3:8 does not offer "size"
+
+  Scenario: an import offers the exports of its module, the std modules and the files and folders of the project
+    Given the language server has loaded the builtin catalog
+    And the files "lib.agc, geo/shapes.agc" contain:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+
+      private
+
+      def hidden() -> Int = 1
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {ar} from "lib"
+      import Queue from "std/qu"
+      import Third from "l"
+      import Fourth from "g"
+      """
+    And the editor asks for completion in "app.agc" at 1:11
+    And the editor asks for completion in "app.agc" at 2:26
+    And the editor asks for completion in "app.agc" at 3:21
+    And the editor asks for completion in "app.agc" at 4:22
+    Then the completion at 1:11 offers:
+      | label | kind     | builtin |
+      | area  | Function |         |
+    And the completion at 1:11 does not offer "hidden"
+    And the completion at 1:11 does not offer "puts"
+    And the completion at 2:26 offers:
+      | label     | kind   | builtin |
+      | std/queue | Module |         |
+    And the completion at 2:26 does not offer "std/http"
+    And the completion at 3:21 offers:
+      | label | kind | builtin |
+      | lib   | File |         |
+    And the completion at 3:21 does not offer "app"
+    And the completion at 4:22 offers:
+      | label | kind   | builtin |
+      | geo/  | Folder |         |
+
+  Scenario: the path of an import names nothing outside the workspace
+    Given the language server has loaded the builtin catalog
+    And the editor offers the workspace as "workspace folders"
+    And the file "geo/lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Down from "g"
+      import Up from "../"
+      import Out from "geo/../../"
+      """
+    And the editor asks for completion in "app.agc" at 1:20
+    And the editor asks for completion in "app.agc" at 2:20
+    And the editor asks for completion in "app.agc" at 3:28
+    Then the completion at 1:20 offers:
+      | label | kind   | builtin |
+      | geo/  | Folder |         |
+    And the completion at 2:20 offers nothing
+    And the completion at 3:28 offers nothing

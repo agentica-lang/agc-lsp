@@ -24,6 +24,8 @@ MANIFEST = "agentica.toml"
 PUBLISH = "textDocument/publishDiagnostics"
 HOVER = "textDocument/hover"
 COMPLETION = "textDocument/completion"
+SIGNATURE_HELP = "textDocument/signatureHelp"
+CODE_ACTION = "textDocument/codeAction"
 DEFINITION = "textDocument/definition"
 SYMBOLS = "textDocument/documentSymbol"
 REFERENCES = "textDocument/references"
@@ -41,7 +43,20 @@ SYMBOL_KINDS = {
   "EnumMember": 22,
   "Variable": 13,
 }
-COMPLETION_KINDS = {"Function": 3, "Module": 9, "Struct": 22, "Enum": 13, "Class": 7}
+COMPLETION_KINDS = {
+  "Function": 3,
+  "Module": 9,
+  "Struct": 22,
+  "Enum": 13,
+  "Class": 7,
+  "Method": 2,
+  "Field": 5,
+  "Variable": 6,
+  "File": 17,
+  "Folder": 19,
+  "EnumMember": 20,
+  "Constant": 21,
+}
 SEVERITIES = {"error": 1, "warning": 2, "information": 3, "hint": 4}
 LOG_TYPES = {"error": 1, "warning": 2, "info": 3, "debug": 4}
 LOG_MESSAGE = "window/logMessage"
@@ -125,6 +140,13 @@ def main() -> Void
     BDD.step("the editor types in {string} without waiting:", &types_in_without_waiting),
     BDD.step("the editor hovers over {string} at {int}:{int}", &hovers),
     BDD.step("the editor asks for completion in {string} at {int}:{int}", &asks_completion),
+    BDD.step("the editor asks for signature help in {string} at {int}:{int}", &asks_signature_help),
+    BDD.step("the signature help at {int}:{int} shows {string} with the parameter {string} active", &signature_shown),
+    BDD.step("the signature help at {int}:{int} shows {string} with no active parameter", &signature_unnamed),
+    BDD.step("there is no signature help at {int}:{int}", &no_signature_help),
+    BDD.step("the editor asks for code actions in {string} at {int}:{int}-{int}:{int}", &asks_code_actions),
+    BDD.step("the code actions at {int}:{int} are:", &code_actions_are),
+    BDD.step("there are no code actions at {int}:{int}", &no_code_actions),
     BDD.step("the editor hovers over {string} at {int}:{int} without waiting", &hovers_without_waiting),
     BDD.step("the editor hovers over {string} at {int}:{int} three times in a row", &hovers_in_a_row),
     BDD.step("the editor hovers over each of {string} at {int}:{int}", &hovers_over_each),
@@ -658,6 +680,25 @@ end
 
 def asks_completion(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return ask(ctx, "completion", COMPLETION, args)
+end
+
+def asks_signature_help(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask(ctx, "signature", SIGNATURE_HELP, args)
+end
+
+def asks_code_actions(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
+    "range": JSON.object({
+      "start": position("#{args[1]}:#{args[2]}"),
+      "end": position("#{args[3]}:#{args[4]}"),
+    }),
+    "context": JSON.object({"diagnostics": JSON.array([])}),
+  })
+  sent = request(ready, CODE_ACTION, params)
+  id = BDD.get(sent, "request #{CODE_ACTION}").unwrap!
+  return wait_for(BDD.set(sent, "actions #{args[1]}:#{args[2]}", id), [id])
 end
 
 def asks_definition(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1334,6 +1375,112 @@ end
 
 def no_hover(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| hover_absent(done, args[0], args[1]) end
+end
+
+def signature_shown(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    case result_at(done, "signature", args[0], args[1])
+      ok(result) ->
+        no_items: List[JSON.Value] = []
+        signatures = JSON.list(at(result, ["signatures"]).unwrap_or(JSON.null())).unwrap_or(no_items)
+        chosen = JSON.int(at(result, ["activeSignature"]).unwrap_or(JSON.null())).unwrap_or(0)
+        active = JSON.int(at(result, ["activeParameter"]).unwrap_or(JSON.null())).unwrap_or(0)
+        label = ""
+        parameter = ""
+        if chosen < signatures.size
+          label = JSON.string(at(signatures[chosen], ["label"]).unwrap_or(JSON.null())).unwrap_or("")
+          parameters = JSON.list(at(signatures[chosen], ["parameters"]).unwrap_or(JSON.null())).unwrap_or(no_items)
+          if active < parameters.size
+            parameter = JSON.string(at(parameters[active], ["label"]).unwrap_or(JSON.null())).unwrap_or("")
+          end
+        end
+
+        found = "#{label} / #{parameter}"
+        wanted = "#{args[2]} / #{args[3]}"
+        BDD.assert(done, found == wanted, "expected #{wanted}; actual #{found} in #{result}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def signature_unnamed(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    case result_at(done, "signature", args[0], args[1])
+      ok(result) ->
+        label = ""
+        signatures = JSON.list(at(result, ["signatures"]).unwrap_or(JSON.null())).unwrap_or(no_signatures())
+        if signatures.size > 0
+          label = JSON.string(at(signatures[0], ["label"]).unwrap_or(JSON.null())).unwrap_or("")
+        end
+
+        active = at(result, ["activeParameter"]).unwrap_or(JSON.from(0))
+        shown = label == args[2] and JSON.null?(active)
+        BDD.assert(done, shown, "expected #{args[2]} with no active parameter; actual #{result}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def no_signatures() -> List[JSON.Value]
+  none_shown: List[JSON.Value] = []
+  return none_shown
+end
+
+def no_signature_help(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    case result_at(done, "signature", args[0], args[1])
+      ok(result) -> BDD.assert(done, result.to_s == "null", "expected no signature help; actual #{result}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def code_actions_are(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  return finished(ctx) do |done|
+    case result_at(done, "actions", args[0], args[1])
+      ok(result) ->
+        no_items: List[JSON.Value] = []
+        shown = JSON.list(result).unwrap_or(no_items).map do |item| described_action(item) end
+        wanted = rows.map do |row| "#{row[0]} | #{row[1]} | #{row[2]}" end
+        BDD.assert(done, shown == wanted, "expected #{wanted}; actual #{shown}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def no_code_actions(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    case result_at(done, "actions", args[0], args[1])
+      ok(result) ->
+        empty = JSON.list(result).ok? and JSON.list(result).unwrap!.size == 0
+        BDD.assert(done, empty, "expected no code actions; actual #{result}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def described_action(item: JSON.Value) -> String
+  title = JSON.string(at(item, ["title"]).unwrap_or(JSON.null())).unwrap_or("")
+  changes = at(item, ["edit", "changes"]).unwrap_or(JSON.null())
+  no_items: List[JSON.Value] = []
+  edits = no_items
+  case JSON.node(changes)
+    JSON.Node.Object(by_file) ->
+      for file_uri in by_file.keys
+        edits = edits.concat(JSON.list(by_file.get(file_uri).unwrap_or(JSON.null())).unwrap_or(no_items))
+      end
+
+    _ -> edits = no_items
+  end
+
+  if edits.size == 0
+    return "#{title} |  | "
+  end
+
+  range = at(edits[0], ["range"]).unwrap_or(JSON.null())
+  text = JSON.string(at(edits[0], ["newText"]).unwrap_or(JSON.null())).unwrap_or("")
+  return "#{title} | #{span_text(range)} | #{text}"
 end
 
 def completion_offers(ctx: BDD.Context, args: List[String]) -> BDD.Context

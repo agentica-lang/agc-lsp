@@ -10,7 +10,7 @@ src/options.agc   command-line options and their defaults
 src/logs.agc      the stderr, file and editor (window/logMessage) destinations of std/logger and their levels
 src/server.agc    lifecycle and dispatch of requests and notifications; the text of each open file and the std/analysis session that holds it, and the table of entries the tasks share; which open files point into which file; the builtin catalog and the workspace folder it keeps
 src/events.agc    the reader, check (start from the entry of a file, refresh, check, publish the new entry), catalog and request (definition, references, hover, symbols, workspace symbols) tasks, and the events they send to the server loop
-src/asks.agc      which definition, references, hover, symbols and workspace symbol queries run (at most 4), wait, are superseded or cancelled, per request id
+src/asks.agc      which definition, references, hover, completion, signature help, code action, formatting, rename, symbols and workspace symbol queries run (at most 4), wait, are superseded or cancelled, per request id
 src/schedule.agc  which checks run (at most 4, one per file), wait or are stale, per file, and the time each is due (changes wait 200 ms)
 src/entries.agc   the ATS table of std/analysis entries (`Analysis.entry`, `Analysis.adopt`) by path of the open file: start a session from one, publish one, drop those of closed files
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
@@ -26,9 +26,14 @@ src/refusals.agc  which errors of a question to std/analysis only say that the p
 src/places.agc    regions of std/analysis to LSP positions and ranges (UTF-16 or code points); the lines of an open or saved file
 src/fields.agc    reads fields of JSON objects with a default
 src/rename.agc    textDocument/prepareRename and textDocument/rename: the declaration and uses of `Analysis.refs_partial` (`Lookup.uses`) as one workspace edit; refused for a builtin, a partial answer (a function with an error), a new name that does not suit the kind, and a public name, or a parameter of a public function, that a file outside the answer writes as a word in code (`Words.mentions?`), which a workspace walk finds
-src/imports.agc   the places where an `import {a, b as c} from "module"` list names a declaration, which `agentica refs` does not report (agentica#1750); rename edits them
+src/imports.agc   the entries of the `import {a, b as c} from "module"` lists of a file that take a name from a module (resolved by path, from `Analysis.outline`), which `agentica refs` does not report (agentica#1750); rename edits them
 src/format.agc    textDocument/formatting: `agentica fmt -` on the text of the buffer, in the folder of the file so that its manifest's `[style]` applies; one whole-document edit, none when the text is formatted already or does not parse (logged at info level)
-src/completion.agc textDocument/completion of builtins: after `Ns.` or at the start of a word
+src/completion.agc the builtins that match the word before the cursor: after `Ns.` or at the start of a word; the item shape the other completions use
+src/complete.agc  textDocument/completion: the builtins and the names of the program (declarations, imports, parameters and assigned variables of the function, methods by the type of the receiver, struct fields, enum variants, exports of a module, `std/` modules and files in an import path), from `Analysis.outline` and `Analysis.type_at_partial`
+src/signature.agc textDocument/signatureHelp: the call the cursor is in (`Typing.frames`), its function from `Analysis.type_at_partial` (a `definition` signature or a builtin `help`) or else the catalog; the method form of a builtin leaves out the receiver
+src/probe.agc     asks `Analysis` about a buffer that does not parse: the line of the cursor is cut and its open brackets closed (`Typing.repaired`), and the question goes to that text
+src/typing.agc    the brackets that are open at an index of a line (with their commas) and the closers that repair a line
+src/actions.agc   textDocument/codeAction: `agentica --json lint` on the buffer in a temporary file, and a quick fix for the suggestions with a plain replacement (`LINT-BOOL-COMPARE`, `LINT-TO-S-CONCAT`)
 src/check.agc     the problems of a file (the first of `Analysis.check`, then those of the other functions that fail, from a partial `Analysis.refs_partial` at a declaration) as LSP diagnostics (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
 agentica.toml     `agentica` (the oldest Agentica the server needs) and `[style]`: the layout rules of every .agc file (see Rules)
@@ -89,5 +94,9 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
   text written wins; each URI is still checked and published on its own, and the text stays until the last is closed.
 - Queries answer for the text the buffer had when they arrived, even if it changed or was closed meanwhile; a refusal
   of the analysis (an error in the program, no expression there) answers `null` and logs at debug level only.
+- `STD_MODULES` in `src/complete.agc` is a hard-coded copy of the public modules of `stdlib/` (without `prelude/`,
+  `internal/` and `test/`): on each Agentica bump, compare it with `stdlib/MODULES` of that release.
+- Completion of an import path lists only inside the workspace folder (the folder of the file when the editor gave
+  none) and at most 200 entries; `Uri.collapsed` removes the `..` before the check.
 - The compiled server is moved into the cache with `Path.rename` (atomic, never replaces a file), so two starts may
   both compile and no lock is needed. `KEY.agcb.used` stamps the use because agentica cannot set a modification time.

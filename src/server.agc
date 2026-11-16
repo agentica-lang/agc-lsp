@@ -1,9 +1,9 @@
 ## Runs the lifecycle of the server and dispatches its requests and notifications.
 
+import Actions from "actions"
 import Asks from "asks"
 import Catalog from "catalog"
 import Check from "check"
-import Completion from "completion"
 import Cursor from "cursor"
 import {UTF16, UTF32} from "columns"
 import Entries from "entries"
@@ -313,9 +313,9 @@ def request(state: State, id: JSON.Value, method: String, params: JSON.Value) ->
     "textDocument/prepareRename" -> return renaming(state, id, method, params)
     "textDocument/rename" -> return renaming(state, id, method, params)
     "workspace/symbol" -> return workspace_symbols(state, id, params)
-    "textDocument/completion" ->
-      Rpc.respond(id, completion(state, params))
-      return state
+    "textDocument/completion" -> return completing(state, id, params)
+    "textDocument/signatureHelp" -> return signing(state, id, params)
+    "textDocument/codeAction" -> return acting(state, id, params)
     "shutdown" ->
       Logger.info("shutting down")
       released = dropped_answer(state, Asks.abandon(state.asks))
@@ -354,6 +354,8 @@ def initialize(state: State, id: JSON.Value, params: JSON.Value) -> State
     "documentFormattingProvider": JSON.from(true),
     "renameProvider": JSON.object({"prepareProvider": JSON.from(true)}),
     "completionProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from(".")])}),
+    "signatureHelpProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from("("), JSON.from(",")])}),
+    "codeActionProvider": JSON.object({"codeActionKinds": JSON.array([JSON.from("quickfix")])}),
   })
   Rpc.respond(id, JSON.object({
     "capabilities": capabilities,
@@ -447,6 +449,7 @@ def renaming(state: State, id: JSON.Value, method: String, params: JSON.Value) -
         path: Uri.path_of(uri).unwrap_or(""),
         documents: state.documents,
         folder: state.folder,
+        root: state.root,
         cursor: cursor,
         book: state.catalog,
       )
@@ -503,12 +506,54 @@ def workspace_symbols(state: State, id: JSON.Value, params: JSON.Value) -> State
   return dropped_answer(state, Asks.submit(state.asks, job))
 end
 
-def completion(state: State, params: JSON.Value) -> JSON.Value
+def completing(state: State, id: JSON.Value, params: JSON.Value) -> State
   case Cursor.locate(state.documents, params, state.encoding)
-    ok(cursor) -> return Completion.answer(state.catalog, cursor)
+    ok(cursor) -> return ask(state, id, "textDocument/completion", params, cursor)
     error(_) ->
       no_items: List[JSON.Value] = []
-      return JSON.array(no_items)
+      Rpc.respond(id, JSON.array(no_items))
+      return state
+  end
+end
+
+def signing(state: State, id: JSON.Value, params: JSON.Value) -> State
+  case Cursor.locate(state.documents, params, state.encoding)
+    ok(cursor) -> return ask(state, id, "textDocument/signatureHelp", params, cursor)
+    error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def acting(state: State, id: JSON.Value, params: JSON.Value) -> State
+  uri = document_uri(params)
+  path = agentica_path(uri)
+  case state.documents.get(path)
+    some(text) ->
+      context = Fields.value(params, "context")
+      kinds = Fields.items(context, "only").map do |kind| JSON.string(kind).unwrap_or("") end
+      request = Actions.Request(
+        agentica: state.options.agentica,
+        uri: uri,
+        name: path.split("/").last,
+        text: text,
+        encoding: state.encoding,
+        range: Fields.value(params, "range"),
+        only: kinds,
+      )
+      job = Events.QueryJob(
+        events: state.events,
+        entries: state.entries,
+        id: id,
+        method: "textDocument/codeAction",
+        key: path,
+        question: Events.Question.Actions(request),
+      )
+      return dropped_answer(state, Asks.submit(state.asks, job))
+    none ->
+      no_actions: List[JSON.Value] = []
+      Rpc.respond(id, JSON.array(no_actions))
+      return state
   end
 end
 
@@ -522,6 +567,7 @@ def ask(state: State, id: JSON.Value, method: String, params: JSON.Value, cursor
         path: path,
         documents: state.documents,
         folder: state.folder,
+        root: state.root,
         cursor: cursor,
         book: state.catalog,
       )
@@ -543,6 +589,10 @@ end
 def question_of(method: String, request: Lookup.Request, params: JSON.Value) -> Events.Question
   if method == "textDocument/references"
     return Events.Question.References(request, with_declaration?(params))
+  elsif method == "textDocument/completion"
+    return Events.Question.Complete(request)
+  elsif method == "textDocument/signatureHelp"
+    return Events.Question.Signature(request)
   end
 
   return Events.Question.Document(request)

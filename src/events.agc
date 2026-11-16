@@ -1,12 +1,15 @@
 ## Defines the events of the server loop and the tasks that send them.
 
+import Actions from "actions"
 import Catalog from "catalog"
 import Check from "check"
+import Complete from "complete"
 import Entries from "entries"
 import Format from "format"
 import Lookup from "lookup"
 import Rename from "rename"
 import Rpc from "rpc"
+import Signature from "signature"
 import Analysis from "std/analysis"
 import Logger from "std/logger"
 import Symbols from "symbols"
@@ -40,7 +43,7 @@ enum Event
   Input(Rpc.Incoming)
   ## Is a finished check.
   Checked(Report)
-  ## Is the answer to a definition, references, hover, document symbol or workspace symbol request.
+  ## Is the answer to a request that needed a query.
   Answered(Answer)
   ## Is the loaded catalog, or the reason it failed.
   Cataloged(Result[Catalog.Book])
@@ -78,6 +81,12 @@ enum Question
   PrepareRename(Rename.Request)
   ## Is the rename of a name.
   Rename(Rename.Request)
+  ## Is the completion at a position.
+  Complete(Lookup.Request)
+  ## Is the help for the call that a position is in.
+  Signature(Lookup.Request)
+  ## Are the quick fixes of the suggestions in a range.
+  Actions(Actions.Request)
 end
 
 ## Holds what the task of a definition, references, hover, document symbol or workspace symbol request needs.
@@ -173,6 +182,11 @@ def answer_query(job: QueryJob) -> Result[Void]
     Question.Format(request) -> return settle(job.events, job.id, "formatting", Format.answer(request))
     Question.PrepareRename(request) -> return refuse(job.events, job.id, Rename.prepare(started_in(job, request)))
     Question.Rename(request) -> return refuse(job.events, job.id, Rename.rename(started_in(job, request)))
+    Question.Complete(request) ->
+      return settle(job.events, job.id, "completion", Complete.answer(started_from(job, request)))
+    Question.Signature(request) ->
+      return settle(job.events, job.id, "signature help", Signature.answer(started_from(job, request)))
+    Question.Actions(request) -> return settle(job.events, job.id, "code actions", Actions.answer(request))
   end
 end
 
