@@ -626,6 +626,27 @@ Feature: Hover on builtins
     Then the hover at 6:9 shows the type "String"
     And the hover at 6:9 is fenced with 4 backticks
 
+  Scenario: true, false and nil need no query
+    Given the language server has started with the arguments "--log-level debug"
+    And the file "app.agc" contains:
+      """
+      def main() -> Void
+        a = true
+        b = false
+        c = nil
+        puts("hi")
+      end
+
+      """
+    When the editor opens "app.agc" without waiting
+    And the editor hovers over "app.agc" at 2:9
+    And the editor hovers over "app.agc" at 3:9
+    And the editor hovers over "app.agc" at 4:11
+    Then there is no hover at 2:9
+    And there is no hover at 3:9
+    And there is no hover at 4:11
+    And the server never logs "the query was refused"
+
   Scenario: a keyword, a comment and a blank need no query
     Given the language server has started with the arguments "--log-level debug"
     And the file "app.agc" contains:

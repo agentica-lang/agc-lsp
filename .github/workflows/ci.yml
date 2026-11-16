@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  AGENTICA_VERSION: "0.31.2"
+  AGENTICA_VERSION: "0.33.0"
 
 jobs:
   test:
@@ -21,7 +21,7 @@ jobs:
         uses: agentica-lang/setup-agentica@v1
         with:
           version: ${{ env.AGENTICA_VERSION }}
-          sha256: 8bb00ce8ae0dd23cfb3557a8b24f39688a6569168c8b7fd96f590e2ea9d2b1df # linux-x86_64
+          sha256: 9d02759b0903ddae9db624e3cb431ede7fe5d836acea0d4ff005f60e7116b350 # linux-x86_64
 
       - run: agentica --version
 
@@ -39,7 +39,7 @@ jobs:
         uses: agentica-lang/setup-agentica@v1
         with:
           version: ${{ env.AGENTICA_VERSION }}
-          sha256: b759e4ef03fb493c57bd72a7ee48e2ef0467b9950da828a647425bf67499bbd5 # windows-x86_64
+          sha256: 3b11bdc33a5fe88daca5b8041a936dcc405bae74328172d209ff12a55367d6be # windows-x86_64
 
       - run: agentica --version
 
