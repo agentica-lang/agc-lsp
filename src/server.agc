@@ -9,6 +9,7 @@ import {UTF16, UTF32} from "columns"
 import Entries from "entries"
 import Events from "events"
 import Fields from "fields"
+import Format from "format"
 import Hover from "hover"
 import Logs from "logs"
 import Lookup from "lookup"
@@ -300,6 +301,7 @@ def request(state: State, id: JSON.Value, method: String, params: JSON.Value) ->
     "textDocument/definition" -> return definition(state, id, params)
     "textDocument/documentSymbol" -> return symbols(state, id, params)
     "textDocument/references" -> return references(state, id, params)
+    "textDocument/formatting" -> return formatting(state, id, params)
     "workspace/symbol" -> return workspace_symbols(state, id, params)
     "textDocument/completion" ->
       Rpc.respond(id, completion(state, params))
@@ -339,6 +341,7 @@ def initialize(state: State, id: JSON.Value, params: JSON.Value) -> State
     "documentSymbolProvider": JSON.from(true),
     "referencesProvider": JSON.from(true),
     "workspaceSymbolProvider": JSON.from(true),
+    "documentFormattingProvider": JSON.from(true),
     "completionProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from(".")])}),
   })
   Rpc.respond(id, JSON.object({
@@ -397,6 +400,26 @@ def references(state: State, id: JSON.Value, params: JSON.Value) -> State
       Rpc.respond(id, JSON.null())
       return state
     error(_) ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def formatting(state: State, id: JSON.Value, params: JSON.Value) -> State
+  path = agentica_path(document_uri(params))
+  case state.documents.get(path)
+    some(text) ->
+      request = Format.Request(agentica: state.options.agentica, path: path, text: text, encoding: state.encoding)
+      job = Events.QueryJob(
+        events: state.events,
+        entries: state.entries,
+        id: id,
+        method: "textDocument/formatting",
+        key: path,
+        question: Events.Question.Format(request),
+      )
+      return dropped_answer(state, Asks.submit(state.asks, job))
+    none ->
       Rpc.respond(id, JSON.null())
       return state
   end

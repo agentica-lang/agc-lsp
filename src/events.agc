@@ -2,6 +2,7 @@
 
 import Catalog from "catalog"
 import Entries from "entries"
+import Format from "format"
 import Lookup from "lookup"
 import Rpc from "rpc"
 import Analysis from "std/analysis"
@@ -65,6 +66,8 @@ enum Question
   References(Lookup.Request, Bool)
   ## Is a search for a name in the files of the workspace.
   Workspace(Workspace.Request)
+  ## Is the formatting of a document.
+  Format(Format.Request)
 end
 
 ## Holds what the task of a definition, references, hover, document symbol or workspace symbol request needs.
@@ -155,6 +158,7 @@ def answer_query(job: QueryJob) -> Result[Void]
       return settle(job.events, job.id, "references", Lookup.references(started_from(job, request), with_declaration))
     Question.Workspace(request) ->
       return settle(job.events, job.id, "workspace symbols", Workspace.answer(request))
+    Question.Format(request) -> return settle(job.events, job.id, "formatting", Format.answer(request))
   end
 end
 

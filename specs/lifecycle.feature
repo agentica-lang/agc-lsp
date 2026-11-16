@@ -20,6 +20,7 @@ Feature: Server lifecycle
           "documentSymbolProvider": true,
           "referencesProvider": true,
           "workspaceSymbolProvider": true,
+          "documentFormattingProvider": true,
           "completionProvider": {"triggerCharacters": ["."]}
         },
         "serverInfo": {"name": "agc-lsp"}

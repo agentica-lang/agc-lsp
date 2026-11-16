@@ -24,6 +24,7 @@ COMPLETION = "textDocument/completion"
 DEFINITION = "textDocument/definition"
 SYMBOLS = "textDocument/documentSymbol"
 REFERENCES = "textDocument/references"
+FORMATTING = "textDocument/formatting"
 WORKSPACE_SYMBOLS = "workspace/symbol"
 SYMBOL_KINDS = {
   "Function": 12,
@@ -138,6 +139,12 @@ def main() -> Void
       "the editor asks for the references in {string} at {int}:{int} three times in a row",
       &asks_references_in_a_row,
     ),
+    BDD.step("the editor formats {string}", &formats),
+    BDD.step("the editor formats {string} and cancels the request", &formats_and_cancels),
+    BDD.step("the formatting of {string} replaces the document up to {int}:{int} with:", &formatting_replaces),
+    BDD.step("the formatting of {string} has no edits", &formatting_has_no_edits),
+    BDD.step("the formatting of {string} is answered with null", &formatting_is_null),
+    BDD.step("the formatting of {string} is answered as cancelled", &formatting_is_cancelled),
     BDD.step("the editor searches the workspace for {string}", &searches_workspace),
     BDD.step("the editor searches the workspace for {string} three times in a row", &searches_workspace_in_a_row),
     BDD.step("the editor closes {string}", &closes),
@@ -683,6 +690,28 @@ def put_references(ctx: BDD.Context, args: List[String], declaration: Bool) -> B
   sent = request(ready, REFERENCES, params)
   id = BDD.get(sent, "request #{REFERENCES}").unwrap!
   return BDD.set(sent, "references #{args[1]}:#{args[2]}", id)
+end
+
+def formats(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = put_formatting(ctx, args[0])
+  return wait_for(sent, [BDD.get(sent, "format #{args[0]}").unwrap!])
+end
+
+def formats_and_cancels(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = put_formatting(ctx, args[0])
+  id = BDD.get(sent, "format #{args[0]}").unwrap!
+  cancelled = notify(sent, "$/cancelRequest", JSON.object({"id": id}))
+  return wait_for(cancelled, [id])
+end
+
+def put_formatting(ctx: BDD.Context, name: String) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, name))}),
+    "options": JSON.object({"tabSize": JSON.from(2), "insertSpaces": JSON.from(true)}),
+  })
+  sent = request(ready, FORMATTING, params)
+  return BDD.set(sent, "format #{name}", BDD.get(sent, "request #{FORMATTING}").unwrap!)
 end
 
 def searches_workspace(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1402,6 +1431,66 @@ end
 
 def search_is_null(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| workspace_symbols_null(done, args[0]) end
+end
+
+def formatting_replaces(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  wanted = BDD.doc_string(ctx)
+  return finished(ctx) do |done| formatting_replaced(done, args[0], args[1].to_i!, args[2].to_i!, wanted) end
+end
+
+def formatting_has_no_edits(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatting_empty(done, args[0]) end
+end
+
+def formatting_is_null(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatting_null(done, args[0]) end
+end
+
+def formatting_null(ctx: BDD.Context, name: String) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) -> return BDD.assert(ctx, result.to_s == "null", "expected null for #{name}; actual #{result}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def formatting_is_cancelled(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    id_failed(done, JSON.int(BDD.get(done, "format #{args[0]}").unwrap!).unwrap!, "request cancelled")
+  end
+end
+
+def formatting_reply(ctx: BDD.Context, name: String) -> Result[JSON.Value]
+  id = try JSON.int(try BDD.get(ctx, "format #{name}"))
+  return reply(ctx, id, "result")
+end
+
+def formatting_empty(ctx: BDD.Context, name: String) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) -> return BDD.assert(ctx, result.to_s == "[]", "expected no edits for #{name}; actual #{result}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def formatting_replaced(ctx: BDD.Context, name: String, line: Int, character: Int, wanted: String) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) ->
+      no_items: List[JSON.Value] = []
+      edits = JSON.list(result).unwrap_or(no_items)
+      if edits.size != 1
+        return BDD.assert(ctx, false, "expected one edit for #{name}; actual #{result}")
+      end
+
+      expected = JSON.object({
+        "start": JSON.object({"line": JSON.from(0), "character": JSON.from(0)}),
+        "end": JSON.object({"line": JSON.from(line), "character": JSON.from(character)}),
+      })
+      actual = canonical(JSON.encode(at(edits[0], ["range"]).unwrap_or(JSON.null())))
+      same_range = actual == canonical(JSON.encode(expected))
+      text = JSON.string(at(edits[0], ["newText"]).unwrap_or(JSON.null())).unwrap_or("")
+      ranged = BDD.assert(ctx, same_range, "expected the whole document #{JSON.encode(expected)}; actual #{actual}")
+      return BDD.assert(ranged, text == wanted, "expected the text #{wanted.inspect}; actual #{text.inspect}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
 end
 
 def references_listed(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context

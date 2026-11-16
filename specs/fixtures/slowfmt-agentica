@@ -1,0 +1,6 @@
+#!/bin/sh
+# An agentica whose `fmt` takes a long time, for the cancel of a formatting.
+if [ "$1" = fmt ]; then
+  exec sleep 30
+fi
+exec agentica "$@"
