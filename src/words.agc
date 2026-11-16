@@ -109,9 +109,48 @@ def name_at?(chars: List[String], index: Int) -> Bool
   end
 end
 
-## Returns true when the index of the line is neither in a string nor in a comment.
+## Returns true when the text holds the name as a whole word in code, not inside a longer name, a comment or a string.
+def mentions?(text: String, name: String) -> Bool
+  for line in text.split("\n")
+    if line.include?(name)
+      chars = line.split("")
+      for index in occurrences(line, name)
+        if code?(chars, index)
+          return true
+        end
+      end
+    end
+  end
+
+  return false
+end
+
+## Returns the character indexes at which the name is a whole word of the line, not inside a longer name.
+def occurrences(line: String, name: String) -> List[Int]
+  found: List[Int] = []
+  if !line.include?(name)
+    return found
+  end
+
+  parts = " #{line} ".split(name)
+  before = 0
+  for index in 1...parts.size
+    before += parts[index - 1].length
+    if !joined?(parts[index - 1], parts[index])
+      found = found.push(before - 1)
+    end
+
+    before += name.length
+  end
+
+  return found
+end
+
+## Returns true when the index of the line is neither in a string nor in a comment. The code inside the `#{}` of a
+## string is code.
 def code?(chars: List[String], upto: Int) -> Bool
   in_string = false
+  depths: List[Int] = []
   index = 0
   while index < upto and index < chars.size
     char = chars[index]
@@ -119,10 +158,21 @@ def code?(chars: List[String], upto: Int) -> Bool
       index += 1
     elsif in_string and char == "\""
       in_string = false
+    elsif in_string and char == "#" and index + 1 < chars.size and chars[index + 1] == "{"
+      depths = depths.push(0)
+      in_string = false
+      index += 1
     elsif !in_string and char == "\""
       in_string = true
     elsif !in_string and char == "#"
       return false
+    elsif !in_string and char == "{" and depths.size > 0
+      depths = deeper(depths, 1)
+    elsif !in_string and char == "}" and depths.size > 0 and depths[depths.size - 1] == 0
+      depths = depths.take(depths.size - 1)
+      in_string = true
+    elsif !in_string and char == "}" and depths.size > 0
+      depths = deeper(depths, -1)
     end
 
     index += 1
@@ -152,6 +202,20 @@ KEYWORDS = Set.new([
   "from", "type", "do", "in", "next", "break", "try", "and", "or", "not",
   "true", "false", "nil", "extern",
 ])
+
+def deeper(depths: List[Int], change: Int) -> List[Int]
+  last = depths.size - 1
+  return depths.take(last).push(depths[last] + change)
+end
+
+def joined?(before: String, after: String) -> Bool
+  return (
+    before == "" or
+    after == "" or
+    word_char?(before.at(before.length - 1)) or
+    word_char?(after.at(0))
+  )
+end
 
 def word_char?(char: String) -> Bool
   code = String.code(char)

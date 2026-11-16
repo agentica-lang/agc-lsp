@@ -1,8 +1,11 @@
 ## Defines the events of the server loop and the tasks that send them.
 
 import Catalog from "catalog"
+import Check from "check"
 import Entries from "entries"
+import Format from "format"
 import Lookup from "lookup"
+import Rename from "rename"
 import Rpc from "rpc"
 import Analysis from "std/analysis"
 import Logger from "std/logger"
@@ -17,6 +20,8 @@ struct Report
   generation: Int
   ## Is the answer of the check.
   checked: Analysis.Checked
+  ## Lists the problems to show: the first one of the check and those of the other functions that fail.
+  problems: List[Analysis.Diagnostic]
 end
 
 ## Holds the answer to a request that needed a query, for the request with that id.
@@ -25,6 +30,8 @@ struct Answer
   id: JSON.Value
   ## Is the result to send, null when there is nothing to show.
   result: JSON.Value
+  ## Is the reason that the request failed, or an empty text when it did not.
+  failure: String = ""
 end
 
 ## Names what the server loop receives: input, a finished check, an answer, the catalog or a log line.
@@ -65,6 +72,12 @@ enum Question
   References(Lookup.Request, Bool)
   ## Is a search for a name in the files of the workspace.
   Workspace(Workspace.Request)
+  ## Is the formatting of a document.
+  Format(Format.Request)
+  ## Is the question of where a name can be renamed, with the range it covers.
+  PrepareRename(Rename.Request)
+  ## Is the rename of a name.
+  Rename(Rename.Request)
 end
 
 ## Holds what the task of a definition, references, hover, document symbol or workspace symbol request needs.
@@ -115,6 +128,7 @@ def check(job: Job) -> Result[Void]
 
   refreshed = Analysis.refresh(Entries.restored(job.entries, job.session, job.path), job.path)
   checked = Analysis.check(refreshed, job.path)
+  problems = Check.problems(refreshed, job.path, checked)
   Entries.publish(job.entries, refreshed, job.path)
   if Logger.enabled?(Logger.Level.Debug)
     fields = {
@@ -130,6 +144,7 @@ def check(job: Job) -> Result[Void]
     uri: job.uri,
     generation: job.generation,
     checked: checked,
+    problems: problems,
   )
   deliver(job.events, Event.Checked(report))
   return ok()
@@ -155,6 +170,9 @@ def answer_query(job: QueryJob) -> Result[Void]
       return settle(job.events, job.id, "references", Lookup.references(started_from(job, request), with_declaration))
     Question.Workspace(request) ->
       return settle(job.events, job.id, "workspace symbols", Workspace.answer(request))
+    Question.Format(request) -> return settle(job.events, job.id, "formatting", Format.answer(request))
+    Question.PrepareRename(request) -> return refuse(job.events, job.id, Rename.prepare(started_in(job, request)))
+    Question.Rename(request) -> return refuse(job.events, job.id, Rename.rename(started_in(job, request)))
   end
 end
 
@@ -177,6 +195,10 @@ def started_from(job: QueryJob, request: Lookup.Request) -> Lookup.Request
   return request.with(session: Entries.restored(job.entries, request.session, request.path))
 end
 
+def started_in(job: QueryJob, request: Rename.Request) -> Rename.Request
+  return request.with(lookup: started_from(job, request.lookup))
+end
+
 def settle(events: Channel[Event], id: JSON.Value, what: String, outcome: Result[JSON.Value]) -> Result[Void]
   result = JSON.null()
   case outcome
@@ -185,6 +207,16 @@ def settle(events: Channel[Event], id: JSON.Value, what: String, outcome: Result
   end
 
   deliver(events, Event.Answered(Answer(id: id, result: result)))
+  return ok()
+end
+
+# A rename that cannot be done is an error for the editor to show, not a null.
+def refuse(events: Channel[Event], id: JSON.Value, outcome: Result[JSON.Value]) -> Result[Void]
+  case outcome
+    ok(found) -> deliver(events, Event.Answered(Answer(id: id, result: found)))
+    error(failure) -> deliver(events, Event.Answered(Answer(id: id, result: JSON.null(), failure: failure.message)))
+  end
+
   return ok()
 end
 

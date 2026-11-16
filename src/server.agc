@@ -9,10 +9,12 @@ import {UTF16, UTF32} from "columns"
 import Entries from "entries"
 import Events from "events"
 import Fields from "fields"
+import Format from "format"
 import Hover from "hover"
 import Logs from "logs"
 import Lookup from "lookup"
 import Options from "options"
+import Rename from "rename"
 import Rpc from "rpc"
 import Schedule from "schedule"
 import Analysis from "std/analysis"
@@ -119,6 +121,8 @@ INVALID_REQUEST = -32_600
 
 REQUEST_CANCELLED = -32_800
 
+REQUEST_FAILED = -32_803
+
 METHOD_NOT_FOUND = -32_601
 
 SERVER_NOT_INITIALIZED = -32_002
@@ -200,7 +204,12 @@ def dispatch(state: State, event: Events.Event) -> Next
     Events.Event.Answered(answer) ->
       case Asks.settle(state.asks, answer.id)
         ok(plan) ->
-          Rpc.respond(answer.id, answer.result)
+          if answer.failure == ""
+            Rpc.respond(answer.id, answer.result)
+          else
+            Rpc.fail(answer.id, REQUEST_FAILED, answer.failure)
+          end
+
           return Next.Continue(state.with(asks: plan))
         error(_) -> return Next.Continue(state)
       end
@@ -247,7 +256,7 @@ end
 def published(state: State, report: Events.Report) -> State
   path = Uri.path_of(report.uri).unwrap_or("")
   placing = Check.Placing(path: path, documents: state.documents, folder: state.folder, encoding: state.encoding)
-  found = Check.diagnostics(report.checked, placing)
+  found = Check.diagnostics(report.problems, placing)
   publish(report.uri, found)
   return state.with(pointing: point(state.pointing, report.uri, Check.points_into(found)))
 end
@@ -300,6 +309,9 @@ def request(state: State, id: JSON.Value, method: String, params: JSON.Value) ->
     "textDocument/definition" -> return definition(state, id, params)
     "textDocument/documentSymbol" -> return symbols(state, id, params)
     "textDocument/references" -> return references(state, id, params)
+    "textDocument/formatting" -> return formatting(state, id, params)
+    "textDocument/prepareRename" -> return renaming(state, id, method, params)
+    "textDocument/rename" -> return renaming(state, id, method, params)
     "workspace/symbol" -> return workspace_symbols(state, id, params)
     "textDocument/completion" ->
       Rpc.respond(id, completion(state, params))
@@ -339,6 +351,8 @@ def initialize(state: State, id: JSON.Value, params: JSON.Value) -> State
     "documentSymbolProvider": JSON.from(true),
     "referencesProvider": JSON.from(true),
     "workspaceSymbolProvider": JSON.from(true),
+    "documentFormattingProvider": JSON.from(true),
+    "renameProvider": JSON.object({"prepareProvider": JSON.from(true)}),
     "completionProvider": JSON.object({"triggerCharacters": JSON.array([JSON.from(".")])}),
   })
   Rpc.respond(id, JSON.object({
@@ -398,6 +412,66 @@ def references(state: State, id: JSON.Value, params: JSON.Value) -> State
       return state
     error(_) ->
       Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def formatting(state: State, id: JSON.Value, params: JSON.Value) -> State
+  path = agentica_path(document_uri(params))
+  case state.documents.get(path)
+    some(text) ->
+      request = Format.Request(agentica: state.options.agentica, path: path, text: text, encoding: state.encoding)
+      job = Events.QueryJob(
+        events: state.events,
+        entries: state.entries,
+        id: id,
+        method: "textDocument/formatting",
+        key: path,
+        question: Events.Question.Format(request),
+      )
+      return dropped_answer(state, Asks.submit(state.asks, job))
+    none ->
+      Rpc.respond(id, JSON.null())
+      return state
+  end
+end
+
+def renaming(state: State, id: JSON.Value, method: String, params: JSON.Value) -> State
+  prepare = method == "textDocument/prepareRename"
+  case Cursor.locate(state.documents, params, state.encoding)
+    ok(cursor) if Words.name_at?(cursor.chars, cursor.index) ->
+      uri = document_uri(params)
+      lookup = Lookup.Request(
+        session: state.session,
+        uri: uri,
+        path: Uri.path_of(uri).unwrap_or(""),
+        documents: state.documents,
+        folder: state.folder,
+        cursor: cursor,
+        book: state.catalog,
+      )
+      request = Rename.Request(lookup: lookup, root: state.root, name: Fields.text(params, "newName"))
+      question = Events.Question.Rename(request)
+      if prepare
+        question = Events.Question.PrepareRename(request)
+      end
+
+      job = Events.QueryJob(
+        events: state.events,
+        entries: state.entries,
+        id: id,
+        method: method,
+        key: lookup.path,
+        question: question,
+      )
+      return dropped_answer(state, Asks.submit(state.asks, job))
+    _ ->
+      if prepare
+        Rpc.respond(id, JSON.null())
+      else
+        Rpc.fail(id, REQUEST_FAILED, "there is no name to rename here")
+      end
+
       return state
   end
 end

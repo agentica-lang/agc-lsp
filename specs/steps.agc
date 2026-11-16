@@ -12,6 +12,9 @@ COMPILED_SUFFIX = ".agcb"
 TIMEOUT_MS = 20_000
 HEAVY_TIMEOUT_MS = 90_000
 LOCALHOST = "localhost"
+PIECE_CHARS = 250_000
+READ_BYTES = 1_000_000
+FORMATTER_STOP_MS = 5000
 WINDOWS_ROOT = "C:\\proj"
 HEX_DIGITS = "0123456789ABCDEF"
 ASCII_LIMIT = 128
@@ -24,6 +27,9 @@ COMPLETION = "textDocument/completion"
 DEFINITION = "textDocument/definition"
 SYMBOLS = "textDocument/documentSymbol"
 REFERENCES = "textDocument/references"
+FORMATTING = "textDocument/formatting"
+PREPARE_RENAME = "textDocument/prepareRename"
+RENAME = "textDocument/rename"
 WORKSPACE_SYMBOLS = "workspace/symbol"
 SYMBOL_KINDS = {
   "Function": 12,
@@ -138,6 +144,23 @@ def main() -> Void
       "the editor asks for the references in {string} at {int}:{int} three times in a row",
       &asks_references_in_a_row,
     ),
+    BDD.step("the editor prepares the rename in {string} at {int}:{int}", &prepares_rename),
+    BDD.step("the editor renames in {string} at {int}:{int} to {string}", &renames),
+    BDD.step("the prepared rename at {int}:{int} covers {int}:{int}-{int}:{int} named {string}", &prepared_rename),
+    BDD.step("there is no prepared rename at {int}:{int}", &no_prepared_rename),
+    BDD.step("the rename at {int}:{int} edits:", &rename_edits),
+    BDD.step("the rename at {int}:{int} is refused with {string}", &rename_refused),
+    BDD.step("the prepared rename at {int}:{int} is refused with {string}", &prepared_rename_refused),
+    BDD.step("the editor formats {string}", &formats),
+    BDD.step("the editor formats {string} without waiting", &formats_without_waiting),
+    BDD.step("the editor cancels the formatting of {string}", &cancels_formatting),
+    BDD.step("the editor opens {string} with an unformatted buffer of {int} KB", &opens_with_unformatted_buffer),
+    BDD.step("the formatting of {string} replaces the document with a text of {int} lines", &formatting_lines),
+    BDD.step("the formatter of {string} has stopped", &formatter_stopped),
+    BDD.step("the formatting of {string} replaces the document up to {int}:{int} with:", &formatting_replaces),
+    BDD.step("the formatting of {string} has no edits", &formatting_has_no_edits),
+    BDD.step("the formatting of {string} is answered with null", &formatting_is_null),
+    BDD.step("the formatting of {string} is answered as cancelled", &formatting_is_cancelled),
     BDD.step("the editor searches the workspace for {string}", &searches_workspace),
     BDD.step("the editor searches the workspace for {string} three times in a row", &searches_workspace_in_a_row),
     BDD.step("the editor closes {string}", &closes),
@@ -683,6 +706,113 @@ def put_references(ctx: BDD.Context, args: List[String], declaration: Bool) -> B
   sent = request(ready, REFERENCES, params)
   id = BDD.get(sent, "request #{REFERENCES}").unwrap!
   return BDD.set(sent, "references #{args[1]}:#{args[2]}", id)
+end
+
+def prepares_rename(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return ask(ctx, "prepare", PREPARE_RENAME, args)
+end
+
+def renames(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, args[0]))}),
+    "position": position("#{args[1]}:#{args[2]}"),
+    "newName": JSON.from(args[3]),
+  })
+  sent = request(ready, RENAME, params)
+  id = BDD.get(sent, "request #{RENAME}").unwrap!
+  return wait_for(BDD.set(sent, "rename #{args[1]}:#{args[2]}", id), [id])
+end
+
+def formats(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  sent = put_formatting(ctx, args[0])
+  return wait_for(sent, [BDD.get(sent, "format #{args[0]}").unwrap!])
+end
+
+def formats_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return put_formatting(ctx, args[0])
+end
+
+def cancels_formatting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  id = BDD.get(ctx, "format #{args[0]}").unwrap!
+  cancelled = wait_for(notify(ctx, "$/cancelRequest", JSON.object({"id": id})), [id])
+  return add(cancelled, JSON.object({"kind": JSON.from("formatter pid")}))
+end
+
+def opens_with_unformatted_buffer(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  lines = (0...args[1].to_i! * LINES_PER_KB).to_a.map do |_| COMMENT_LINE end
+  text = "def main()->Void\n puts(1)\nend\n\n#{lines.join("\n")}\n"
+  return awaiting(open_text(with_folder(ctx), args[0], "", text), args[0])
+end
+
+def formatting_lines(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatting_counted(done, args[0], args[1].to_i!) end
+end
+
+def formatting_counted(ctx: BDD.Context, name: String, count: Int) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) ->
+      no_items: List[JSON.Value] = []
+      edits = JSON.list(result).unwrap_or(no_items)
+      if edits.size != 1
+        return BDD.assert(ctx, false, "expected one edit for #{name}; actual #{edits.size}")
+      end
+
+      text = JSON.string(at(edits[0], ["newText"]).unwrap_or(JSON.null())).unwrap_or("")
+      actual = text.split("\n").size
+      return BDD.assert(ctx, actual == count, "expected #{count} lines; actual #{actual}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def formatter_stopped(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatter_gone(done) end
+end
+
+def formatter_pid(dir: String) -> Result[Heard]
+  pid = (try File.read_text(try Path.join([dir, "formatter.pid"]), TIMEOUT_MS)).strip
+  gone = false
+  deadline = Time.now_ms() + FORMATTER_STOP_MS
+  while !gone and Time.now_ms() < deadline
+    gone = !process_alive?(pid)
+    if !gone
+      Task.sleep(100)
+    end
+  end
+
+  noted = JSON.object({"formatter_pid": JSON.from(pid), "gone": JSON.from(gone)})
+  return ok(Heard(messages: [noted], arrivals: [Time.now_ms()]))
+end
+
+def formatter_gone(ctx: BDD.Context) -> BDD.Context
+  noted = messages(ctx).filter do |message| JSON.get(message, "formatter_pid").ok? end
+  if noted.size == 0
+    return BDD.assert(ctx, false, "the formatter never started")
+  end
+
+  gone = JSON.bool(at(noted[0], ["gone"]).unwrap_or(JSON.null())).unwrap_or(false)
+  return BDD.assert(ctx, gone, "the formatter still runs after the request was cancelled")
+end
+
+def process_alive?(pid: String) -> Bool
+  probe = Process.spawn_captured("kill", ["-0", pid], Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
+  case probe
+    ok(child) ->
+      status = Process.wait(child, TIMEOUT_MS)
+      Process.close(child)
+      return status.unwrap_or(1) == 0
+    error(_) -> return false
+  end
+end
+
+def put_formatting(ctx: BDD.Context, name: String) -> BDD.Context
+  ready = with_folder(ctx)
+  params = JSON.object({
+    "textDocument": JSON.object({"uri": JSON.from(uri(ready, name))}),
+    "options": JSON.object({"tabSize": JSON.from(2), "insertSpaces": JSON.from(true)}),
+  })
+  sent = request(ready, FORMATTING, params)
+  return BDD.set(sent, "format #{name}", BDD.get(sent, "request #{FORMATTING}").unwrap!)
 end
 
 def searches_workspace(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1404,6 +1534,149 @@ def search_is_null(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return finished(ctx) do |done| workspace_symbols_null(done, args[0]) end
 end
 
+def prepared_rename(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| rename_prepared(done, args) end
+end
+
+def no_prepared_rename(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    case result_at(done, "prepare", args[0], args[1])
+      ok(result) ->
+        BDD.assert(done, result.to_s == "null", "expected no rename at #{args[0]}:#{args[1]}; actual #{result}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def rename_edits(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  rows = BDD.table(ctx).drop(1)
+  return finished(ctx) do |done| rename_edited(done, args, rows) end
+end
+
+def rename_refused(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| rename_failed(done, "rename", args) end
+end
+
+def prepared_rename_refused(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| rename_failed(done, "prepare", args) end
+end
+
+def rename_prepared(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  case result_at(ctx, "prepare", args[0], args[1])
+    ok(result) ->
+      covered = span_text(at(result, ["range"]).unwrap_or(JSON.null()))
+      placeholder = JSON.string(at(result, ["placeholder"]).unwrap_or(JSON.null())).unwrap_or("")
+      actual = "#{covered} #{placeholder}"
+      wanted = "#{args[2]}:#{args[3]}-#{args[4]}:#{args[5]} #{args[6]}"
+      return BDD.assert(ctx, actual == wanted, "expected the rename #{wanted}; actual #{actual} in #{result}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def rename_edited(ctx: BDD.Context, args: List[String], rows: List[List[String]]) -> BDD.Context
+  case result_at(ctx, "rename", args[0], args[1])
+    ok(result) ->
+      shown: List[String] = []
+      case JSON.node(at(result, ["changes"]).unwrap_or(JSON.null()))
+        JSON.Node.Object(changes) ->
+          for file_uri in changes.keys
+            shown = shown.concat(edit_rows(ctx, file_uri, changes.get(file_uri).unwrap_or(JSON.null())))
+          end
+
+        _ -> shown = shown
+      end
+
+      wanted = rows.map do |row| "#{row[0]} #{row[1]} #{row[2]}" end
+      message = "expected the edits #{JSON.encode(wanted.sort)}; actual #{JSON.encode(shown.sort)}"
+      return BDD.assert(ctx, JSON.encode(shown.sort) == JSON.encode(wanted.sort), message)
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def edit_rows(ctx: BDD.Context, file_uri: String, edits: JSON.Value) -> List[String]
+  no_items: List[JSON.Value] = []
+  rows: List[String] = []
+  for edit in JSON.list(edits).unwrap_or(no_items)
+    place = JSON.object({"uri": JSON.from(file_uri), "range": at(edit, ["range"]).unwrap_or(JSON.null())})
+    text = JSON.string(at(edit, ["newText"]).unwrap_or(JSON.null())).unwrap_or("")
+    rows = rows.push("#{location_row(ctx, place)} #{text}")
+  end
+
+  return rows
+end
+
+def rename_failed(ctx: BDD.Context, key: String, args: List[String]) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "#{key} #{args[0]}:#{args[1]}").unwrap!).unwrap!
+  case reply(ctx, id, "error")
+    ok(found) ->
+      message = JSON.string(at(found, ["message"]).unwrap_or(JSON.null())).unwrap_or("")
+      code = JSON.int(at(found, ["code"]).unwrap_or(JSON.null())).unwrap_or(0)
+      mismatch = "expected the error -32803 with #{args[2].inspect}; actual #{code} #{message.inspect}"
+      return BDD.assert(ctx, code == -32_803 and message.include?(args[2]), mismatch)
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def formatting_replaces(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  wanted = BDD.doc_string(ctx)
+  return finished(ctx) do |done| formatting_replaced(done, args[0], args[1].to_i!, args[2].to_i!, wanted) end
+end
+
+def formatting_has_no_edits(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatting_empty(done, args[0]) end
+end
+
+def formatting_is_null(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatting_null(done, args[0]) end
+end
+
+def formatting_null(ctx: BDD.Context, name: String) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) -> return BDD.assert(ctx, result.to_s == "null", "expected null for #{name}; actual #{result}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def formatting_is_cancelled(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    id_failed(done, JSON.int(BDD.get(done, "format #{args[0]}").unwrap!).unwrap!, "request cancelled")
+  end
+end
+
+def formatting_reply(ctx: BDD.Context, name: String) -> Result[JSON.Value]
+  id = try JSON.int(try BDD.get(ctx, "format #{name}"))
+  return reply(ctx, id, "result")
+end
+
+def formatting_empty(ctx: BDD.Context, name: String) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) -> return BDD.assert(ctx, result.to_s == "[]", "expected no edits for #{name}; actual #{result}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def formatting_replaced(ctx: BDD.Context, name: String, line: Int, character: Int, wanted: String) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) ->
+      no_items: List[JSON.Value] = []
+      edits = JSON.list(result).unwrap_or(no_items)
+      if edits.size != 1
+        return BDD.assert(ctx, false, "expected one edit for #{name}; actual #{result}")
+      end
+
+      expected = JSON.object({
+        "start": JSON.object({"line": JSON.from(0), "character": JSON.from(0)}),
+        "end": JSON.object({"line": JSON.from(line), "character": JSON.from(character)}),
+      })
+      actual = canonical(JSON.encode(at(edits[0], ["range"]).unwrap_or(JSON.null())))
+      same_range = actual == canonical(JSON.encode(expected))
+      text = JSON.string(at(edits[0], ["newText"]).unwrap_or(JSON.null())).unwrap_or("")
+      ranged = BDD.assert(ctx, same_range, "expected the whole document #{JSON.encode(expected)}; actual #{actual}")
+      return BDD.assert(ranged, text == wanted, "expected the text #{wanted.inspect}; actual #{text.inspect}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
 def references_listed(ctx: BDD.Context, line: String, column: String, rows: List[List[String]]) -> BDD.Context
   case result_at(ctx, "references", line, column)
     ok(result) ->
@@ -2113,7 +2386,7 @@ def perform(server: Process, dir: String, action: JSON.Value, wait_ms: Int) -> R
   case kind
     "send" ->
       body = try JSON.string(try JSON.get(action, "body"))
-      try Process.send(server, frame(body), wait_ms)
+      try send_in_pieces(server, frame(body), wait_ms)
       return ok(nothing_heard())
     "raw" ->
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), wait_ms)
@@ -2124,12 +2397,29 @@ def perform(server: Process, dir: String, action: JSON.Value, wait_ms: Int) -> R
     "pause" ->
       Task.sleep(try JSON.int(try JSON.get(action, "ms")))
       return ok(nothing_heard())
+    "formatter pid" -> return formatter_pid(dir)
     "write" ->
       path = try Path.join([dir, try JSON.string(try JSON.get(action, "name"))])
       try File.write_text(path, try JSON.string(try JSON.get(action, "text")), TIMEOUT_MS)
       return ok(nothing_heard())
     _ -> return error("unknown action #{kind}")
   end
+end
+
+def send_in_pieces(server: Process, text: String, wait_ms: Int) -> Result[Void]
+  chars = text.length
+  start = 0
+  while start < chars
+    count = PIECE_CHARS
+    if start + count > chars
+      count = chars - start
+    end
+
+    try Process.send(server, text.slice(start, count), wait_ms)
+    start += count
+  end
+
+  return ok()
 end
 
 def nothing_heard() -> Heard
@@ -2230,8 +2520,19 @@ def read_body(server: Process, header: String, wait_ms: Int) -> Result[JSON.Valu
     return error("expected a blank line after the header; got #{blank.inspect}")
   end
 
-  body = try Process.read_bytes(server, length, wait_ms)
-  return JSON.parse(try String.from_bytes(body))
+  parts: List[Bytes] = []
+  left = length
+  while left > 0
+    count = left
+    if count > READ_BYTES
+      count = READ_BYTES
+    end
+
+    parts = parts.push(try Process.read_bytes(server, count, wait_ms))
+    left -= count
+  end
+
+  return JSON.parse(try String.from_bytes(Bytes.concat(parts)))
 end
 
 def link(target: String, path: String) -> Result[Void]

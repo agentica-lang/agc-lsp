@@ -14,7 +14,7 @@ src/asks.agc      which definition, references, hover, symbols and workspace sym
 src/schedule.agc  which checks run (at most 4, one per file), wait or are stale, per file, and the time each is due (changes wait 200 ms)
 src/entries.agc   the ATS table of std/analysis entries (`Analysis.entry`, `Analysis.adopt`) by path of the open file: start a session from one, publish one, drop those of closed files
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
-src/catalog.agc   the builtins from `agentica --json help`, the only process the server starts: loading, parsing, lookups by name, namespace and prefix; a row with a `kind` is a type (Agentica 0.32.0 on), and its signature is its declaration
+src/catalog.agc   the builtins from `agentica --json help`, one of the two processes the server starts (the other is `agentica fmt -`, in format.agc): loading, parsing, lookups by name, namespace and prefix; a row with a `kind` is a type (Agentica 0.32.0 on), and its signature is its declaration
 src/columns.agc   character indexes of a line to and from UTF-16 code units
 src/words.agc     the words of one line: the word at an index, the receiver before a dot, strings and comments
 src/cursor.agc    a request position as the line, its characters and the character index, in the negotiated encoding
@@ -25,8 +25,11 @@ src/workspace.agc the workspace folder from initialize, and workspace/symbol: `A
 src/refusals.agc  which errors of a question to std/analysis only say that the program or the position is what it is
 src/places.agc    regions of std/analysis to LSP positions and ranges (UTF-16 or code points); the lines of an open or saved file
 src/fields.agc    reads fields of JSON objects with a default
+src/rename.agc    textDocument/prepareRename and textDocument/rename: the declaration and uses of `Analysis.refs_partial` (`Lookup.uses`) as one workspace edit; refused for a builtin, a partial answer (a function with an error), a new name that does not suit the kind, and a public name, or a parameter of a public function, that a file outside the answer writes as a word in code (`Words.mentions?`), which a workspace walk finds
+src/imports.agc   the places where an `import {a, b as c} from "module"` list names a declaration, which `agentica refs` does not report (agentica#1750); rename edits them
+src/format.agc    textDocument/formatting: `agentica fmt -` on the text of the buffer, in the folder of the file so that its manifest's `[style]` applies; one whole-document edit, none when the text is formatted already or does not parse (logged at info level)
 src/completion.agc textDocument/completion of builtins: after `Ns.` or at the start of a word
-src/check.agc     maps the first problem of `Analysis.check` to an LSP diagnostic (with relatedInformation)
+src/check.agc     the problems of a file (the first of `Analysis.check`, then those of the other functions that fail, from a partial `Analysis.refs_partial` at a declaration) as LSP diagnostics (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
 agentica.toml     `agentica` (the oldest Agentica the server needs) and `[style]`: the layout rules of every .agc file (see Rules)
 bin/prepare.agc   cache key (agentica binary, version, src/*.agc), cache folder (AGC_LSP_CACHE, else per OS), compile once with an atomic rename (an error that suggests AGC_LSP_CACHE if the file system has none), prune; prints the path of the compiled server

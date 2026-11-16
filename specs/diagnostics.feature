@@ -1,8 +1,8 @@
 Feature: Diagnostics in the editor
   On open, on change and on save, the server checks the text of the buffer as
-  `agentica check` does and publishes its first diagnostic, or none. Positions
-  are written as `agentica check` shows them: line:column, from 1, end
-  exclusive. Checks of different files run at once; the slow ones in these
+  `agentica check` does and publishes its first diagnostic, then those of the
+  other functions that do not check, or none. Positions are written as
+  `agentica check` shows them: line:column, from 1, end exclusive. Checks of different files run at once; the slow ones in these
   scenarios import a module of thousands of functions.
   These scenarios open files whose buffer is what is on disk; the ones where
   the buffer differs are in buffers.feature.
@@ -32,6 +32,34 @@ Feature: Diagnostics in the editor
     Then "unknown.agc" gets these diagnostics:
       | at       | severity | code               |
       | 2:8-2:12 | error    | CHECK-UNKNOWN-NAME |
+
+  Scenario: every function that does not check gets its diagnostic, the first one first
+    Given the language server has started
+    And the file "many.agc" contains:
+      """
+      def one() -> Int
+        return oops1
+      end
+
+      def two() -> Int
+        return 2
+      end
+
+      def three() -> Int
+        return oops3
+      end
+
+      def main() -> Void
+        puts(one())
+        puts(three())
+      end
+
+      """
+    When the editor opens "many.agc"
+    Then "many.agc" gets these diagnostics:
+      | at          | severity | code               |
+      | 2:10-2:15   | error    | CHECK-UNKNOWN-NAME |
+      | 10:10-10:15 | error    | CHECK-UNKNOWN-NAME |
 
   Scenario: export before a declaration is refused, and the server relays PARSE-UNEXPECTED-TOKEN
     Given the language server has started

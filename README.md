@@ -3,8 +3,8 @@
 A Language Server Protocol (LSP) server for [Agentica](https://github.com/agentica-lang/agentica), a language for AI agents,
 written in Agentica.
 
-> **Status:** early stage. Diagnostics, hover, completion, go to definition, find references, document symbols and
-> workspace symbols.
+> **Status:** early stage. Diagnostics, hover, completion, go to definition, find references, rename, formatting,
+> document symbols and workspace symbols.
 
 ## Features
 
@@ -12,7 +12,7 @@ The server keeps one `std/analysis` session that holds the text of every open do
 the checks and the queries of every open file, imported files included. It asks for full document sync.
 
 - Diagnostics: on open, change and save it checks the text of the buffer (its imports and `agentica.toml` resolve from
-  its folder) and publishes the first diagnostic. An error in an imported file, or in the `agentica.toml` above the
+  its folder) and publishes the first diagnostic, then the one of each other function that does not check. An error in an imported file, or in the `agentica.toml` above the
   file, is shown at the start of the opened file, with the file and position in the message and in
   `relatedInformation`. Typing in or saving a file checks again the open files whose error points into it.
 - Hover: a builtin (`String.split`, `puts(`, `xs.split(",")`) shows its signature and description; a function, struct,
@@ -20,6 +20,16 @@ the checks and the queries of every open file, imported files included. It asks 
 - Completion (trigger `.`): the builtin namespaces and functions, after `String.` or at the start of a word.
 - Go to definition and find references of a function, struct, enum, variant, field, constant, type name, local,
   parameter, loop name or pattern name, in the file and the files it imports.
+- Formatting: `textDocument/formatting` runs `agentica fmt` on the text of the buffer, in the folder of the file (the
+  `[style]` of its `agentica.toml` applies), and answers one edit for the whole document. A buffer that is formatted
+  already or does not parse gets no edits; the reason is logged at info level.
+- Rename (and prepareRename) of a function, struct, enum, variant, field, constant, type name, local, parameter, loop
+  name or pattern name, with its uses, the named arguments that name a parameter or a field, and the name in the
+  `import {…} from "module"` lists of the files it edits. It is refused (the editor shows the reason, also for
+  prepareRename) for a builtin, when a function of the program has an error, when the new name is not one agentica
+  accepts for that kind of name, when an import list renames the name with `as`, and when a public name, or a
+  parameter of a public function, is also written in code in another file of the workspace that the rename does not
+  see, because agentica reads only the file and what it imports.
 - Document symbols: the outline of the buffer as a hierarchy.
 - Workspace symbols: where a name is declared in the `.agc` files below the first workspace folder and in the open
   documents (hidden folders, `agc_libs/` and links are skipped, and a file that does not parse is left out). The query

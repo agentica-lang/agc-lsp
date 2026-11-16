@@ -10,6 +10,11 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A name inside the `#{}` of a string has hover, definition and references, like any name in code.
+- Formatting sends a buffer of more than 1 MiB to `agentica fmt` in pieces and reads its output as it comes.
+- `textDocument/rename` and `textDocument/prepareRename`, from the declaration and uses that `agentica refs` finds. A rename also edits the name in `import {…}` lists. It is refused, with a reason that prepareRename also gives, for a builtin, a program with an error in a function, with a new name that does not suit the kind of name, or of a public name that another file of the workspace writes, is refused with a reason.
+- A file with errors in several functions publishes the diagnostic of each function that does not check, the first problem of the check first, not only the first problem.
+- `textDocument/formatting` runs `agentica fmt` on the text of the buffer, in the folder of the file, and answers one edit for the whole document; no edits for text that is formatted already or does not parse. The server advertises `documentFormattingProvider`.
 - `true`, `false`, `nil` and `extern` are keywords: no hover, definition or references query for them.
 - Scenarios for the symbols and hover of the functions of an `extern module`.
 - Completion and hover of builtin types, such as `File.Info`, `JSON.Value` and `Error`, from Agentica 0.32.0 on:
