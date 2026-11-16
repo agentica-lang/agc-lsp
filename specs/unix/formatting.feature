@@ -10,5 +10,8 @@ Feature: Formatting that takes long
       end
 
       """
-    And the editor formats "app.agc" and cancels the request
+    And the editor formats "app.agc" without waiting
+    And the editor waits 1500 milliseconds
+    And the editor cancels the formatting of "app.agc"
     Then the formatting of "app.agc" is answered as cancelled
+    And the formatter of "app.agc" has stopped

@@ -109,6 +109,154 @@ Feature: Rename
       | lib.agc | 1:5-1:11  | assist |
       | app.agc | 4:12-4:18 | assist |
 
+  Scenario: the name in an import list is renamed with the function
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+
+      def perimeter(w: Int, h: Int) -> Int = 2 * (w + h)
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {area, perimeter} from "lib"
+
+      def main() -> Void
+        puts(area(2, 3) + perimeter(2, 3))
+      end
+
+      """
+    And the editor renames in "app.agc" at 4:8 to "surface"
+    Then the rename at 4:8 edits:
+      | file    | at        | text    |
+      | lib.agc | 1:5-1:9   | surface |
+      | app.agc | 4:8-4:12  | surface |
+      | app.agc | 1:9-1:13  | surface |
+
+  Scenario: the name in an import list that spans lines is renamed
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+
+      def perimeter(w: Int, h: Int) -> Int = 2 * (w + h)
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {
+        area,
+        perimeter,
+      } from "lib"
+
+      def main() -> Void
+        puts(area(2, 3) + perimeter(2, 3))
+      end
+
+      """
+    And the editor renames in "app.agc" at 7:8 to "surface"
+    Then the rename at 7:8 edits:
+      | file    | at       | text    |
+      | lib.agc | 1:5-1:9  | surface |
+      | app.agc | 7:8-7:12 | surface |
+      | app.agc | 2:3-2:7  | surface |
+
+  Scenario: a name that an import list renames with as is not renamed
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {area as surface} from "lib"
+
+      def main() -> Void
+        puts(surface(2, 3))
+      end
+
+      """
+    And the editor renames in "app.agc" at 4:8 to "extent"
+    Then the rename at 4:8 is refused with "as"
+
+  Scenario: a parameter of a public function is renamed with the named arguments of the calls in the file that imports it
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.area(w: 2, h: 3))
+      end
+
+      """
+    And the editor renames in "app.agc" at 4:17 to "width"
+    Then the rename at 4:17 edits:
+      | file    | at        | text  |
+      | lib.agc | 1:10-1:11 | width |
+      | lib.agc | 1:35-1:36 | width |
+      | app.agc | 4:17-4:18 | width |
+
+  Scenario: a parameter of a public function that another file calls with a named argument is not renamed
+    Given the editor offers the workspace as "workspace folders"
+    And the language server has started
+    And the file "app.agc" contains:
+      """
+      import Lib from "lib"
+
+      def main() -> Void
+        puts(Lib.area(w: 2, h: 3))
+      end
+
+      """
+    When the editor opens "lib.agc" with:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+      """
+    And the editor renames in "lib.agc" at 1:10 to "width"
+    Then the rename at 1:10 is refused with "app.agc"
+
+  Scenario: a name that another file holds only in a comment or a string is renamed
+    Given the editor offers the workspace as "workspace folders"
+    And the language server has started
+    And the file "other.agc" contains:
+      """
+      # the size is small
+      def main() -> Void
+        puts("size")
+      end
+
+      """
+    When the editor opens "lib.agc" with:
+      """
+      def size() -> Int = 1
+      """
+    And the editor renames in "lib.agc" at 1:5 to "extent"
+    Then the rename at 1:5 edits:
+      | file    | at      | text   |
+      | lib.agc | 1:5-1:9 | extent |
+
+  Scenario: a name inside the interpolation of a string is renamed
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        count = 1
+        puts("n=#{count}")
+      end
+
+      """
+    And the editor prepares the rename in "app.agc" at 3:13
+    And the editor renames in "app.agc" at 3:13 to "total"
+    Then the prepared rename at 3:13 covers 3:13-3:18 named "count"
+    And the rename at 3:13 edits:
+      | file    | at        | text  |
+      | app.agc | 2:3-2:8   | total |
+      | app.agc | 3:13-3:18 | total |
+
   Scenario: a public name that a third file of the workspace writes is not renamed
     Given the editor offers the workspace as "workspace folders"
     And the language server has started
@@ -128,7 +276,7 @@ Feature: Rename
     When the editor opens "lib.agc"
     And the editor prepares the rename in "lib.agc" at 1:5
     And the editor renames in "lib.agc" at 1:5 to "assist"
-    Then there is no prepared rename at 1:5
+    Then the prepared rename at 1:5 is refused with "other.agc"
     And the rename at 1:5 is refused with "other.agc"
 
   Scenario: a program with an error in another function is not renamed
@@ -147,7 +295,7 @@ Feature: Rename
       """
     And the editor prepares the rename in "app.agc" at 6:3
     And the editor renames in "app.agc" at 6:3 to "total"
-    Then there is no prepared rename at 6:3
+    Then the prepared rename at 6:3 is refused with "have errors"
     And the rename at 6:3 is refused with "have errors"
 
   Scenario: a builtin and a keyword are not renamed
@@ -162,7 +310,7 @@ Feature: Rename
     And the editor prepares the rename in "app.agc" at 2:4
     And the editor prepares the rename in "app.agc" at 1:2
     And the editor renames in "app.agc" at 2:4 to "show"
-    Then there is no prepared rename at 2:4
+    Then the prepared rename at 2:4 is refused with "builtin"
     And there is no prepared rename at 1:2
     And the rename at 2:4 is refused with "builtin"
 

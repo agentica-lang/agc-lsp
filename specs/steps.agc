@@ -12,6 +12,9 @@ COMPILED_SUFFIX = ".agcb"
 TIMEOUT_MS = 20_000
 HEAVY_TIMEOUT_MS = 90_000
 LOCALHOST = "localhost"
+PIECE_CHARS = 250_000
+READ_BYTES = 1_000_000
+FORMATTER_STOP_MS = 5000
 WINDOWS_ROOT = "C:\\proj"
 HEX_DIGITS = "0123456789ABCDEF"
 ASCII_LIMIT = 128
@@ -147,8 +150,13 @@ def main() -> Void
     BDD.step("there is no prepared rename at {int}:{int}", &no_prepared_rename),
     BDD.step("the rename at {int}:{int} edits:", &rename_edits),
     BDD.step("the rename at {int}:{int} is refused with {string}", &rename_refused),
+    BDD.step("the prepared rename at {int}:{int} is refused with {string}", &prepared_rename_refused),
     BDD.step("the editor formats {string}", &formats),
-    BDD.step("the editor formats {string} and cancels the request", &formats_and_cancels),
+    BDD.step("the editor formats {string} without waiting", &formats_without_waiting),
+    BDD.step("the editor cancels the formatting of {string}", &cancels_formatting),
+    BDD.step("the editor opens {string} with an unformatted buffer of {int} KB", &opens_with_unformatted_buffer),
+    BDD.step("the formatting of {string} replaces the document with a text of {int} lines", &formatting_lines),
+    BDD.step("the formatter of {string} has stopped", &formatter_stopped),
     BDD.step("the formatting of {string} replaces the document up to {int}:{int} with:", &formatting_replaces),
     BDD.step("the formatting of {string} has no edits", &formatting_has_no_edits),
     BDD.step("the formatting of {string} is answered with null", &formatting_is_null),
@@ -721,11 +729,80 @@ def formats(ctx: BDD.Context, args: List[String]) -> BDD.Context
   return wait_for(sent, [BDD.get(sent, "format #{args[0]}").unwrap!])
 end
 
-def formats_and_cancels(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  sent = put_formatting(ctx, args[0])
-  id = BDD.get(sent, "format #{args[0]}").unwrap!
-  cancelled = notify(sent, "$/cancelRequest", JSON.object({"id": id}))
-  return wait_for(cancelled, [id])
+def formats_without_waiting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return put_formatting(ctx, args[0])
+end
+
+def cancels_formatting(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  id = BDD.get(ctx, "format #{args[0]}").unwrap!
+  cancelled = wait_for(notify(ctx, "$/cancelRequest", JSON.object({"id": id})), [id])
+  return add(cancelled, JSON.object({"kind": JSON.from("formatter pid")}))
+end
+
+def opens_with_unformatted_buffer(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  lines = (0...args[1].to_i! * LINES_PER_KB).to_a.map do |_| COMMENT_LINE end
+  text = "def main()->Void\n puts(1)\nend\n\n#{lines.join("\n")}\n"
+  return awaiting(open_text(with_folder(ctx), args[0], "", text), args[0])
+end
+
+def formatting_lines(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatting_counted(done, args[0], args[1].to_i!) end
+end
+
+def formatting_counted(ctx: BDD.Context, name: String, count: Int) -> BDD.Context
+  case formatting_reply(ctx, name)
+    ok(result) ->
+      no_items: List[JSON.Value] = []
+      edits = JSON.list(result).unwrap_or(no_items)
+      if edits.size != 1
+        return BDD.assert(ctx, false, "expected one edit for #{name}; actual #{edits.size}")
+      end
+
+      text = JSON.string(at(edits[0], ["newText"]).unwrap_or(JSON.null())).unwrap_or("")
+      actual = text.split("\n").size
+      return BDD.assert(ctx, actual == count, "expected #{count} lines; actual #{actual}")
+    error(e) -> return BDD.assert(ctx, false, e.message)
+  end
+end
+
+def formatter_stopped(ctx: BDD.Context, _args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| formatter_gone(done) end
+end
+
+def formatter_pid(dir: String) -> Result[Heard]
+  pid = (try File.read_text(try Path.join([dir, "formatter.pid"]), TIMEOUT_MS)).strip
+  gone = false
+  deadline = Time.now_ms() + FORMATTER_STOP_MS
+  while !gone and Time.now_ms() < deadline
+    gone = !process_alive?(pid)
+    if !gone
+      Task.sleep(100)
+    end
+  end
+
+  noted = JSON.object({"formatter_pid": JSON.from(pid), "gone": JSON.from(gone)})
+  return ok(Heard(messages: [noted], arrivals: [Time.now_ms()]))
+end
+
+def formatter_gone(ctx: BDD.Context) -> BDD.Context
+  noted = messages(ctx).filter do |message| JSON.get(message, "formatter_pid").ok? end
+  if noted.size == 0
+    return BDD.assert(ctx, false, "the formatter never started")
+  end
+
+  gone = JSON.bool(at(noted[0], ["gone"]).unwrap_or(JSON.null())).unwrap_or(false)
+  return BDD.assert(ctx, gone, "the formatter still runs after the request was cancelled")
+end
+
+def process_alive?(pid: String) -> Bool
+  probe = Process.spawn_captured("kill", ["-0", pid], Process.Options(timeout_ms: TIMEOUT_MS, chdir: "."))
+  case probe
+    ok(child) ->
+      status = Process.wait(child, TIMEOUT_MS)
+      Process.close(child)
+      return status.unwrap_or(1) == 0
+    error(_) -> return false
+  end
 end
 
 def put_formatting(ctx: BDD.Context, name: String) -> BDD.Context
@@ -1477,7 +1554,11 @@ def rename_edits(ctx: BDD.Context, args: List[String]) -> BDD.Context
 end
 
 def rename_refused(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  return finished(ctx) do |done| rename_failed(done, args) end
+  return finished(ctx) do |done| rename_failed(done, "rename", args) end
+end
+
+def prepared_rename_refused(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done| rename_failed(done, "prepare", args) end
 end
 
 def rename_prepared(ctx: BDD.Context, args: List[String]) -> BDD.Context
@@ -1524,8 +1605,8 @@ def edit_rows(ctx: BDD.Context, file_uri: String, edits: JSON.Value) -> List[Str
   return rows
 end
 
-def rename_failed(ctx: BDD.Context, args: List[String]) -> BDD.Context
-  id = JSON.int(BDD.get(ctx, "rename #{args[0]}:#{args[1]}").unwrap!).unwrap!
+def rename_failed(ctx: BDD.Context, key: String, args: List[String]) -> BDD.Context
+  id = JSON.int(BDD.get(ctx, "#{key} #{args[0]}:#{args[1]}").unwrap!).unwrap!
   case reply(ctx, id, "error")
     ok(found) ->
       message = JSON.string(at(found, ["message"]).unwrap_or(JSON.null())).unwrap_or("")
@@ -2305,7 +2386,7 @@ def perform(server: Process, dir: String, action: JSON.Value, wait_ms: Int) -> R
   case kind
     "send" ->
       body = try JSON.string(try JSON.get(action, "body"))
-      try Process.send(server, frame(body), wait_ms)
+      try send_in_pieces(server, frame(body), wait_ms)
       return ok(nothing_heard())
     "raw" ->
       try Process.send(server, try JSON.string(try JSON.get(action, "body")), wait_ms)
@@ -2316,12 +2397,29 @@ def perform(server: Process, dir: String, action: JSON.Value, wait_ms: Int) -> R
     "pause" ->
       Task.sleep(try JSON.int(try JSON.get(action, "ms")))
       return ok(nothing_heard())
+    "formatter pid" -> return formatter_pid(dir)
     "write" ->
       path = try Path.join([dir, try JSON.string(try JSON.get(action, "name"))])
       try File.write_text(path, try JSON.string(try JSON.get(action, "text")), TIMEOUT_MS)
       return ok(nothing_heard())
     _ -> return error("unknown action #{kind}")
   end
+end
+
+def send_in_pieces(server: Process, text: String, wait_ms: Int) -> Result[Void]
+  chars = text.length
+  start = 0
+  while start < chars
+    count = PIECE_CHARS
+    if start + count > chars
+      count = chars - start
+    end
+
+    try Process.send(server, text.slice(start, count), wait_ms)
+    start += count
+  end
+
+  return ok()
 end
 
 def nothing_heard() -> Heard
@@ -2422,8 +2520,19 @@ def read_body(server: Process, header: String, wait_ms: Int) -> Result[JSON.Valu
     return error("expected a blank line after the header; got #{blank.inspect}")
   end
 
-  body = try Process.read_bytes(server, length, wait_ms)
-  return JSON.parse(try String.from_bytes(body))
+  parts: List[Bytes] = []
+  left = length
+  while left > 0
+    count = left
+    if count > READ_BYTES
+      count = READ_BYTES
+    end
+
+    parts = parts.push(try Process.read_bytes(server, count, wait_ms))
+    left -= count
+  end
+
+  return JSON.parse(try String.from_bytes(Bytes.concat(parts)))
 end
 
 def link(target: String, path: String) -> Result[Void]

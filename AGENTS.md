@@ -25,7 +25,8 @@ src/workspace.agc the workspace folder from initialize, and workspace/symbol: `A
 src/refusals.agc  which errors of a question to std/analysis only say that the program or the position is what it is
 src/places.agc    regions of std/analysis to LSP positions and ranges (UTF-16 or code points); the lines of an open or saved file
 src/fields.agc    reads fields of JSON objects with a default
-src/rename.agc    textDocument/prepareRename and textDocument/rename: the declaration and uses of `Analysis.refs_partial` (`Lookup.uses`) as one workspace edit; refused for a builtin, a partial answer (a function with an error), a new name that does not suit the kind, and a public name that a file outside the answer writes as a word (`Words.mentions?`), which a workspace walk finds
+src/rename.agc    textDocument/prepareRename and textDocument/rename: the declaration and uses of `Analysis.refs_partial` (`Lookup.uses`) as one workspace edit; refused for a builtin, a partial answer (a function with an error), a new name that does not suit the kind, and a public name, or a parameter of a public function, that a file outside the answer writes as a word in code (`Words.mentions?`), which a workspace walk finds
+src/imports.agc   the places where an `import {a, b as c} from "module"` list names a declaration, which `agentica refs` does not report (agentica#1750); rename edits them
 src/format.agc    textDocument/formatting: `agentica fmt -` on the text of the buffer, in the folder of the file so that its manifest's `[style]` applies; one whole-document edit, none when the text is formatted already or does not parse (logged at info level)
 src/completion.agc textDocument/completion of builtins: after `Ns.` or at the start of a word
 src/check.agc     the problems of a file (the first of `Analysis.check`, then those of the other functions that fail, from a partial `Analysis.refs_partial` at a declaration) as LSP diagnostics (with relatedInformation)

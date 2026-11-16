@@ -144,3 +144,9 @@ Feature: Formatting
       # 🎉
 
       """
+
+  Scenario: a buffer of more than 1 MiB is formatted
+    Given the language server has started
+    When the editor opens "app.agc" with an unformatted buffer of 1200 KB
+    And the editor formats "app.agc"
+    Then the formatting of "app.agc" replaces the document with a text of 12005 lines

@@ -35,28 +35,73 @@ private
 
 FORMAT_TIMEOUT_MS = 10_000
 
+CHUNK_BYTES = 1_000_000
+
+MS_PER_KB = 60
+
 SHORTEST_WAIT_MS = 1
 
 def formatted(request: Request) -> Result[String]
-  options = Process.Options(timeout_ms: FORMAT_TIMEOUT_MS, chdir: folder_of(request.path))
+  limit = FORMAT_TIMEOUT_MS + request.text.length / 1000 * MS_PER_KB
+  options = Process.Options(timeout_ms: limit, chdir: folder_of(request.path))
   helper = try Process.spawn_captured(executable(request.agentica), ["fmt", "-"], options)
-  outcome = run(helper, request.text, Time.now_ms() + FORMAT_TIMEOUT_MS)
+  outcome = run(helper, request.text, Time.now_ms() + limit)
   Process.close(helper)
   return outcome
 end
 
 def run(helper: Process, text: String, deadline: Int) -> Result[String]
-  try Process.send(helper, text, remaining(deadline))
+  try send_all(helper, text, deadline)
   try Process.close_stdin(helper, remaining(deadline))
+  formatted = try read_all(helper, deadline)
   output = try Process.output(helper, remaining(deadline))
   status = try Process.wait(helper, remaining(deadline))
   if status != 0
     return error(output.stderr.split("\n")[0])
-  elsif output.truncated
-    return error("the formatted text is too long")
   end
 
-  return ok(output.stdout)
+  return ok(formatted)
+end
+
+def read_all(helper: Process, deadline: Int) -> Result[String]
+  parts: List[Bytes] = []
+  while true
+    part = try Process.read_bytes(helper, CHUNK_BYTES, remaining(deadline))
+    parts = parts.push(part)
+    if part.size < CHUNK_BYTES
+      return String.from_bytes(Bytes.concat(parts))
+    end
+  end
+
+  return error("unreachable")
+end
+
+def send_all(helper: Process, text: String, deadline: Int) -> Result[Void]
+  lines = text.split("\n")
+  chunk: List[String] = []
+  size = 0
+  for index in 0...lines.size
+    piece = lines[index]
+    if index < lines.size - 1
+      piece = "#{piece}\n"
+    end
+
+    width = piece.bytes.size
+    if width > CHUNK_BYTES
+      return error("a line is longer than #{CHUNK_BYTES} bytes")
+    end
+
+    if size + width > CHUNK_BYTES
+      try Process.send(helper, chunk.join(""), remaining(deadline))
+      chunk = []
+      size = 0
+    end
+
+    chunk = chunk.push(piece)
+    size += width
+  end
+
+  return Process.send(helper, chunk.join(""), remaining(deadline))
 end
 
 def remaining(deadline: Int) -> Int

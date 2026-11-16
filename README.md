@@ -24,10 +24,12 @@ the checks and the queries of every open file, imported files included. It asks 
   `[style]` of its `agentica.toml` applies), and answers one edit for the whole document. A buffer that is formatted
   already or does not parse gets no edits; the reason is logged at info level.
 - Rename (and prepareRename) of a function, struct, enum, variant, field, constant, type name, local, parameter, loop
-  name or pattern name, with its uses and the named arguments that name a parameter or a field. It is refused (the
-  editor shows the reason) for a builtin, when a function of the program has an error, when the new name is not one
-  agentica accepts for that kind of name, and when a public name is also written in another file of the workspace
-  that the rename does not see, because agentica reads only the file and what it imports.
+  name or pattern name, with its uses, the named arguments that name a parameter or a field, and the name in the
+  `import {…} from "module"` lists of the files it edits. It is refused (the editor shows the reason, also for
+  prepareRename) for a builtin, when a function of the program has an error, when the new name is not one agentica
+  accepts for that kind of name, when an import list renames the name with `as`, and when a public name, or a
+  parameter of a public function, is also written in code in another file of the workspace that the rename does not
+  see, because agentica reads only the file and what it imports.
 - Document symbols: the outline of the buffer as a hierarchy.
 - Workspace symbols: where a name is declared in the `.agc` files below the first workspace folder and in the open
   documents (hidden folders, `agc_libs/` and links are skipped, and a file that does not parse is left out). The query

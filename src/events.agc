@@ -171,8 +171,7 @@ def answer_query(job: QueryJob) -> Result[Void]
     Question.Workspace(request) ->
       return settle(job.events, job.id, "workspace symbols", Workspace.answer(request))
     Question.Format(request) -> return settle(job.events, job.id, "formatting", Format.answer(request))
-    Question.PrepareRename(request) ->
-      return settle(job.events, job.id, "prepare rename", Rename.prepare(started_in(job, request)))
+    Question.PrepareRename(request) -> return refuse(job.events, job.id, Rename.prepare(started_in(job, request)))
     Question.Rename(request) -> return refuse(job.events, job.id, Rename.rename(started_in(job, request)))
   end
 end
