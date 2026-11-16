@@ -27,7 +27,7 @@ src/places.agc    regions of std/analysis to LSP positions and ranges (UTF-16 or
 src/fields.agc    reads fields of JSON objects with a default
 src/format.agc    textDocument/formatting: `agentica fmt -` on the text of the buffer, in the folder of the file so that its manifest's `[style]` applies; one whole-document edit, none when the text is formatted already or does not parse (logged at info level)
 src/completion.agc textDocument/completion of builtins: after `Ns.` or at the start of a word
-src/check.agc     maps the first problem of `Analysis.check` to an LSP diagnostic (with relatedInformation)
+src/check.agc     the problems of a file (the first of `Analysis.check`, then those of the other functions that fail, from a partial `Analysis.refs_partial` at a declaration) as LSP diagnostics (with relatedInformation)
 src/uri.agc       file:// URIs to paths and back
 agentica.toml     `agentica` (the oldest Agentica the server needs) and `[style]`: the layout rules of every .agc file (see Rules)
 bin/prepare.agc   cache key (agentica binary, version, src/*.agc), cache folder (AGC_LSP_CACHE, else per OS), compile once with an atomic rename (an error that suggests AGC_LSP_CACHE if the file system has none), prune; prints the path of the compiled server

@@ -1,5 +1,5 @@
-## Maps the first problem that std/analysis finds in a file to an LSP diagnostic, with relatedInformation for a problem
-## in another file.
+## Maps the problems that std/analysis finds in a file to LSP diagnostics, with relatedInformation for a problem in
+## another file.
 
 import Fields from "fields"
 import Places from "places"
@@ -19,13 +19,30 @@ struct Placing
   encoding: String
 end
 
-## Returns the first problem of the check as LSP diagnostics, or an empty list when the check passes.
-def diagnostics(checked: Analysis.Checked, placing: Placing) -> List[JSON.Value]
+## Returns the problems as LSP diagnostics.
+def diagnostics(problems: List[Analysis.Diagnostic], placing: Placing) -> List[JSON.Value]
+  return problems.map do |found| diagnostic(found, placing) end
+end
+
+## Returns the problems of the file: the first one of the check and the ones of the other functions that do not check.
+## A check stops at the first problem; a partial question names those of every function that fails.
+def problems(session: Analysis.Session, path: String, checked: Analysis.Checked) -> List[Analysis.Diagnostic]
   if checked.diagnostics.size == 0
     return []
   end
 
-  return [diagnostic(checked.diagnostics[0], placing)]
+  case Analysis.outline(session, path)
+    ok(outlined) ->
+      for item in outlined.items
+        if ANCHOR_KINDS.include?(item.kind)
+          start = item.name_range.start
+          return merged(checked.diagnostics[0], Analysis.refs_partial(session, path, start.line, start.column))
+        end
+      end
+
+      return [checked.diagnostics[0]]
+    error(_) -> return [checked.diagnostics[0]]
+  end
 end
 
 ## Returns the URI that the related location of the first diagnostic points into, or an empty text.
@@ -47,7 +64,25 @@ private
 
 SEVERITY_ERROR = 1
 
+ANCHOR_KINDS = Set.new(["function", "constant", "struct"])
+
 RELATED_MESSAGE = "the error is here"
+
+def merged(first: Analysis.Diagnostic, asked: Result[Analysis.Refs]) -> List[Analysis.Diagnostic]
+  case asked
+    ok(refs) -> return [first].concat(refs.diagnostics.filter do |found| !same_problem?(found, first) end)
+    error(_) -> return [first]
+  end
+end
+
+def same_problem?(a: Analysis.Diagnostic, b: Analysis.Diagnostic) -> Bool
+  return (
+    a.code == b.code and
+    a.file == b.file and
+    a.range.start.line == b.range.start.line and
+    a.range.start.column == b.range.start.column
+  )
+end
 
 def diagnostic(found: Analysis.Diagnostic, placing: Placing) -> JSON.Value
   message = found.message

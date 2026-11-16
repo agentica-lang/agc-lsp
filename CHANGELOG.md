@@ -10,6 +10,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A file with errors in several functions publishes the diagnostic of each function that does not check, the first problem of the check first, not only the first problem.
 - `textDocument/formatting` runs `agentica fmt` on the text of the buffer, in the folder of the file, and answers one edit for the whole document; no edits for text that is formatted already or does not parse. The server advertises `documentFormattingProvider`.
 - `true`, `false`, `nil` and `extern` are keywords: no hover, definition or references query for them.
 - Scenarios for the symbols and hover of the functions of an `extern module`.

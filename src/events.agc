@@ -1,6 +1,7 @@
 ## Defines the events of the server loop and the tasks that send them.
 
 import Catalog from "catalog"
+import Check from "check"
 import Entries from "entries"
 import Format from "format"
 import Lookup from "lookup"
@@ -18,6 +19,8 @@ struct Report
   generation: Int
   ## Is the answer of the check.
   checked: Analysis.Checked
+  ## Lists the problems to show: the first one of the check and those of the other functions that fail.
+  problems: List[Analysis.Diagnostic]
 end
 
 ## Holds the answer to a request that needed a query, for the request with that id.
@@ -118,6 +121,7 @@ def check(job: Job) -> Result[Void]
 
   refreshed = Analysis.refresh(Entries.restored(job.entries, job.session, job.path), job.path)
   checked = Analysis.check(refreshed, job.path)
+  problems = Check.problems(refreshed, job.path, checked)
   Entries.publish(job.entries, refreshed, job.path)
   if Logger.enabled?(Logger.Level.Debug)
     fields = {
@@ -133,6 +137,7 @@ def check(job: Job) -> Result[Void]
     uri: job.uri,
     generation: job.generation,
     checked: checked,
+    problems: problems,
   )
   deliver(job.events, Event.Checked(report))
   return ok()

@@ -248,7 +248,7 @@ end
 def published(state: State, report: Events.Report) -> State
   path = Uri.path_of(report.uri).unwrap_or("")
   placing = Check.Placing(path: path, documents: state.documents, folder: state.folder, encoding: state.encoding)
-  found = Check.diagnostics(report.checked, placing)
+  found = Check.diagnostics(report.problems, placing)
   publish(report.uri, found)
   return state.with(pointing: point(state.pointing, report.uri, Check.points_into(found)))
 end
