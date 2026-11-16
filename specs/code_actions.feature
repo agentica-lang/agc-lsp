@@ -77,3 +77,16 @@ Feature: Code actions
     And the editor asks for code actions in "app.agc" at 9:4-9:4
     Then there are no code actions at 3:6
     And there are no code actions at 9:4
+
+  Scenario: a text with an interpolation inside is not rewritten
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        n = 3
+        puts("a#{"+"}" + n.to_s)
+      end
+
+      """
+    And the editor asks for code actions in "app.agc" at 3:10-3:10
+    Then there are no code actions at 3:10

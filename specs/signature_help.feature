@@ -56,6 +56,22 @@ Feature: Signature help
     And the editor asks for signature help in "app.agc" at 6:18
     Then the signature help at 6:18 shows "area(w: Int, h: Int) -> Int" with the parameter "h: Int" active
 
+  Scenario: an argument with a name that is no parameter selects none
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def area(w: Int, h: Int) -> Int
+        return w * h
+      end
+
+      def main() -> Void
+        puts(area(depth: 3))
+      end
+
+      """
+    And the editor asks for signature help in "app.agc" at 6:21
+    Then the signature help at 6:21 shows "area(w: Int, h: Int) -> Int" with no active parameter
+
   Scenario: a builtin function and a builtin method show their signatures
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:
@@ -92,12 +108,12 @@ Feature: Signature help
       end
 
       """
-    And the editor asks for signature help in "app.agc" at 6:22
+    And the editor asks for signature help in "app.agc" at 6:21
     And the editor asks for signature help in "app.agc" at 7:19
     And the editor asks for signature help in "app.agc" at 8:15
     And the editor asks for signature help in "app.agc" at 9:8
     And the editor asks for signature help in "app.agc" at 1:12
-    Then there is no signature help at 6:22
+    Then there is no signature help at 6:21
     And there is no signature help at 7:19
     And there is no signature help at 8:15
     And there is no signature help at 9:8

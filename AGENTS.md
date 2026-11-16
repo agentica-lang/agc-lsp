@@ -94,5 +94,9 @@ VERSION           the release version; CHANGELOG.md lists what each release chan
   text written wins; each URI is still checked and published on its own, and the text stays until the last is closed.
 - Queries answer for the text the buffer had when they arrived, even if it changed or was closed meanwhile; a refusal
   of the analysis (an error in the program, no expression there) answers `null` and logs at debug level only.
+- `STD_MODULES` in `src/complete.agc` is a hard-coded copy of the public modules of `stdlib/` (without `prelude/`,
+  `internal/` and `test/`): on each Agentica bump, compare it with `stdlib/MODULES` of that release.
+- Completion of an import path lists only inside the workspace folder (the folder of the file when the editor gave
+  none) and at most 200 entries; `Uri.collapsed` removes the `..` before the check.
 - The compiled server is moved into the cache with `Path.rename` (atomic, never replaces a file), so two starts may
   both compile and no lock is needed. `KEY.agcb.used` stamps the use because agentica cannot set a modification time.

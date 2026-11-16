@@ -235,7 +235,7 @@ end
 ## or call.
 def interpolation(written: String) -> Optional[String]
   pieces = top_level_pieces(written)
-  if pieces.size < 2
+  if pieces.size < 2 or written.include?("\#{")
     return none
   end
 

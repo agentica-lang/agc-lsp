@@ -90,6 +90,27 @@ def resolve(folder: String, file: String) -> String
   return "#{folder}/#{relative}"
 end
 
+## Returns the path without its `.` and `..` parts: a `..` at the root stays at the root.
+def collapsed(path: String) -> String
+  parts = path.split("/")
+  kept: List[String] = []
+  for part in parts.drop(1)
+    if part == ".." and kept.size > 0
+      kept = kept.take(kept.size - 1)
+    elsif part != ".." and part != "." and part != ""
+      kept = kept.push(part)
+    end
+  end
+
+  return "#{parts[0]}/#{kept.join("/")}"
+end
+
+## Returns true when the path is the folder or below it. Both are absolute and without `..`.
+def inside?(folder: String, path: String) -> Bool
+  base = trimmed(folder)
+  return path == base or path.start_with?("#{base}/") or base == "/"
+end
+
 ## Returns the path without the slashes at its end, except the root.
 def trimmed(path: String) -> String
   shorter = normal(path)

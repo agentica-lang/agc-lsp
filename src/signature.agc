@@ -179,10 +179,19 @@ end
 def help(forms: List[Form], frame: Typing.Frame, index: Int, chars: List[String]) -> JSON.Value
   active = active_parameter(forms[0], frame, index, chars)
   shown = forms.map do |form| form_json(form) end
+  chosen = 0
+  parameter = JSON.null()
+  case active
+    some(position) ->
+      chosen = fitting(forms, position)
+      parameter = JSON.from(position)
+    none -> chosen = 0
+  end
+
   return JSON.object({
     "signatures": JSON.array(shown),
-    "activeSignature": JSON.from(fitting(forms, active)),
-    "activeParameter": JSON.from(active),
+    "activeSignature": JSON.from(chosen),
+    "activeParameter": parameter,
   })
 end
 
@@ -206,19 +215,28 @@ def fitting(forms: List[Form], active: Int) -> Int
   return 0
 end
 
-## Returns the parameter that the cursor is on: the one that an argument written `name:` names, or else the one that
-## the commas before the cursor count.
-def active_parameter(form: Form, frame: Typing.Frame, index: Int, chars: List[String]) -> Int
+## Returns the parameter that the cursor is on: the one that an argument written `name:` names, none when no parameter
+## has that name, or else the one that the commas before the cursor count.
+def active_parameter(form: Form, frame: Typing.Frame, index: Int, chars: List[String]) -> Optional[Int]
   written = chars.take(index).drop(frame.segment).join("").strip
   colon = written.index_of(":").unwrap_or(-1)
-  if colon > 0
+  if colon > 0 and plain?(written.slice(0, colon).strip)
     named = written.slice(0, colon).strip
     for position in 0...form.parameters.size
       if form.parameters[position].start_with?("#{named}:")
-        return position
+        return some(position)
       end
     end
+
+    return none
   end
 
-  return frame.commas
+  return some(frame.commas)
+end
+
+def plain?(text: String) -> Bool
+  case Words.at(text.split(""), 0)
+    ok(word) -> return word.stop == text.length
+    error(_) -> return false
+  end
 end

@@ -14,9 +14,12 @@ import Words from "words"
 
 ## Returns the completion items for the word before the cursor, or an empty list when there are none.
 def answer(request: Lookup.Request) -> Result[JSON.Value]
-  builtins = Completion.items(request.book, request.cursor)
   named = try names(request)
-  return ok(JSON.array(named.concat(builtins)))
+  if imported_module(request.cursor).some?
+    return ok(JSON.array(named))
+  end
+
+  return ok(JSON.array(named.concat(Completion.items(request.book, request.cursor))))
 end
 
 private
@@ -59,6 +62,8 @@ READ_TIMEOUT_MS = 10_000
 AGENTICA_EXTENSION = ".agc"
 
 SKIPPED_FOLDERS = Set.new(["_build", "node_modules", "deps"])
+
+MAX_PATHS = 200
 
 def names(request: Lookup.Request) -> Result[List[JSON.Value]]
   cursor = request.cursor
@@ -133,11 +138,15 @@ def project_paths(request: Lookup.Request, partial: String, replaced: JSON.Value
 
   folder_part = partial.slice(0, slash)
   name_part = partial.slice(slash, partial.length - slash)
-  folder = Uri.resolve(Uri.folder_of(request.path), folder_part)
+  folder = Uri.collapsed(Uri.resolve(Uri.folder_of(request.path), folder_part))
   found: List[JSON.Value] = []
+  if !Uri.inside?(bound(request), folder)
+    return found
+  end
+
   case Dir.list(folder, READ_TIMEOUT_MS)
     ok(listed) ->
-      for name in listed.sort
+      for name in listed.sort.take(MAX_PATHS)
         if !name.start_with?(name_part) or (name.start_with?(".") and !name_part.start_with?("."))
           next
         end
@@ -156,6 +165,15 @@ def project_paths(request: Lookup.Request, partial: String, replaced: JSON.Value
   end
 
   return found
+end
+
+## Returns the folder that an import path can reach: the workspace, or the folder of the file when there is none.
+def bound(request: Lookup.Request) -> String
+  if request.root == ""
+    return Uri.folder_of(request.path)
+  end
+
+  return request.root
 end
 
 def directory?(path: String) -> Bool
@@ -373,7 +391,7 @@ def value_members(
   replaced: JSON.Value,
 ) -> Result[List[JSON.Value]]
   case try Probe.type_at(request, last, keep)
-    some(found) -> return typed_members(request, found.type, partial, replaced)
+    some(found) -> return typed_members(request, found.type, keep, partial, replaced)
     none -> return ok([])
   end
 end
@@ -381,6 +399,7 @@ end
 def typed_members(
   request: Lookup.Request,
   type: String,
+  keep: Int,
   partial: String,
   replaced: JSON.Value,
 ) -> Result[List[JSON.Value]]
@@ -394,7 +413,7 @@ def typed_members(
     return ok(found)
   end
 
-  case try Probe.outline(request, request.cursor.index)
+  case try Probe.outline(request, keep)
     some(outlined) ->
       case try find_type(request, outlined, head, "struct")
         some(item) ->

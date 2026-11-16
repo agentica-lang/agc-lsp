@@ -279,6 +279,27 @@ Feature: Completion
       | label | kind   | builtin |
       | size  | Method |         |
 
+  Scenario: the fields of a struct are offered on a line that does not parse yet
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Point
+        x: Int
+        y: Int
+      end
+
+      def main() -> Void
+        p = Point(x: 1, y: 2)
+        z = p.
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 8:9
+    Then the completion at 8:9 offers:
+      | label | kind  | builtin |
+      | x     | Field |         |
+      | y     | Field |         |
+
   Scenario: the methods follow the type of a variable that has no other use
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:
@@ -320,6 +341,7 @@ Feature: Completion
       | label | kind     | builtin |
       | area  | Function |         |
     And the completion at 1:11 does not offer "hidden"
+    And the completion at 1:11 does not offer "puts"
     And the completion at 2:26 offers:
       | label     | kind   | builtin |
       | std/queue | Module |         |
@@ -331,3 +353,25 @@ Feature: Completion
     And the completion at 4:22 offers:
       | label | kind   | builtin |
       | geo/  | Folder |         |
+
+  Scenario: the path of an import names nothing outside the workspace
+    Given the language server has loaded the builtin catalog
+    And the editor offers the workspace as "workspace folders"
+    And the file "geo/lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+      """
+    When the editor opens "app.agc" with:
+      """
+      import Down from "g"
+      import Up from "../"
+      import Out from "geo/../../"
+      """
+    And the editor asks for completion in "app.agc" at 1:20
+    And the editor asks for completion in "app.agc" at 2:20
+    And the editor asks for completion in "app.agc" at 3:28
+    Then the completion at 1:20 offers:
+      | label | kind   | builtin |
+      | geo/  | Folder |         |
+    And the completion at 2:20 offers nothing
+    And the completion at 3:28 offers nothing

@@ -22,6 +22,8 @@ struct Request
   documents: Map[String, String]
   ## Is the working folder, from which std/analysis writes the names of files below it.
   folder: String
+  ## Is the absolute path of the workspace folder, empty when the editor gave none.
+  root: String
   ## Is the position of the request in that document.
   cursor: Cursor.Cursor
   ## Is the catalog of builtins, which answers a hover when the program gives no type.

@@ -449,6 +449,7 @@ def renaming(state: State, id: JSON.Value, method: String, params: JSON.Value) -
         path: Uri.path_of(uri).unwrap_or(""),
         documents: state.documents,
         folder: state.folder,
+        root: state.root,
         cursor: cursor,
         book: state.catalog,
       )
@@ -566,6 +567,7 @@ def ask(state: State, id: JSON.Value, method: String, params: JSON.Value, cursor
         path: path,
         documents: state.documents,
         folder: state.folder,
+        root: state.root,
         cursor: cursor,
         book: state.catalog,
       )

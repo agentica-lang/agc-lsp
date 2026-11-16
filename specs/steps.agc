@@ -142,6 +142,7 @@ def main() -> Void
     BDD.step("the editor asks for completion in {string} at {int}:{int}", &asks_completion),
     BDD.step("the editor asks for signature help in {string} at {int}:{int}", &asks_signature_help),
     BDD.step("the signature help at {int}:{int} shows {string} with the parameter {string} active", &signature_shown),
+    BDD.step("the signature help at {int}:{int} shows {string} with no active parameter", &signature_unnamed),
     BDD.step("there is no signature help at {int}:{int}", &no_signature_help),
     BDD.step("the editor asks for code actions in {string} at {int}:{int}-{int}:{int}", &asks_code_actions),
     BDD.step("the code actions at {int}:{int} are:", &code_actions_are),
@@ -1400,6 +1401,29 @@ def signature_shown(ctx: BDD.Context, args: List[String]) -> BDD.Context
       error(e) -> BDD.assert(done, false, e.message)
     end
   end
+end
+
+def signature_unnamed(ctx: BDD.Context, args: List[String]) -> BDD.Context
+  return finished(ctx) do |done|
+    case result_at(done, "signature", args[0], args[1])
+      ok(result) ->
+        label = ""
+        signatures = JSON.list(at(result, ["signatures"]).unwrap_or(JSON.null())).unwrap_or(no_signatures())
+        if signatures.size > 0
+          label = JSON.string(at(signatures[0], ["label"]).unwrap_or(JSON.null())).unwrap_or("")
+        end
+
+        active = at(result, ["activeParameter"]).unwrap_or(JSON.from(0))
+        shown = label == args[2] and JSON.null?(active)
+        BDD.assert(done, shown, "expected #{args[2]} with no active parameter; actual #{result}")
+      error(e) -> BDD.assert(done, false, e.message)
+    end
+  end
+end
+
+def no_signatures() -> List[JSON.Value]
+  none_shown: List[JSON.Value] = []
+  return none_shown
 end
 
 def no_signature_help(ctx: BDD.Context, args: List[String]) -> BDD.Context
