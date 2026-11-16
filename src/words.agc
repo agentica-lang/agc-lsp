@@ -150,6 +150,7 @@ UNDERSCORE = 95
 KEYWORDS = Set.new([
   "def", "end", "if", "elsif", "else", "case", "for", "while", "return", "struct", "enum", "import", "export",
   "from", "type", "do", "in", "next", "break", "try", "and", "or", "not",
+  "true", "false", "nil", "extern",
 ])
 
 def word_char?(char: String) -> Bool
