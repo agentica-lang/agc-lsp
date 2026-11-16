@@ -3,9 +3,6 @@
 A Language Server Protocol (LSP) server for [Agentica](https://github.com/agentica-lang/agentica), a language for AI agents,
 written in Agentica.
 
-> **Status:** early stage. Diagnostics, hover, completion, signature help, code actions, go to definition, find
-> references, rename, formatting, document symbols and workspace symbols.
-
 ## Features
 
 The server keeps one `std/analysis` session that holds the text of every open document, so an unsaved change is seen by
