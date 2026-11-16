@@ -10,6 +10,9 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `textDocument/signatureHelp`: the signature of the function being called (of the program, an imported module or a builtin) and the active parameter, by commas or by the name of an argument.
+- `textDocument/codeAction`: quick fixes for `LINT-BOOL-COMPARE` and `LINT-TO-S-CONCAT`, from `agentica lint` on the text of the buffer.
+- Completion of the names of the program (declarations, imports, parameters and variables), of the methods of a value (`xs.`), the fields of a struct, the variants of an enum, the exports of a module, and of the `std/` modules and project files in the path of an import. A line that does not parse yet is cut at the cursor for the question to the compiler.
 - A name inside the `#{}` of a string has hover, definition and references, like any name in code.
 - Formatting sends a buffer of more than 1 MiB to `agentica fmt` in pieces and reads its output as it comes.
 - `textDocument/rename` and `textDocument/prepareRename`, from the declaration and uses that `agentica refs` finds. A rename also edits the name in `import {…}` lists. It is refused, with a reason that prepareRename also gives, for a builtin, a program with an error in a function, with a new name that does not suit the kind of name, or of a public name that another file of the workspace writes, is refused with a reason.
@@ -20,6 +23,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - Completion and hover of builtin types, such as `File.Info`, `JSON.Value` and `Error`, from Agentica 0.32.0 on:
   completion offers them as types and hover shows their declaration with fields or variants. Older releases work as
   before.
+
+### Fixed
+
+- Rename leaves a name or a `}` in a comment of a multi-line import list alone, and matches the module of an import by its path, not its last name (`geo/lib` is not `lib`).
+- prepareRename answers null for a word that names nothing, not an error.
+- The time given to `agentica fmt` grows with the size of the buffer up to two minutes.
 
 ## [0.3.0] - 2026-11-13
 

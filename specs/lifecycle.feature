@@ -22,7 +22,9 @@ Feature: Server lifecycle
           "workspaceSymbolProvider": true,
           "documentFormattingProvider": true,
           "renameProvider": {"prepareProvider": true},
-          "completionProvider": {"triggerCharacters": ["."]}
+          "completionProvider": {"triggerCharacters": ["."]},
+          "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
+          "codeActionProvider": {"codeActionKinds": ["quickfix"]}
         },
         "serverInfo": {"name": "agc-lsp"}
       }

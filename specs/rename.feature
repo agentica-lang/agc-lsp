@@ -160,6 +160,60 @@ Feature: Rename
       | app.agc | 7:8-7:12 | surface |
       | app.agc | 2:3-2:7  | surface |
 
+  Scenario: a comment in a multi-line import list is left alone
+    Given the language server has started
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+
+      def perimeter(w: Int, h: Int) -> Int = 2 * (w + h)
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {
+        area, # the area } is kept
+        perimeter,
+      } from "lib"
+
+      def main() -> Void
+        puts(area(2, 3) + perimeter(2, 3))
+      end
+
+      """
+    And the editor renames in "app.agc" at 7:8 to "surface"
+    Then the rename at 7:8 edits:
+      | file    | at       | text    |
+      | lib.agc | 1:5-1:9  | surface |
+      | app.agc | 7:8-7:12 | surface |
+      | app.agc | 2:3-2:7  | surface |
+
+  Scenario: an import with as from another module of the same file name does not stop the rename
+    Given the language server has started
+    And the file "geo/lib.agc" contains:
+      """
+      def area(w: Int, h: Int) -> Int = w * h
+      """
+    And the file "lib.agc" contains:
+      """
+      def area(w: Int) -> Int = w
+      """
+    When the editor opens "app.agc" with:
+      """
+      import {area} from "geo/lib"
+      import {area as plain} from "lib"
+
+      def main() -> Void
+        puts(area(2, 3) + plain(2))
+      end
+
+      """
+    And the editor renames in "app.agc" at 5:8 to "surface"
+    Then the rename at 5:8 edits:
+      | file        | at       | text    |
+      | geo/lib.agc | 1:5-1:9  | surface |
+      | app.agc     | 5:8-5:12 | surface |
+      | app.agc     | 1:9-1:13 | surface |
+
   Scenario: a name that an import list renames with as is not renamed
     Given the language server has started
     And the file "lib.agc" contains:
@@ -313,6 +367,20 @@ Feature: Rename
     Then the prepared rename at 2:4 is refused with "builtin"
     And there is no prepared rename at 1:2
     And the rename at 2:4 is refused with "builtin"
+
+  Scenario: a word with no name behind it has nothing to prepare, and is refused only by the rename
+    Given the language server has started
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        puts(1)
+      end
+
+      """
+    And the editor prepares the rename in "app.agc" at 1:15
+    And the editor renames in "app.agc" at 1:15 to "Nothing"
+    Then there is no prepared rename at 1:15
+    And the rename at 1:15 is refused with "no name"
 
   Scenario Outline: a new name that agentica would not accept is refused
     Given the language server has started

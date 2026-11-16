@@ -13,6 +13,9 @@ struct Entry
   kind: String
   ## Lists the signatures, one for each overload; a type has one, its declaration with its fields or variants.
   signatures: List[String]
+  ## Lists the signatures of the method form, `xs.map(block: Fn[A, B])`, which leave out the receiver; empty for a
+  ## builtin that is not a method.
+  methods: List[String]
   ## Is the description of the builtin.
   description: String
 end
@@ -153,6 +156,7 @@ def entry_of(item: JSON.Value, name: String) -> Entry
     member: member,
     kind: kind,
     signatures: signatures,
+    methods: methods_of(item),
     description: field(item, "description"),
   )
 end
@@ -203,6 +207,16 @@ def variant_line(part: JSON.Value) -> String
   end
 
   return "#{field(part, "name")}(#{payload.join(", ")})"
+end
+
+def methods_of(item: JSON.Value) -> List[String]
+  overloads = parts(item, "overloads")
+  if overloads.size == 0
+    overloads = [item]
+  end
+
+  forms = overloads.map do |overload| field(overload, "ruby") end
+  return forms.filter do |form| form != "" end
 end
 
 def signatures_of(item: JSON.Value) -> List[String]

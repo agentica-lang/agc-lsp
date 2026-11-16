@@ -100,6 +100,18 @@ def trimmed(path: String) -> String
   return shorter
 end
 
+## Returns the folder of a file path: the path without its last part, or the root.
+def folder_of(path: String) -> String
+  parts = path.split("/")
+  if parts.size <= 2 and parts[0].end_with?(":")
+    return "#{parts[0]}/"
+  elsif parts.size <= 2
+    return "/"
+  end
+
+  return parts.take(parts.size - 1).join("/")
+end
+
 private
 
 FILE_SCHEME = "file://"
