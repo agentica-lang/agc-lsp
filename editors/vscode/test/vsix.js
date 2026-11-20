@@ -20,10 +20,9 @@ async function smoke(vsix, agentica) {
     await fs.mkdir(path.join(profile, "User"), { recursive: true });
     await fs.mkdir(fixture);
     await fs.writeFile(path.join(workspace, "sample.agc"), 'def broken() -> Int\n  return "wrong"\nend\n');
-    await fs.writeFile(path.join(profile, "User", "settings.json"), JSON.stringify({
-      "agentica.server.agenticaPath": executable,
-      "extensions.autoUpdate": false,
-    }));
+    const settingsPath = path.join(profile, "User", "settings.json");
+    const settings = { "extensions.autoUpdate": false };
+    await fs.writeFile(settingsPath, JSON.stringify(settings));
     await fs.writeFile(path.join(fixture, "package.json"), JSON.stringify({
       name: "agc-lsp-vsix-test",
       publisher: "local",
@@ -42,18 +41,22 @@ async function smoke(vsix, agentica) {
       stdio: "inherit",
       timeout: 120_000,
     });
-    const launch = () => {
+    const launch = (testEnv) => {
       const linuxArgs = process.platform === "linux" ? ["--no-sandbox"] : [];
       execFileSync(code, [
         workspace, ...profileArgs, `--extensionDevelopmentPath=${fixture}`, `--extensionTestsPath=${tests}`,
-        "--disable-workspace-trust", "--skip-welcome", "--skip-release-notes", "--disable-updates", ...linuxArgs,
+        "--disable-workspace-trust", "--skip-welcome", "--skip-release-notes", "--disable-updates",
+        "--force-disable-user-env", ...linuxArgs,
       ], {
-        env: { ...process.env, AGC_LSP_CACHE: cache, AGC_LSP_TEST_RESULT: result },
+        env: { ...process.env, ...testEnv, AGC_LSP_CACHE: cache, AGC_LSP_TEST_RESULT: result },
         stdio: "inherit",
         timeout: 150_000,
       });
     };
-    launch();
+    const decoy = path.join(temp, "decoy");
+    await fs.mkdir(path.join(decoy, path.basename(executable)), { recursive: true });
+    const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+    launch({ [pathKey]: [decoy, temp, process.env[pathKey] ?? ""].join(path.delimiter) });
     console.log(await fs.readFile(result, "utf8"));
     const programs = (await fs.readdir(cache)).filter((file) => file.endsWith(".agcb"));
     assert.equal(programs.length, 1);
@@ -61,7 +64,14 @@ async function smoke(vsix, agentica) {
     const { mtimeMs } = await fs.stat(program);
 
     await fs.unlink(result);
-    launch();
+    settings["agentica.server.agenticaPath"] = path.join(temp, "missing", path.basename(executable));
+    if (process.platform === "win32") {
+      const installed = (await fs.readdir(extensions)).find((name) => name.startsWith("agentica-lang.agentica-lsp-"));
+      assert.ok(installed, "The VSIX has an installation directory");
+      settings["agentica.server.path"] = `"${path.join(extensions, installed, "server", "bin", "agc-lsp.bat")}"`;
+    }
+    await fs.writeFile(settingsPath, JSON.stringify(settings));
+    launch({ AGC_LSP_TEST_AGENTICA: executable });
     console.log(await fs.readFile(result, "utf8"));
     assert.equal((await fs.stat(program)).mtimeMs, mtimeMs, "The second launch reused the compiled program");
   } finally {

@@ -1,6 +1,6 @@
 const { execFile } = require("node:child_process");
 const { constants } = require("node:fs");
-const { access } = require("node:fs/promises");
+const { access, stat } = require("node:fs/promises");
 const { homedir } = require("node:os");
 const path = require("node:path");
 const { promisify } = require("node:util");
@@ -25,8 +25,10 @@ async function findAgentica(configuredPath) {
   const candidates = configuredPath ? [configuredPath] : directories.map((dir) => path.join(dir, executable));
   for (const candidate of candidates) {
     try {
-      await access(candidate, constants.X_OK);
-      return candidate;
+      if ((await stat(candidate)).isFile()) {
+        await access(candidate, constants.X_OK);
+        return candidate;
+      }
     } catch {}
   }
   throw new Error("Agentica executable not found. Install Agentica 0.33.0 or later, or set agentica.server.agenticaPath.");
@@ -60,7 +62,7 @@ function launcher(command, executable) {
   return {
     command: process.env.ComSpec || "cmd.exe",
     args: ["/d", "/s", "/v:off", "/c", `""%AGC_LSP_COMMAND%" ${argumentsText}"`],
-    options: { env: { ...env, AGC_LSP_COMMAND: command }, windowsVerbatimArguments: true },
+    options: { env: { ...env, AGC_LSP_COMMAND: command.replace(/^"(.*)"$/, "$1") }, windowsVerbatimArguments: true },
   };
 }
 
@@ -104,9 +106,9 @@ async function stop() {
 function enqueue(action) {
   pending = pending
     .then(action)
-    .catch((err) =>
-      vscode.window.showErrorMessage(`Agentica language server: ${err.message ?? err}`)
-    );
+    .catch((err) => {
+      void vscode.window.showErrorMessage(`Agentica language server: ${err.message ?? err}`);
+    });
   return pending;
 }
 

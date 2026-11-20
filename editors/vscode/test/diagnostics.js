@@ -4,12 +4,19 @@ const { setTimeout: delay } = require("node:timers/promises");
 const vscode = require("vscode");
 
 exports.run = async () => {
+  const extension = vscode.extensions.getExtension("agentica-lang.agentica-lsp");
+  assert.ok(extension, "The VSIX extension is installed");
+  if (process.env.AGC_LSP_TEST_AGENTICA) {
+    await extension.activate();
+    await vscode.workspace.getConfiguration("agentica.server").update(
+      "agenticaPath", process.env.AGC_LSP_TEST_AGENTICA, vscode.ConfigurationTarget.Global
+    );
+  }
+
   const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, "sample.agc");
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
   assert.equal(document.languageId, "agentica");
-  const extension = vscode.extensions.getExtension("agentica-lang.agentica-lsp");
-  assert.ok(extension, "The VSIX extension is installed");
 
   for (let attempt = 0; attempt < 360; attempt++) {
     const diagnostic = vscode.languages.getDiagnostics(uri).find(
