@@ -56,3 +56,39 @@ jobs:
       - name: Run the specs that are not for Unix only
         shell: bash
         run: agentica test specs/*.feature --steps specs/steps.agc
+
+  vscode:
+    name: VSIX smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            sha256: 9d02759b0903ddae9db624e3cb431ede7fe5d836acea0d4ff005f60e7116b350
+          - os: macos-15
+            sha256: d79e155689473dcf069d7571c7bfef3da97e7295ed7269eb38a9afc59f3b2950
+          - os: windows-latest
+            sha256: 3b11bdc33a5fe88daca5b8041a936dcc405bae74328172d209ff12a55367d6be
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - uses: agentica-lang/setup-agentica@v1
+        with:
+          version: ${{ env.AGENTICA_VERSION }}
+          sha256: ${{ matrix.sha256 }}
+      - run: npm ci
+      - run: npx --no-install vsce package --out agentica-lsp.vsix
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a node test/vsix.js agentica-lsp.vsix "$(command -v agentica)"
+      - if: runner.os != 'Linux'
+        shell: pwsh
+        run: node test/vsix.js agentica-lsp.vsix (Get-Command agentica).Source
