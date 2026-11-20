@@ -1,6 +1,6 @@
 {
   "name": "agentica-lsp",
-  "displayName": "Agentica",
+  "displayName": "Agentica LSP",
   "description": "Diagnostics, hover, completion, go to definition, references and symbols for Agentica (.agc) files from the agc-lsp language server.",
   "version": "0.4.0",
   "publisher": "agentica-lang",
@@ -14,6 +14,7 @@
   },
   "categories": ["Programming Languages", "Linters"],
   "activationEvents": ["onLanguage:agentica"],
+  "extensionDependencies": ["agentica-lang.agentica-language"],
   "main": "./extension.js",
   "contributes": {
     "languages": [
@@ -28,8 +29,14 @@
       "properties": {
         "agentica.server.path": {
           "type": "string",
-          "default": "agc-lsp",
-          "description": "Command that starts the language server: the bin/agc-lsp launcher of agc-lsp, or bin\\agc-lsp.bat on Windows (agc-lsp finds it when bin is on PATH)."
+          "default": "",
+          "description": "Command or path for a custom language server. Leave empty to use the bundled launcher."
+        },
+        "agentica.server.agenticaPath": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "Absolute path to the Agentica executable. Leave empty to find it on PATH or in ~/.local/bin on macOS."
         },
         "agentica.server.logLevel": {
           "type": "string",
@@ -47,13 +54,14 @@
     }
   },
   "scripts": {
-    "check": "node --check extension.js",
-    "vscode:prepublish": "node -e \"require('fs').copyFileSync('../../LICENSE', 'LICENSE')\""
+    "check": "node --check extension.js && node --check stage-server.js && node --check test/vsix.js && node --check test/diagnostics.js",
+    "vscode:prepublish": "node stage-server.js"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.0.0"
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^4.1.1"
   }
 }

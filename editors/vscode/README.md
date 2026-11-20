@@ -1,33 +1,36 @@
-# Agentica for VS Code
+# Agentica LSP for VS Code
 
-Shows the diagnostics of the [agc-lsp](https://github.com/agentica-lang/agc-lsp) language server on `.agc` files.
-Syntax highlighting is not part of this extension; it will come from
-[agentica-lang/agc-tmlanguage](https://github.com/agentica-lang/agc-tmlanguage).
+Agentica LSP provides diagnostics, completion, hover, go to definition, references, formatting, and rename for
+`.agc` files. It includes the language server and installs
+[Agentica Language](https://marketplace.visualstudio.com/items?itemName=agentica-lang.agentica-language) for syntax highlighting.
 
-## Install locally
+## Installation
 
-1. Put `agc-lsp` on your `PATH` (see the Editors section of the main README), with `agentica` 0.33.0 or later. On
-   Windows, put the `bin` folder of the repository on `PATH`: the extension starts the command through `cmd.exe`, so
-   `agc-lsp` finds `agc-lsp.bat`.
-2. From this folder:
+1. Install [Agentica](https://github.com/agentica-lang/agentica/releases) 0.33.0 or later.
+2. Install **Agentica LSP** (`agentica-lang.agentica-lsp`) from the VS Code Extensions view.
+3. Open an `.agc` file. The extension compiles the bundled server on first use and reuses the compiled program on
+   subsequent starts.
 
-   ```sh
-   npm install
-   npx @vscode/vsce package
-   code --install-extension agentica-lsp-0.4.0.vsix
-   ```
-
-   `vsce package` copies the repository `LICENSE` into this folder first (git ignores the copy), so it needs no
-   prompt.
-
-   Or use "Extensions: Install from VSIX..." in VS Code.
+The extension looks for Agentica on `PATH`. On macOS it also checks `~/.local/bin/agentica`, including when VS Code
+starts from the Dock. If Agentica is installed elsewhere, set `agentica.server.agenticaPath` to its absolute path.
 
 ## Settings
 
-- `agentica.server.path` (default `agc-lsp`): the command that starts the server, for example the full path of
-  `bin/agc-lsp` (`bin\agc-lsp.bat` on Windows, where the extension runs the command through `cmd.exe`; a path with
-  spaces is quoted for you).
-- `agentica.server.logLevel` (default `warning`): level of the server log in the Agentica output channel.
-- `agentica.server.clientLogLevel` (default `error`): level of the log messages the server sends to the editor.
+- `agentica.server.path` starts a custom language server command. Leave empty to use the bundled launcher.
+- `agentica.server.agenticaPath` sets the absolute path of the Agentica executable used by the launcher and language server.
+- `agentica.server.logLevel` controls the server's stderr log in the Agentica output channel. Defaults to `warning`.
+- `agentica.server.clientLogLevel` controls the log messages the server sends to VS Code. Defaults to `error`.
 
 Changing a setting restarts the server.
+
+## Build a VSIX
+
+With Node.js 22 or later, run these commands from `editors/vscode`:
+
+```sh
+npm ci
+npx vsce package --out agentica-lsp.vsix
+code --install-extension agentica-lsp.vsix
+```
+
+You can also use **Extensions: Install from VSIX…** in VS Code.

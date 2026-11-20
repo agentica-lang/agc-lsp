@@ -65,8 +65,7 @@ the checks and the queries of every open file, imported files included. It asks 
   the buffer is not searched.
 - The server does not call `Analysis.bodies` (experimental) or `Analysis.native_modules`; the functions of an `extern module` have symbols and hover like any `def`, and the module itself is not a symbol.
 - A diagnostic in a library or package file has the prefix in its message but no related location.
-- Windows: CI runs the server, but neither editor extension has been tried there, and the VS Code extension has not
-  been tested in VS Code. A UNC or `\\?\` path is not handled. Killing the editor hard can leave the server running as
+- Windows: a UNC or `\\?\` path is not handled. Killing the editor hard can leave the server running as
   an orphan (the VS Code client starts `agc-lsp.bat` through `cmd.exe`). Paths are compared with case, except the drive
   letter.
 
@@ -118,7 +117,8 @@ the launcher hands it to `agentica` programs that start it as a process, which o
 
 - Neovim 0.11+: [editors/nvim/agentica.lua](editors/nvim/agentica.lua) (a note for 0.10 and for Windows is in the
   file).
-- VS Code: [editors/vscode](editors/vscode), a minimal extension to install from a `.vsix` (see its README).
+- VS Code: install **Agentica LSP** (`agentica-lang.agentica-lsp`) from the Extensions view. It bundles the server and
+  requires Agentica 0.33.0 or later. See [the extension README](editors/vscode) for settings and VSIX installation.
 
 Syntax highlighting is not part of this repository; it will come from
 [agentica-lang/agc-tmlanguage](https://github.com/agentica-lang/agc-tmlanguage).

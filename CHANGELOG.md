@@ -8,6 +8,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The VS Code extension bundles the language server and installs Agentica Language for syntax highlighting. It
+  finds Agentica on `PATH` and in `~/.local/bin` on macOS, or uses the absolute path in
+  `agentica.server.agenticaPath`. The `agentica.server.path` setting still selects a custom server.
+
 ## [0.4.0] - 2026-11-16
 
 Needs Agentica 0.33.0 or later.
