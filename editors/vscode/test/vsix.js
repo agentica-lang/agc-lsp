@@ -56,12 +56,17 @@ async function smoke(vsix, agentica) {
     const decoy = path.join(temp, "decoy");
     await fs.mkdir(path.join(decoy, path.basename(executable)), { recursive: true });
     const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
-    launch({ [pathKey]: [decoy, temp, process.env[pathKey] ?? ""].join(path.delimiter) });
+    launch({ AGENTICA: "", [pathKey]: [decoy, temp, process.env[pathKey] ?? ""].join(path.delimiter) });
     console.log(await fs.readFile(result, "utf8"));
     const programs = (await fs.readdir(cache)).filter((file) => file.endsWith(".agcb"));
     assert.equal(programs.length, 1);
     const program = path.join(cache, programs[0]);
     const { mtimeMs } = await fs.stat(program);
+
+    await fs.unlink(result);
+    launch({ AGENTICA: executable });
+    console.log(await fs.readFile(result, "utf8"));
+    assert.deepEqual((await fs.readdir(cache)).filter((file) => file.endsWith(".agcb")), programs);
 
     await fs.unlink(result);
     settings["agentica.server.agenticaPath"] = path.join(temp, "missing", path.basename(executable));
@@ -71,7 +76,7 @@ async function smoke(vsix, agentica) {
       settings["agentica.server.path"] = `"${path.join(extensions, installed, "server", "bin", "agc-lsp.bat")}"`;
     }
     await fs.writeFile(settingsPath, JSON.stringify(settings));
-    launch({ AGC_LSP_TEST_AGENTICA: executable });
+    launch({ AGENTICA: settings["agentica.server.agenticaPath"], AGC_LSP_TEST_AGENTICA: executable });
     console.log(await fs.readFile(result, "utf8"));
     assert.equal((await fs.stat(program)).mtimeMs, mtimeMs, "The second launch reused the compiled program");
   } finally {

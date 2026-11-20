@@ -2,7 +2,7 @@
   "name": "agentica-lsp",
   "displayName": "Agentica LSP",
   "description": "Diagnostics, hover, completion, go to definition, references and symbols for Agentica (.agc) files from the agc-lsp language server.",
-  "version": "0.4.0",
+  "version": "0.1.0",
   "publisher": "agentica-lang",
   "license": "Apache-2.0",
   "repository": {
@@ -12,16 +12,28 @@
   "engines": {
     "vscode": "^1.91.0"
   },
-  "categories": ["Programming Languages", "Linters"],
-  "activationEvents": ["onLanguage:agentica"],
-  "extensionDependencies": ["agentica-lang.agentica-language"],
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:agentica"
+  ],
+  "extensionDependencies": [
+    "agentica-lang.agentica-language"
+  ],
   "main": "./extension.js",
   "contributes": {
     "languages": [
       {
         "id": "agentica",
-        "aliases": ["Agentica", "agentica"],
-        "extensions": [".agc"]
+        "aliases": [
+          "Agentica",
+          "agentica"
+        ],
+        "extensions": [
+          ".agc"
+        ]
       }
     ],
     "configuration": {
@@ -36,17 +48,27 @@
           "type": "string",
           "scope": "machine",
           "default": "",
-          "description": "Absolute path to the Agentica executable. Leave empty to find it on PATH or in ~/.local/bin on macOS."
+          "description": "Absolute path to the Agentica executable. Leave empty to use AGENTICA, PATH, or ~/.local/bin on macOS."
         },
         "agentica.server.logLevel": {
           "type": "string",
-          "enum": ["debug", "info", "warning", "error"],
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ],
           "default": "warning",
           "description": "Level of the server log shown in the Agentica output channel (stderr of the server)."
         },
         "agentica.server.clientLogLevel": {
           "type": "string",
-          "enum": ["debug", "info", "warning", "error"],
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ],
           "default": "error",
           "description": "Level of the log messages the server sends to the editor."
         }

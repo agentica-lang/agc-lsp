@@ -11,8 +11,8 @@ Agentica LSP provides diagnostics, completion, hover, go to definition, referenc
 3. Open an `.agc` file. The extension compiles the bundled server on first use and reuses the compiled program on
    subsequent starts.
 
-The extension looks for Agentica on `PATH`. On macOS it also checks `~/.local/bin/agentica`, including when VS Code
-starts from the Dock. If Agentica is installed elsewhere, set `agentica.server.agenticaPath` to its absolute path.
+The extension uses `agentica.server.agenticaPath` first, then the `AGENTICA` environment variable if set. Otherwise it
+looks for Agentica on `PATH`. On macOS it also checks `~/.local/bin/agentica`, including when VS Code starts from the Dock.
 
 ## Settings
 

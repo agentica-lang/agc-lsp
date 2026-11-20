@@ -16,13 +16,16 @@ async function findAgentica(configuredPath) {
   if (configuredPath && !path.isAbsolute(configuredPath)) {
     throw new Error("Set agentica.server.agenticaPath to the absolute path of the Agentica executable.");
   }
-  const executable = windows ? "agentica.exe" : "agentica";
+  const requested = configuredPath || process.env.AGENTICA || "agentica";
+  const executable = windows && !configuredPath && !path.extname(requested) ? `${requested}.exe` : requested;
   const pathValue = Object.entries(process.env).find(([key]) => key.toUpperCase() === "PATH")?.[1];
   const directories = (pathValue ?? "").split(path.delimiter).filter(path.isAbsolute);
   if (process.platform === "darwin") {
     directories.push(path.join(homedir(), ".local", "bin"));
   }
-  const candidates = configuredPath ? [configuredPath] : directories.map((dir) => path.join(dir, executable));
+  const candidates = path.basename(executable) === executable
+    ? directories.map((dir) => path.join(dir, executable))
+    : [path.resolve(executable)];
   for (const candidate of candidates) {
     try {
       if ((await stat(candidate)).isFile()) {
