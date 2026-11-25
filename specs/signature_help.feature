@@ -103,6 +103,19 @@ Feature: Signature help
     And the editor asks for signature help in "app.agc" at 3:19
     Then the signature help at 3:19 shows "list.map(block: Fn[A, B]) -> List[B]" with the parameter "block: Fn[A, B]" active
 
+  Scenario: a method after &. of a value that is not an Optional shows no signature
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        list = [1, 2]
+        puts(list&.map(
+      end
+
+      """
+    And the editor asks for signature help in "app.agc" at 3:18
+    Then there is no signature help at 3:18
+
   Scenario: outside a call, in a string, in a comment and in a definition there is no signature help
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

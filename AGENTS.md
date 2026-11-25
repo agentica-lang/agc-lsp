@@ -16,7 +16,7 @@ src/entries.agc   the ATS table of std/analysis entries (`Analysis.entry`, `Anal
 src/rpc.agc       Content-Length framing and JSON-RPC envelopes on stdio
 src/catalog.agc   the builtins from `agentica --json help`, one of the two processes the server starts (the other is `agentica fmt -`, in format.agc): loading, parsing, lookups by name, namespace and prefix; a row with a `kind` is a type (Agentica 0.32.0 on), and its signature is its declaration
 src/columns.agc   character indexes of a line to and from UTF-16 code units
-src/words.agc     the words of one line: the word at an index, the receiver before a dot, strings and comments
+src/words.agc     the words of one line: the word at an index, the receiver before a dot or a safe `&.`, strings and comments
 src/cursor.agc    a request position as the line, its characters and the character index, in the negotiated encoding
 src/hover.agc     textDocument/hover of a builtin: qualified name, bare call or method call
 src/lookup.agc    textDocument/definition, textDocument/references and the hover of names: `Analysis.type_at_partial` for the declaration (signature, doc), the builtin and the type of the expression, `Analysis.refs_partial` for the uses
@@ -28,7 +28,7 @@ src/fields.agc    reads fields of JSON objects with a default
 src/rename.agc    textDocument/prepareRename and textDocument/rename: the declaration and uses of `Analysis.refs_partial` (`Lookup.uses`) as one workspace edit; refused for a builtin, a partial answer (a function with an error), a new name that does not suit the kind, and a public name, or a parameter of a public function, that a file outside the answer writes as a word in code (`Words.mentions?`), which a workspace walk finds
 src/imports.agc   the entries of the `import {a, b as c} from "module"` lists of a file that take a name from a module (resolved by path, from `Analysis.outline`), which `agentica refs` does not report (agentica#1750); rename edits them
 src/format.agc    textDocument/formatting: `agentica fmt -` on the text of the buffer, in the folder of the file so that its manifest's `[style]` applies; one whole-document edit, none when the text is formatted already or does not parse (logged at info level)
-src/completion.agc the builtins that match the word before the cursor: after `Ns.` or at the start of a word; the item shape the other completions use
+src/completion.agc the builtins that match the word before the cursor: after `Ns.` or at the start of a word (none after `&.`); the item shape the other completions use
 src/complete.agc  textDocument/completion: the builtins and the names of the program (declarations, imports, parameters and assigned variables of the function, methods by the type of the receiver, struct fields, enum variants, exports of a module, `std/` modules and files in an import path), from `Analysis.outline` and `Analysis.type_at_partial`
 src/signature.agc textDocument/signatureHelp: the call the cursor is in (`Typing.frames`), its function from `Analysis.type_at_partial` (a `definition` signature or a builtin `help`) or else the catalog; the method form of a builtin leaves out the receiver
 src/probe.agc     asks `Analysis` about a buffer that does not parse: the line of the cursor is cut and its open brackets closed (`Typing.repaired`), and the question goes to that text

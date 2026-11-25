@@ -14,7 +14,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Completion, signature help and hover after `o&.` (safe navigation, Agentica 0.38.0): the members and methods of the type inside the Optional, also on a line that does not parse yet.
+- Completion and signature help after `o&.` (safe navigation, Agentica 0.38.0): the members and methods of the type inside the Optional, also on a line that does not parse yet. Hover works after `o&.`.
 - The VS Code extension bundles the language server and installs Agentica Language for syntax highlighting. It
   finds Agentica on `PATH` and in `~/.local/bin` on macOS, or uses the absolute path in
   `agentica.server.agenticaPath`. The `agentica.server.path` setting still selects a custom server.

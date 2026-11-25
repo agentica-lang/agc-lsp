@@ -350,11 +350,7 @@ def members(
 ) -> Result[List[JSON.Value]]
   chars = request.cursor.chars
   safe = Words.safe?(chars, start)
-  keep = start - 1
-  if safe
-    keep -= 1
-  end
-
+  keep = Words.dot_start(chars, start)
   case Words.receiver(chars, start)
     ok(receiver) if Catalog.namespace?(request.book, receiver.text) -> return ok([])
     ok(receiver) -> return named_members(request, receiver, safe, keep, partial, replaced)
