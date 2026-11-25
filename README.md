@@ -54,7 +54,7 @@ the checks and the queries of every open file, imported files included. It asks 
   showed no error is not checked again until it changes, is saved or is reopened.
 - Completion of your own names reads the declarations of the file and of the modules it imports; the variables of a
   function are found by their assignments and `for` loops above the cursor, not by block parameters or `case`
-  patterns. The list of `std/` modules is the one of Agentica 0.33.0. Strings and comments are found by scanning one
+  patterns. The list of `std/` modules is the one of Agentica 0.38.0. Strings and comments are found by scanning one
   line, so a heredoc, a string over several lines or code inside `#{}` is not recognised, and a call that continues on
   the next line is not repaired. If the builtin catalog cannot be loaded, the builtins are not offered.
 - A function with an error gives no type: definition, hover and references work in the other functions and on the names
@@ -71,7 +71,7 @@ the checks and the queries of every open file, imported files included. It asks 
 
 ## Usage
 
-It needs `agentica` 0.33.0 or later on `PATH`, and `bash` on Linux and macOS or `cmd.exe` on Windows. The server
+It needs `agentica` 0.38.0 or later on `PATH`, and `bash` on Linux and macOS or `cmd.exe` on Windows. The server
 imports `std/analysis`, which compiles the compiler (about 3 s from source), so the launcher compiles the server once
 and keeps the program:
 
@@ -118,7 +118,7 @@ the launcher hands it to `agentica` programs that start it as a process, which o
 - Neovim 0.11+: [editors/nvim/agentica.lua](editors/nvim/agentica.lua) (a note for 0.10 and for Windows is in the
   file).
 - VS Code: install **Agentica LSP** (`agentica-lang.agentica-lsp`) from the Extensions view. It bundles the server and
-  requires Agentica 0.33.0 or later. See [the extension README](editors/vscode) for settings and VSIX installation.
+  requires Agentica 0.38.0 or later. See [the extension README](editors/vscode) for settings and VSIX installation.
 
 Syntax highlighting is not part of this repository; it will come from
 [agentica-lang/agc-tmlanguage](https://github.com/agentica-lang/agc-tmlanguage).

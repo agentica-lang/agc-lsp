@@ -53,13 +53,27 @@ def dotted?(chars: List[String], start: Int) -> Bool
   return start > 0 and chars[start - 1] == "."
 end
 
-## Returns the word before the dot that precedes the index, or an error when there is none.
+## Returns true when a safe navigation, `&.`, comes right before the index.
+def safe?(chars: List[String], start: Int) -> Bool
+  return dotted?(chars, start) and start > 1 and chars[start - 2] == "&"
+end
+
+## Returns the index where the `.` or the `&.` that precedes the index starts.
+def dot_start(chars: List[String], start: Int) -> Int
+  if safe?(chars, start)
+    return start - 2
+  end
+
+  return start - 1
+end
+
+## Returns the word before the dot, or the `&.`, that precedes the index, or an error when there is none.
 def receiver(chars: List[String], start: Int) -> Result[Word]
   if !dotted?(chars, start)
     return error("no dot before the word at #{start}")
   end
 
-  stop = start - 1
+  stop = dot_start(chars, start)
   first = word_start(chars, stop)
   if first == stop
     return error("no word before the dot at #{stop}")

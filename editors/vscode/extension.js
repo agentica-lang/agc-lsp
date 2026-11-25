@@ -34,7 +34,7 @@ async function findAgentica(configuredPath) {
       }
     } catch {}
   }
-  throw new Error("Agentica executable not found. Install Agentica 0.33.0 or later, or set agentica.server.agenticaPath.");
+  throw new Error("Agentica executable not found. Install Agentica 0.38.0 or later, or set agentica.server.agenticaPath.");
 }
 
 async function checkVersion(executable) {
@@ -47,8 +47,8 @@ async function checkVersion(executable) {
   }
   const match = /^(\d+)\.(\d+)\.(\d+)(-[\w.-]+)?(?:\+[\w.-]+)?$/.exec(version);
   if (!match || (Number(match[1]) === 0 &&
-      (Number(match[2]) < 33 || (Number(match[2]) === 33 && Number(match[3]) === 0 && match[4])))) {
-    throw new Error(`Agentica 0.33.0 or later is required. Found ${version || "an unknown version"} at ${executable}.`);
+      (Number(match[2]) < 38 || (Number(match[2]) === 38 && Number(match[3]) === 0 && match[4])))) {
+    throw new Error(`Agentica 0.38.0 or later is required. Found ${version || "an unknown version"} at ${executable}.`);
   }
 }
 

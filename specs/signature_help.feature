@@ -90,6 +90,32 @@ Feature: Signature help
     And the signature help at 3:15 shows "list.map(block: Fn[A, B]) -> List[B]" with the parameter "block: Fn[A, B]" active
     And the signature help at 4:31 shows "String.split(string: String, separator: String) -> List[String]" with the parameter "separator: String" active
 
+  Scenario: a method after &. shows the signature of the type inside the Optional
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        maybe = some([1, 2])
+        puts(maybe&.map(
+      end
+
+      """
+    And the editor asks for signature help in "app.agc" at 3:19
+    Then the signature help at 3:19 shows "list.map(block: Fn[A, B]) -> List[B]" with the parameter "block: Fn[A, B]" active
+
+  Scenario: a method after &. of a value that is not an Optional shows no signature
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      def main() -> Void
+        list = [1, 2]
+        puts(list&.map(
+      end
+
+      """
+    And the editor asks for signature help in "app.agc" at 3:18
+    Then there is no signature help at 3:18
+
   Scenario: outside a call, in a string, in a comment and in a definition there is no signature help
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

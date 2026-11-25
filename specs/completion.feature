@@ -264,6 +264,111 @@ Feature: Completion
       | area  | Function |         |
     And the completion at 19:12 does not offer "hidden"
 
+  Scenario: after &. the members of the type inside the Optional are offered
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Home
+        city: String
+        zip: Int
+      end
+
+      struct User
+        address: Optional[Home]
+      end
+
+      def main() -> Void
+        user = some(User(address: none))
+        puts(user&.address&.city)
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 12:14
+    And the editor asks for completion in "app.agc" at 12:23
+    Then the completion at 12:14 offers:
+      | label   | kind  | builtin |
+      | address | Field |         |
+    And the completion at 12:14 does not offer "unwrap_or"
+    And the completion at 12:23 offers:
+      | label | kind  | builtin |
+      | city  | Field |         |
+      | zip   | Field |         |
+    And the completion at 12:23 does not offer "address"
+
+  Scenario: after &. on a line that does not parse yet the members of the type inside the Optional are offered
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Home
+        city: String
+        zip: Int
+      end
+
+      struct User
+        address: Optional[Home]
+      end
+
+      def main() -> Void
+        user = some(User(address: none))
+        town = user&.
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 12:16
+    Then the completion at 12:16 offers:
+      | label   | kind  | builtin |
+      | address | Field |         |
+
+  Scenario: after &. the members follow a call and a chain through a field that is not an Optional
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct User
+        name: String
+      end
+
+      def main() -> Void
+        u = User(name: "a")
+        maybe = some(u)
+        puts(some(u)&.name)
+        puts(maybe&.name&.size)
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 8:17
+    And the editor asks for completion in "app.agc" at 9:21
+    Then the completion at 8:17 offers:
+      | label | kind  | builtin |
+      | name  | Field |         |
+    And the completion at 9:21 offers:
+      | label  | kind   | builtin |
+      | upcase | Method |         |
+    And the completion at 9:21 does not offer "name"
+
+  Scenario: after &. a value that is not an Optional, a type and a module offer nothing
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct User
+        name: String
+      end
+
+      def main() -> Void
+        u = User(name: "a")
+        maybe = some(u)
+        puts(u&.name)
+        puts(User&.name)
+        puts(Math&.pi)
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 8:11
+    And the editor asks for completion in "app.agc" at 9:14
+    And the editor asks for completion in "app.agc" at 10:14
+    Then the completion at 8:11 offers nothing
+    And the completion at 9:14 offers nothing
+    And the completion at 10:14 offers nothing
+
   Scenario: a line that does not parse is cut at the cursor, also after a call
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

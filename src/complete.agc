@@ -349,13 +349,14 @@ def members(
   replaced: JSON.Value,
 ) -> Result[List[JSON.Value]]
   chars = request.cursor.chars
-  keep = start - 1
+  safe = Words.safe?(chars, start)
+  keep = Words.dot_start(chars, start)
   case Words.receiver(chars, start)
     ok(receiver) if Catalog.namespace?(request.book, receiver.text) -> return ok([])
-    ok(receiver) -> return named_members(request, receiver, keep, partial, replaced)
+    ok(receiver) -> return named_members(request, receiver, safe, keep, partial, replaced)
     error(_) ->
-      if start >= 2 and (chars[start - 2] == ")" or chars[start - 2] == "]")
-        return value_members(request, start - 2, keep, partial, replaced)
+      if keep >= 1 and (chars[keep - 1] == ")" or chars[keep - 1] == "]")
+        return value_members(request, keep - 1, safe, keep, partial, replaced)
       end
 
       return ok([])
@@ -365,6 +366,7 @@ end
 def named_members(
   request: Lookup.Request,
   receiver: Words.Word,
+  safe: Bool,
   keep: Int,
   partial: String,
   replaced: JSON.Value,
@@ -372,25 +374,35 @@ def named_members(
   case try Probe.outline(request, keep)
     some(outlined) ->
       modules = outlined.imports.filter do |imported| imported.alias == receiver.text end
-      if modules.size > 0
+      if safe and (modules.size > 0 or Words.type_name?(receiver.text))
+        return ok([])
+      elsif modules.size > 0
         return ok(exports(request, modules[0].path, partial, replaced))
       elsif Words.type_name?(receiver.text)
         return ok(variants(request, outlined, receiver.text, partial, replaced))
       end
 
-      return value_members(request, receiver.stop - 1, keep, partial, replaced)
+      return value_members(request, receiver.stop - 1, safe, keep, partial, replaced)
     none -> return ok([])
   end
 end
 
+## The members of the value that ends at the index `last`. After `&.` they are those of the type inside its Optional.
 def value_members(
   request: Lookup.Request,
   last: Int,
+  safe: Bool,
   keep: Int,
   partial: String,
   replaced: JSON.Value,
 ) -> Result[List[JSON.Value]]
   case try Probe.type_at(request, last, keep)
+    some(found) if safe ->
+      case Probe.inside_optional(found.type)
+        some(inner) -> return typed_members(request, inner, keep, partial, replaced)
+        none -> return ok([])
+      end
+
     some(found) -> return typed_members(request, found.type, keep, partial, replaced)
     none -> return ok([])
   end

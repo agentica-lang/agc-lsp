@@ -6,7 +6,7 @@ Agentica LSP provides diagnostics, completion, hover, go to definition, referenc
 
 ## Installation
 
-1. Install [Agentica](https://github.com/agentica-lang/agentica/releases) 0.33.0 or later.
+1. Install [Agentica](https://github.com/agentica-lang/agentica/releases) 0.38.0 or later.
 2. Install **Agentica LSP** (`agentica-lang.agentica-lsp`) from the VS Code Extensions view.
 3. Open an `.agc` file. The extension compiles the bundled server on first use and reuses the compiled program on
    subsequent starts.

@@ -98,10 +98,19 @@ end
 ## The method of the type of the receiver, which the call being typed hides from the compiler, or else every method
 ## of the name.
 def of_receiver(request: Lookup.Request, call: Call, receiver: Words.Word) -> Result[List[Form]]
-  asked = try Probe.type_at(request, receiver.stop - 1, call.name.start - 1)
+  chars = request.cursor.chars
+  asked = try Probe.type_at(request, receiver.stop - 1, Words.dot_start(chars, call.name.start))
   case asked
     some(found) ->
-      head = found.type.split("[")[0].strip
+      type = found.type
+      if Words.safe?(chars, call.name.start)
+        case Probe.inside_optional(type)
+          some(inner) -> type = inner
+          none -> return ok([])
+        end
+      end
+
+      head = type.split("[")[0].strip
       case Catalog.find(request.book, "#{head}.#{call.name.text}")
         ok(entry) -> return ok(builtin_forms(request, call, entry))
         error(_) -> return ok(every_method(request, call))
