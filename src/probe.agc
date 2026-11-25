@@ -42,6 +42,16 @@ def outline(request: Lookup.Request, keep: Int) -> Result[Optional[Analysis.Outl
   end
 end
 
+## Returns the type inside an Optional type, `User` for `Optional[User]`, or none for any other type.
+def inside_optional(type: String) -> Optional[String]
+  prefix = "Optional["
+  if !type.start_with?(prefix) or !type.end_with?("]")
+    return none
+  end
+
+  return some(type.slice(prefix.length, type.length - prefix.length - 1))
+end
+
 private
 
 def tolerated(failure: Error) -> Result[Void]

@@ -52,6 +52,33 @@ Feature: Hover on builtins
     And the hover at 4:15 does not show "Map.size"
     And the hover at 4:15 covers 4:14-4:18
 
+  Scenario: a field or a method after &. shows what it is for the type inside the Optional
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Home
+        city: String
+      end
+
+      struct User
+        home: Optional[Home]
+      end
+
+      def main() -> Void
+        user = some(User(home: none))
+        puts(user&.home&.city)
+        parts = some("a,b")&.split(",")
+      end
+
+      """
+    And the editor hovers over "app.agc" at 11:15
+    And the editor hovers over "app.agc" at 11:21
+    And the editor hovers over "app.agc" at 12:25
+    Then the hover at 11:15 shows the declaration "home: Optional[Home]"
+    And the hover at 11:21 shows the declaration "city: String"
+    And the hover at 12:25 shows "String.split"
+    And the hover at 12:25 does not show "List.split"
+
   Scenario: OpenSSL.Digest.sha256, a builtin of a family, shows its signature on the family and on the function
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:

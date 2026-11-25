@@ -8,8 +8,13 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the server needs Agentica 0.38.0 or later (`agentica.toml` names it), for the safe navigation `o&.name` that its compiler reads. An older Agentica stops with `PKG-AGENTICA-TOO-OLD`. The VS Code extension checks the same version.
+
 ### Added
 
+- Completion, signature help and hover after `o&.` (safe navigation, Agentica 0.38.0): the members and methods of the type inside the Optional, also on a line that does not parse yet.
 - The VS Code extension bundles the language server and installs Agentica Language for syntax highlighting. It
   finds Agentica on `PATH` and in `~/.local/bin` on macOS, or uses the absolute path in
   `agentica.server.agenticaPath`. The `agentica.server.path` setting still selects a custom server.

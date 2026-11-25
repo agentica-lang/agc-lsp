@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  AGENTICA_VERSION: "0.33.0"
+  AGENTICA_VERSION: "0.38.0"
 
 jobs:
   test:
@@ -21,7 +21,7 @@ jobs:
         uses: agentica-lang/setup-agentica@v1
         with:
           version: ${{ env.AGENTICA_VERSION }}
-          sha256: 9d02759b0903ddae9db624e3cb431ede7fe5d836acea0d4ff005f60e7116b350 # linux-x86_64
+          sha256: e3452adc1c70423970284e29f90ea54b68900137da5d80f1650c243b568c5464 # linux-x86_64
 
       - run: agentica --version
 
@@ -39,7 +39,7 @@ jobs:
         uses: agentica-lang/setup-agentica@v1
         with:
           version: ${{ env.AGENTICA_VERSION }}
-          sha256: 3b11bdc33a5fe88daca5b8041a936dcc405bae74328172d209ff12a55367d6be # windows-x86_64
+          sha256: 846558e847d2f9948a42e3f7ffe7dba69b80d8a05daf8d771fed6c7dc6c739ae # windows-x86_64
 
       - run: agentica --version
 
@@ -66,11 +66,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            sha256: 9d02759b0903ddae9db624e3cb431ede7fe5d836acea0d4ff005f60e7116b350
+            sha256: e3452adc1c70423970284e29f90ea54b68900137da5d80f1650c243b568c5464
           - os: macos-15
-            sha256: d79e155689473dcf069d7571c7bfef3da97e7295ed7269eb38a9afc59f3b2950
+            sha256: 950c1a38bc8b5b1a92212453ad409ede7d6161c49ac3073310177889e6a5fc87
           - os: windows-latest
-            sha256: 3b11bdc33a5fe88daca5b8041a936dcc405bae74328172d209ff12a55367d6be
+            sha256: 846558e847d2f9948a42e3f7ffe7dba69b80d8a05daf8d771fed6c7dc6c739ae
     defaults:
       run:
         working-directory: editors/vscode

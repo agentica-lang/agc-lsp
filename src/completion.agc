@@ -19,6 +19,10 @@ def items(book: Catalog.Book, cursor: Cursor.Cursor) -> List[JSON.Value]
     return namespaces(book, partial, bare, replaced).concat(members(bare, "", replaced))
   end
 
+  if Words.safe?(chars, start)
+    return []
+  end
+
   case Words.receiver(chars, start)
     ok(receiver) if Catalog.namespace?(book, receiver.text) ->
       return members(Catalog.members_of(book, receiver.text, partial), "", replaced)

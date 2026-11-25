@@ -264,6 +264,61 @@ Feature: Completion
       | area  | Function |         |
     And the completion at 19:12 does not offer "hidden"
 
+  Scenario: after &. the members of the type inside the Optional are offered
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Home
+        city: String
+        zip: Int
+      end
+
+      struct User
+        address: Optional[Home]
+      end
+
+      def main() -> Void
+        user = some(User(address: none))
+        puts(user&.address&.city)
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 12:14
+    And the editor asks for completion in "app.agc" at 12:23
+    Then the completion at 12:14 offers:
+      | label   | kind  | builtin |
+      | address | Field |         |
+    And the completion at 12:14 does not offer "unwrap_or"
+    And the completion at 12:23 offers:
+      | label | kind  | builtin |
+      | city  | Field |         |
+      | zip   | Field |         |
+    And the completion at 12:23 does not offer "address"
+
+  Scenario: after &. on a line that does not parse yet the members of the type inside the Optional are offered
+    Given the language server has loaded the builtin catalog
+    When the editor opens "app.agc" with:
+      """
+      struct Home
+        city: String
+        zip: Int
+      end
+
+      struct User
+        address: Optional[Home]
+      end
+
+      def main() -> Void
+        user = some(User(address: none))
+        town = user&.
+      end
+
+      """
+    And the editor asks for completion in "app.agc" at 12:16
+    Then the completion at 12:16 offers:
+      | label   | kind  | builtin |
+      | address | Field |         |
+
   Scenario: a line that does not parse is cut at the cursor, also after a call
     Given the language server has loaded the builtin catalog
     When the editor opens "app.agc" with:
